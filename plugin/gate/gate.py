@@ -2,17 +2,17 @@
 
 Order: run limits (step 19) → deterministic checks → the adversarial reviewer's verdict.
 Result:
-  - ``continue``  every check passed and the gate is automated ((c) and (d));
-  - ``wait``      every check passed but the gate is human ((a), (b), (e) and (f), decision
-                  37): the run stops with the ``sdlc:<phase>-ready`` label;
+  - ``continue``  every check passed and the gate is automated (build and test);
+  - ``wait``      every check passed but the gate is human (intent, design, deploy and
+                  maintain, decision 37): the run stops with the ``sdlc:<phase>-ready`` label;
   - ``park``      a check failed: ``Status.park(reason)``, the ``sdlc:needs-human`` label and
                   the "What I need from you" block for the PR description. The gate notifies
                   nobody; the runner's publication requests the owner's review (decision 31).
-The fast lane (decision 30, ROADMAP R46): at gate (b), in a session the CI runner runs, a
-gate whose only reason to wait is that (b) is a human gate and whose adversarial reviewer
+The fast lane (decision 30, ROADMAP R46): at gate (design), in a session the CI runner runs, a
+gate whose only reason to wait is that (design) is a human gate and whose adversarial reviewer
 classed the plan ``routine`` says ``continue`` (``fast_lane`` true, no label): the runner
-records it in ``status.yaml: fast_lane.b`` and dispatches the build. A ``non-routine`` or
-missing classification, a park and a gate run by hand wait at (b) as before.
+records it in ``status.yaml: fast_lane.design`` and dispatches the build. A ``non-routine`` or
+missing classification, a park and a gate run by hand wait at (design) as before.
 The result is also written to ``changes/<id>-<slug>/evidence/gate-<phase>.json`` so the
 PR summary (step 27a, B3) can show it.
 """
@@ -69,7 +69,7 @@ class GateResult:
     at: str = field(default_factory=_now)
     dry_run: bool = False
     config_note: str = ""
-    # decision 30: gate (b) passed on the fast lane (a routine plan, in CI)
+    # decision 30: gate (design) passed on the fast lane (a routine plan, in CI)
     fast_lane: bool = False
     # R18: the read-only triage step's lines on a park with a log to read (``run_phase.py
     # --phase triage``), model-written and passed through the secrets check
@@ -138,7 +138,7 @@ class GateResult:
         return cls(
             change_id=str(data.get("change_id") or ""),
             slug=str(data.get("slug") or ""),
-            phase=str(data.get("phase") or ""),
+            phase=str(c.phase_name(data.get("phase") or "")),
             human_gate=bool(data.get("human_gate")),
             result=str(data.get("result") or "park"),
             checks=[
@@ -164,6 +164,7 @@ def build_context(
     root: Path, change_id: str, phase: str, base: str | None = None, any_phase: bool = False
 ) -> GateContext:
     root = Path(root).resolve()
+    phase = c.phase_name(phase)  # R45: a letter an older caller passes is read as its name
     if phase not in c.PHASES:
         raise GateError(f"phase must be one of {c.PHASES}")
     if not c.ID_RE.match(change_id):
@@ -173,7 +174,7 @@ def build_context(
         raise GateError(f"no change folder for id {change_id} under {root / c.CHANGES_DIR}")
     st = status_mod.read_status(change_dir)
     # ``any_phase``: a read-only use that judges the phase ahead of the record (the review
-    # pass asks for the (e) risk hits while status.yaml still says (d)); never for a gate
+    # pass asks for the (deploy) risk hits while status.yaml still says (test)); never for a gate
     if st.phase != phase and not any_phase:
         raise GateError(
             f"status.yaml says change {change_id} is in phase ({st.phase}); gate ({phase}) "
@@ -217,7 +218,7 @@ def build_context(
     )  # fmt: skip
 
 
-FAST_LANE_PHASE = "b"
+FAST_LANE_PHASE = c.DESIGN
 FAST_LANE_REASON = (
     "passed on the fast lane (decision 30): the adversarial reviewer classed the plan routine, "
     "so the build starts without a merge of the design PR"
@@ -247,14 +248,14 @@ def settled_by_panel(results: list[CheckResult]) -> bool:
 def fast_lane_applies(
     phase: str, human_gate: bool, results: list[CheckResult], in_runner: bool
 ) -> bool:
-    """Decision 30: gate (b) does not wait for the owner when every check passed, the only
-    reason to wait is that (b) is a human gate, the adversarial
+    """Decision 30: gate (design) does not wait for the owner when every check passed, the only
+    reason to wait is that (design) is a human gate, the adversarial
     reviewer said ``continue`` itself (an ``escalate`` the panel settled waits) and classed
     the plan exactly ``routine``, and the CI runner runs the session (it alone records the
     fast lane and dispatches the build; a gate run by hand waits), and no risk-list item hit
-    that is not accepted yet (decision 35: a hit at (b) waits on the design PR)."""
+    that is not accepted yet (decision 35: a hit at (design) waits on the design PR)."""
     return (
-        phase == FAST_LANE_PHASE
+        c.phase_name(phase) == FAST_LANE_PHASE
         and human_gate
         and in_runner
         and all(r.ok for r in results)
@@ -266,7 +267,7 @@ def fast_lane_applies(
 
 def unaccepted_risk_hits(results: list[CheckResult]) -> list[str]:
     """The risk-list items the gate's risk-hit checks reported and no earlier act accepted
-    (decision 35). A hit at (b) goes on the design PR, whose merge accepts it, so a design
+    (decision 35). A hit at (design) goes on the design PR, whose merge accepts it, so a design
     with one never takes the fast lane (decision 30's routine plan has no risk-list item)."""
     out: list[str] = []
     for r in results:
@@ -321,7 +322,7 @@ def evaluate(ctx: GateContext) -> GateResult:
 
 def apply(ctx: GateContext, result: GateResult) -> None:
     """Record the verdict: status.yaml (park or passed) and evidence/gate-<phase>.json. The
-    fast lane's ``status.yaml: fast_lane.b`` is the runner's to write after the session
+    fast lane's ``status.yaml: fast_lane.design`` is the runner's to write after the session
     (decision 30), never the gate's: a session may not write it."""
     st = ctx.status
     if result.result == "park":
@@ -338,7 +339,7 @@ def apply(ctx: GateContext, result: GateResult) -> None:
     out.write_text(json.dumps(result.as_dict(), indent=2), encoding="utf-8", newline="\n")
 
 
-RISK_HIT_PHASES = {"risk_list": c.PHASES, "ratchets": ("c", "d", "e")}
+RISK_HIT_PHASES = {"risk_list": c.PHASES, "ratchets": (c.BUILD, c.TEST, c.DEPLOY)}
 
 
 def risk_hits_now(
@@ -347,7 +348,8 @@ def risk_hits_now(
     """The risk-list hits of the committed diff as the gate of ``phase`` would report them
     (decision 35), without recording anything: ``{phase, hits, accepted, brief}``. The phase
     commands hand them to the reviewer, which writes one brief per item in ``brief``; the
-    review pass asks for phase (e) while status.yaml still says (d)."""
+    review pass asks for the deploy phase while status.yaml still says test."""
+    phase = c.phase_name(phase)
     ctx = build_context(root, change_id, phase, base, any_phase=True)
     hits: dict[str, list[str]] = {}
     accepted: set[str] = set()
@@ -472,11 +474,11 @@ def write_deferred_logs(
 ) -> list[str]:
     """Write the logs from ``runs`` (``checks.run_targets``): the header ``evidence/collect.py``
     would have written, then the literal output. The marked logs always; with ``all_targets``
-    (a gate that reads the logs, (d) and (e)) the three logs whatever their first line, so a
+    (a gate that reads the logs, test and deploy) the three logs whatever their first line, so a
     log of an older tree never stands beside the runner's run of this one. Returns the file
     names written. A log whose target did not run (no entry in ``runs``) is left as it is:
     a mark the gate then refuses (``artifacts.DEFERRED_NEVER_REPLACED``). ``drive.log`` is
-    written whenever ``runs`` holds the drive, at (c) too: it has no mark to find (change
+    written whenever ``runs`` holds the drive, at (build) too: it has no mark to find (change
     0004)."""
     written: list[str] = []
     stamp = at or _now()
@@ -547,10 +549,15 @@ def run_deferred_commands(
     already ran the targets itself. Raises ``GateError`` when the record or the change
     cannot be read."""
     root = Path(root).resolve()
+    phase = c.phase_name(phase)
+    if phase not in c.PHASES:
+        raise GateError(f"phase must be one of {c.PHASES}")
     change_dir = c.find_change_dir(root, change_id)
     if change_dir is None:
         raise GateError(f"no change folder for id {change_id} under {root / c.CHANGES_DIR}")
-    path = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=phase)
+    # R45: the session's record, or the one an older plugin's session wrote (``gate-c.json``);
+    # ``apply`` writes the name's
+    path = c.phase_file(change_dir / art.EVIDENCE_DIR, art.GATE_RESULT, phase)
     if not path.is_file():
         return None
     try:
@@ -566,11 +573,12 @@ def run_deferred_commands(
     written: list[str] = []
     attempts = 0
     runs: dict[str, dict[str, Any]] = {}
-    # change 0004: the drive runs after the three targets at (c), (d) and (e), never at (b)
+    # change 0004: the drive runs after the three targets at build, test and deploy, never at
+    # (design)
     drive = checks.drive_from_config(ctx.config) is not None and phase in checks.DRIVE_PHASES
     head = ctx.diff.head if ctx.diff else None
     try:
-        # one run of the three targets: the record's ``commands`` entry and, at (d) and (e),
+        # one run of the three targets: the record's ``commands`` entry and, at test and deploy,
         # the three logs come from it, so they agree by construction (item 3b)
         missing = checks.missing_targets(ctx)
         if missing is not None:

@@ -1,16 +1,16 @@
 """Command-line face of the PR surface, called by /sdlc-build, /sdlc-test and /sdlc-deploy
 (build guide step 27a; OPERATING_MODEL section 4.1 "surface").
 
-    python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" description --root . --id 0001 --phase c
-    python cli.py upsert --root . --id 0001 --phase c [--draft] [--ready] [--check-run]
+    python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" description --root . --id 0001 --phase build
+    python cli.py upsert --root . --id 0001 --phase build [--draft] [--ready] [--check-run]
                                                       [--head <branch>] [--request-review]
                                                       [--dry-run]
-    python cli.py check-run --root . --id 0001 --phase d
+    python cli.py check-run --root . --id 0001 --phase test
 
 ``description`` prints the body only (nothing else). ``upsert`` opens or updates the phase's
 PR with that body, the generated title and the label the gate printed, and prints a JSON
 summary: route, url (or compare_url when no route exists), number, label, created; with
-``--check-run`` it also posts the phase's check run, so the phase (d) runbook line is one
+``--check-run`` it also posts the phase's check run, so the test phase runbook line is one
 command. ``check-run`` posts the phase's check run for HEAD (step 28) on its own. Exit 0 on
 success, 2 on a usage error; a missing GitHub route is not an error - it prints the body for
 the owner. ``--head`` names the PR's head branch when it is not the phase's framework branch
@@ -126,7 +126,9 @@ def cmd_upsert(args) -> int:
     title = desc.pr_title(st, args.phase)
     gate_json = desc.load_gate(change_dir, args.phase)
     label = desc.label_for(gate_json, args.phase)
-    head = (getattr(args, "head", None) or "").strip() or desc.head_branch(args.id, args.phase)
+    head = (getattr(args, "head", None) or "").strip() or desc.head_branch(
+        args.id, args.phase, root
+    )
     repo, base = _repo_and_base(root)
     out: dict[str, Any] = {
         "repo": repo,
@@ -175,7 +177,8 @@ def cmd_upsert(args) -> int:
         return finish()
 
     number = out["number"]
-    if number and head == c.work_branch(args.id, "c") and st.build_pr != int(number):
+    build_heads = c.work_branches(args.id, c.BUILD)  # R45: the letter branch of a change in flight
+    if number and head in build_heads and st.build_pr != int(number):
         # the build PR is the one the release approval reads (release/approval.py, 0.2.27):
         # record its number in status.yaml, where the checkout and the default branch's copy
         # carry it; the runner commits the record (run_phase.ensure_pr)
@@ -183,7 +186,7 @@ def cmd_upsert(args) -> int:
         st.touch()
         status_mod.write_status(change_dir, st)
         out["build_pr_recorded"] = int(number)
-    if number and head != c.work_branch(args.id, "c"):
+    if number and head not in build_heads:
         # R22 (decision 36, point 5): ruleset 2 requires sdlc/review, so every pull request
         # that is not a build PR carries a passing "not a build PR" on its head; the workflow
         # token's pushes and pull requests start no run of sdlc-merge.yml that would post it
@@ -198,10 +201,10 @@ def cmd_upsert(args) -> int:
         ]
         remove = [lb for lb in carried if lb != label]
         add = [label] if label and label not in carried else []
-        if args.phase == "f" and c.INCIDENT_LABEL not in (found.get("labels") or []):
+        if args.phase == c.MAINTAIN and c.INCIDENT_LABEL not in (found.get("labels") or []):
             # the triage queue is the set of open intent PRs labelled incident (step 39)
             github.ensure_label(
-                repo, c.INCIDENT_LABEL, "B60205", "SDLC phase (f): an incident intent", cwd=root
+                repo, c.INCIDENT_LABEL, "B60205", "SDLC maintain: an incident intent", cwd=root
             )
             add.append(c.INCIDENT_LABEL)
         if add or remove:
@@ -274,7 +277,8 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name)
         p.add_argument("--root", default=".")
         p.add_argument("--id", required=True)
-        p.add_argument("--phase", required=True, choices=list(c.PHASES))
+        # R45: a letter (``--phase c``) is read as its name for one release
+        p.add_argument("--phase", required=True, type=c.phase_name, choices=list(c.PHASES))
         if name == "upsert":
             p.add_argument("--draft", action="store_true", help="open the PR as a draft")
             p.add_argument("--ready", action="store_true", help="mark the PR ready for review")

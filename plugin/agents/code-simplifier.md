@@ -1,6 +1,6 @@
 ---
 name: code-simplifier
-description: Strips needless complexity after the main agent finishes a build step. Use proactively in phase (c) build once the implementation passes its tests and before the verifier runs, on the files the change touched.
+description: Strips needless complexity after the main agent finishes a build step. Use proactively in the build phase once the implementation passes its tests and before the verifier runs, on the files the change touched.
 tools: Read, Grep, Glob
 model: inherit
 maxTurns: 30

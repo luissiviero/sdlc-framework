@@ -1,4 +1,4 @@
-"""Gate (e) is the owner's approving review; the merge App merges on it (decision 36; R22).
+"""Gate (deploy) is the owner's approving review; the merge App merges on it (decision 36; R22).
 
     python framework/plugin/ci/merge_step.py doorbell --root . --repo owner/name
     python framework/plugin/ci/merge_step.py not-build --root . --repo owner/name
@@ -9,8 +9,9 @@ the owner's ``sdlc.yaml`` (never the pull request's) names the owner. No model r
 
 **doorbell** (``pull_request_review`` ``submitted``): an approving review by the owner's
 account (``state/unpark.py is_owner_actor``, decision 34) on an open build PR (head
-``sdlc/<id>/c`` in this repository) dispatches ``sdlc-merge.yml`` on the default branch with
-the pull request's number. It holds no key and judges nothing else: the dispatched job
+``sdlc/<id>/build``, or ``sdlc/<id>/c`` of a change in flight before R45, in this
+repository) dispatches ``sdlc-merge.yml`` on the default branch with the pull request's
+number. It holds no key and judges nothing else: the dispatched job
 re-checks everything from the API, so a review-triggered run, whose workflow file may come
 from the pull request, never reaches the merge App's key (the R22 proposal, "What to
 settle", the App row). Any other review is a green skip that says why.
@@ -18,8 +19,8 @@ settle", the App row). Any other review is a green skip that says why.
 **not-build** (``pull_request``): every pull request that is not a framework build PR gets a
 passing ``sdlc/review`` check ("not a build PR") on its head, so ruleset 2, which requires
 that check, holds only build PRs (decision 36, point 5). A build PR is one whose head is
-``sdlc/<id>/c``; its check is the review pass's, posted by the (e) run on its final head.
-The merge step below reads the review findings and gate (e)'s record, not the check, so a
+``sdlc/<id>/build``; its check is the review pass's, posted by the deploy run on its final
+head. The merge step below reads the review findings and gate (deploy)'s record, not the check, so a
 check posted on a wrong head is caught there. ``pr/cli.py upsert`` posts the same check on
 the pull requests the workflow token opens or updates, whose events start no run.
 
@@ -29,10 +30,12 @@ green "wait" line, since a merge that cannot happen leaves the PR open and shows
 digest (decisions 11 and 20):
 
 1. the pull request is open, not a draft, into the default branch, its head
-   ``sdlc/<id>/c`` in this repository, labelled ``sdlc:e-ready`` and not
+   ``sdlc/<id>/build`` in this repository, labelled ``sdlc:deploy-ready`` (or the
+   ``sdlc:e-ready`` an older plugin applied) and not
    ``sdlc:needs-human``;
-2. at its head, ``changes/<id>-<slug>/status.yaml`` says phase (e), gate (e) passed, no park,
-   and names this pull request as ``build_pr``; ``evidence/gate-e.json`` says ``wait`` and
+2. at its head, ``changes/<id>-<slug>/status.yaml`` says phase deploy, gate (deploy) passed, no
+   park, and names this pull request as ``build_pr``; ``evidence/gate-deploy.json`` (or the
+   letter's ``gate-e.json``) says ``wait`` and
    carries no deferred commands check (issue #91);
 3. ``evidence/review-findings.json`` at the head has no Important finding, and every commit
    after the one it reviewed touches only the change's ``evidence/``, its ``status.yaml``
@@ -40,9 +43,9 @@ digest (decisions 11 and 20):
 4. ``sdlc/review`` is green on the head;
 5. the owner's latest review that approves or requests changes approves, and every commit
    after the one it was submitted on is evidence or the run record, as in 3;
-6. the approved commit already carries ``evidence/gate-e.json`` reading ``wait``: an
-   approval given before gate (e) offered the PR, before the owner could read its banner,
-   is no gate (e) (choice 250; the R22 double check, F3);
+6. the approved commit already carries ``evidence/gate-deploy.json`` reading ``wait``: an
+   approval given before gate (deploy) offered the PR, before the owner could read its
+   banner, is no gate (deploy) (choice 250; the R22 double check, F3);
 7. it merges at exactly that head through the merge App's token (``SDLC_MERGE_TOKEN``),
    a bypass actor of ruleset 1; the workflow token never merges (decision 4).
 
@@ -80,8 +83,11 @@ from state.unpark import is_owner_actor  # noqa: E402
 EXIT_OK, EXIT_FAILED = 0, 1
 MERGE_WORKFLOW = "sdlc-merge.yml"
 MERGE_TOKEN_ENV = "SDLC_MERGE_TOKEN"
-E_READY = c.ready_label("e")
-BUILD_HEAD_RE = re.compile(r"^sdlc/(?P<id>\d{4})/c$")
+E_READY = c.ready_label(c.DEPLOY)
+# R45: a build PR an older plugin labelled carries ``sdlc:e-ready``; both offer it
+E_READY_LABELS = c.ready_labels(c.DEPLOY)
+# R45: the build head is ``sdlc/<id>/build``, or ``sdlc/<id>/c`` for a change in flight
+BUILD_HEAD_RE = re.compile(rf"^sdlc/(?P<id>\d{{4}})/(?:{c.BUILD}|{c.PHASE_LETTERS[c.BUILD]})$")
 DECISIVE = ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
 LINES = {"doorbell": "merge-doorbell", "not-build": "review-check", "merge": "merge"}
 
@@ -134,7 +140,8 @@ def _config(root: Path) -> dict[str, Any]:
 
 
 def build_change_id(head_ref: Any) -> str | None:
-    """The change id of a build PR's head ``sdlc/<id>/c``, else None."""
+    """The change id of a build PR's head ``sdlc/<id>/build`` (or the letter branch
+    ``sdlc/<id>/c`` an older plugin cut, R45), else None."""
     found = BUILD_HEAD_RE.match(str(head_ref or ""))
     return found.group("id") if found else None
 
@@ -209,7 +216,7 @@ def doorbell(
         head = _dict(pull.get("head"))
         change_id = build_change_id(head.get("ref"))
         if change_id is None:
-            _say("doorbell", "skipped: not a build PR (its head is not sdlc/<id>/c)", env)
+            _say("doorbell", "skipped: not a build PR (its head is not sdlc/<id>/build)", env)
             return EXIT_OK
         head_repo = str(_dict(head.get("repo")).get("full_name") or "")
         if head_repo.lower() != repo.lower():
@@ -242,7 +249,7 @@ def not_build(root: Path, repo: str, env: Mapping[str, str], github: Any = None)
         pull = _dict(payload.get("pull_request"))
         head = _dict(pull.get("head"))
         if build_change_id(head.get("ref")) is not None:
-            _say("not-build", "skipped: a build PR; the (e) run posts its sdlc/review", env)
+            _say("not-build", "skipped: a build PR; the deploy run posts its sdlc/review", env)
             return EXIT_OK
         head_repo = str(_dict(head.get("repo")).get("full_name") or "")
         if head_repo.lower() != repo.lower():
@@ -274,14 +281,39 @@ def _text_at(github: Any, repo: str, path: str, ref: str) -> str | None:
     return str(got.get("text"))
 
 
-APPROVAL_PREDATES_GATE_E = "the owner's approval predates gate (e): approve again on the head"
+APPROVAL_PREDATES_GATE_E = "the owner's approval predates gate (deploy): approve again on the head"
 
 
-def gate_e_waits_at(github: Any, repo: str, gate_path: str, ref: str) -> bool:
-    """True when ``gate_path`` (the change's ``evidence/gate-e.json``) at ``ref`` reads
-    ``result: wait``: gate (e) had run and offered the PR to the owner there (choice 250; an
-    earlier (e) record that escalated or parked is no offer). ``StepError`` on a read error."""
-    text = _text_at(github, repo, gate_path, ref)
+def gate_e_paths(evidence: str) -> tuple[str, str]:
+    """``evidence/gate-deploy.json``, then the ``evidence/gate-e.json`` an older plugin wrote
+    (R45): a reader at a commit takes the first that is there."""
+    return tuple(
+        f"{evidence}/{art.GATE_RESULT.format(phase=p)}"
+        for p in (c.DEPLOY, c.PHASE_LETTERS[c.DEPLOY])
+    )
+
+
+def _first_text_at(
+    github: Any, repo: str, paths: str | tuple[str, ...] | list[str], ref: str
+) -> tuple[str, str | None]:
+    """``(path, text)`` of the first of ``paths`` present at ``ref``, or the first path and
+    None when none is. ``StepError`` on a read error."""
+    candidates = [paths] if isinstance(paths, str) else list(paths)
+    for path in candidates:
+        text = _text_at(github, repo, path, ref)
+        if text is not None:
+            return path, text
+    return candidates[0], None
+
+
+def gate_e_waits_at(
+    github: Any, repo: str, gate_path: str | tuple[str, ...] | list[str], ref: str
+) -> bool:
+    """True when ``gate_path`` (the change's ``evidence/gate-deploy.json``; candidates from
+    ``gate_e_paths`` are read in order) at ``ref`` reads ``result: wait``: gate (deploy) had
+    run and offered the PR to the owner there (choice 250; an earlier deploy record that
+    escalated or parked is no offer). ``StepError`` on a read error."""
+    _path, text = _first_text_at(github, repo, gate_path, ref)
     try:
         record = json.loads(text) if text is not None else None
     except ValueError:
@@ -303,7 +335,7 @@ def judge(
     if pr.get("state") != "open":
         return {"wait": f"#{number} is not open ({pr.get('state') or 'unknown'})"}
     if pr.get("draft"):
-        return {"wait": f"#{number} is a draft: the (e) run marks it ready"}
+        return {"wait": f"#{number} is a draft: the deploy run marks it ready"}
     change_id = build_change_id(pr.get("head_ref"))
     if change_id is None:
         return {"wait": f"#{number} is not a build PR (head {pr.get('head_ref') or '?'})"}
@@ -314,8 +346,8 @@ def judge(
     labels = pr.get("labels") or []
     if c.NEEDS_HUMAN_LABEL in labels:
         return {"wait": f"#{number} is parked ({c.NEEDS_HUMAN_LABEL})"}
-    if E_READY not in labels:
-        return {"wait": f"#{number} does not carry {E_READY}: gate (e) has not offered it"}
+    if not E_READY_LABELS & set(labels):
+        return {"wait": f"#{number} does not carry {E_READY}: gate (deploy) has not offered it"}
     head = str(pr.get("head_sha") or "")
     if not head:
         raise StepError(f"#{number} names no head commit")
@@ -334,26 +366,30 @@ def judge(
         st = status_mod.Status.from_dict(data if isinstance(data, dict) else {})
     except (ValueError, TypeError) as exc:
         return {"wait": f"{rel}/status.yaml at the head cannot be read: {exc}"}
-    if st.phase != "e" or st.gate.phase != "e" or st.gate.result != "passed":
+    if st.phase != c.DEPLOY or st.gate.phase != c.DEPLOY or st.gate.result != "passed":
         gate = f"{st.gate.phase or '-'}/{st.gate.result or '-'}"
-        return {"wait": f"change {change_id} is at phase {st.phase}, gate {gate}: not (e) passed"}
+        return {
+            "wait": f"change {change_id} is at phase {st.phase}, gate {gate}: not deploy passed"
+        }
     if st.parked_reason:
         return {"wait": f"change {change_id} is parked: {st.parked_reason}"}
     if st.build_pr is None or int(st.build_pr) != int(number):
         return {"wait": f"status.yaml names build PR #{st.build_pr}, not #{number}"}
     evidence = f"{rel}/{art.EVIDENCE_DIR}"
-    gate_path = f"{evidence}/{art.GATE_RESULT.format(phase='e')}"
-    gate_text = _text_at(github, repo, gate_path, head)
+    gate_paths = gate_e_paths(evidence)
+    gate_path, gate_text = _first_text_at(github, repo, gate_paths, head)
     try:
         gate_record = json.loads(gate_text) if gate_text is not None else None
     except ValueError:
         gate_record = None
     if not isinstance(gate_record, dict):
-        return {"wait": "evidence/gate-e.json is missing or unreadable at the head"}
+        return {"wait": "evidence/gate-deploy.json is missing or unreadable at the head"}
     if gate_record.get("result") != "wait":
-        return {"wait": f"gate (e) recorded {gate_record.get('result')!r}, not 'wait'"}
+        return {"wait": f"gate (deploy) recorded {gate_record.get('result')!r}, not 'wait'"}
     if gate_mod.deferred_commands(gate_record):
-        return {"wait": "gate (e)'s commands check is still deferred to the runner (issue #91)"}
+        return {
+            "wait": "gate (deploy)'s commands check is still deferred to the runner (issue #91)"
+        }
     findings_text = _text_at(github, repo, f"{evidence}/{art.REVIEW_FINDINGS}", head)
     try:
         findings = json.loads(findings_text) if findings_text is not None else None
@@ -394,9 +430,10 @@ def judge(
     after = only_evidence_since(github, repo, approved_on, head, rel)
     if after:
         return {"wait": f"after the owner's approval: {after}"}
-    if not gate_e_waits_at(github, repo, gate_path, approved_on):
-        # choice 250: an approval given before gate (e) offered the PR is no gate (e); the
-        # owner's banner and the review findings come with (e), so the owner approves again
+    if not gate_e_waits_at(github, repo, gate_paths, approved_on):
+        # choice 250: an approval given before gate (deploy) offered the PR is no gate
+        # (deploy); the owner's banner and the review findings come with it, so the owner
+        # approves again
         return {"wait": APPROVAL_PREDATES_GATE_E}
     return {"head": head, "change_id": change_id, "approval": approval, "tally": tally}
 
@@ -419,7 +456,7 @@ def merge(root: Path, repo: str, number: int, env: Mapping[str, str], github: An
         _say(
             "merge",
             f"approval: {approval.get('author')} approved #{number} at {approval.get('at')} "
-            f"on {str(approval.get('commit'))[:10]} (gate (e), decision 36)",
+            f"on {str(approval.get('commit'))[:10]} (gate (deploy), decision 36)",
             env,
         )
         tok = str(env.get(MERGE_TOKEN_ENV) or "").strip()

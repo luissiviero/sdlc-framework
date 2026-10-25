@@ -127,7 +127,7 @@ def test_init_on_fixture_copy_is_idempotent(tmp_path):
     assert report["change"] == {
         "id": "0000",
         "dir": "changes/0000-sdlc-init",
-        "branch": "sdlc/0000/a",
+        "branch": "sdlc/0000/intent",
     }
     cfg = yamlish.load_file(root / "sdlc.yaml")
     assert cfg["commands"]["test"] == "python -m pytest"

@@ -26,7 +26,7 @@ What it does, idempotently (re-running upgrades):
      keeps their edits), and the `branches:` filter of the merge triggers is rewritten to the
      project's default branch;
   9. creates change 0000 (changes/0000-sdlc-init/, intent.md + status.yaml) so the
-     installation goes through gate (a) like any other change.
+     installation goes through gate (intent) like any other change.
   R61 and R33 (plugin 1.0.29): ``sdlc.yaml`` also gets the registry hosts of the languages
   found (``sandbox.allowed_domains``), the secret-shaped paths found (``protected_paths``,
   and ``Read`` deny rules in ``.claude/settings.json``), the formatter commands per file
@@ -410,7 +410,7 @@ WORKFLOW_FILES = (
     ".github/workflows/sdlc-test.yml",
     ".github/workflows/sdlc-deploy.yml",
     ".github/workflows/sdlc-digest.yml",
-    # the release transition of gate (e) (build guide step 32.3; plugin 0.2.12): create-only
+    # the release transition of gate (deploy) (build guide step 32.3; plugin 0.2.12): create-only
     # like the others, so re-running /sdlc-init on an initialised project installs it
     ".github/workflows/sdlc-release.yml",
     # the fix round on a "Request changes" review or an un-park label (decisions 22 and 24)
@@ -419,7 +419,7 @@ WORKFLOW_FILES = (
     # the owner's @claude comment dispatches that round (decision 34, ROADMAP R17)
     ".github/workflows/sdlc-comment.yml",
     ".github/workflows/sdlc-abandon.yml",
-    # phase (f): the scheduled detection and the owner's Go on a runbook (build guide step
+    # phase maintain: the scheduled detection and the owner's Go on a runbook (build guide step
     # 37; decisions 14, 25, 26); plugin 0.2.19
     ".github/workflows/sdlc-detect.yml",
     ".github/workflows/sdlc-runbook.yml",
@@ -427,7 +427,7 @@ WORKFLOW_FILES = (
     ".github/workflows/sdlc-evals.yml",
     # the weekly security review and the deterministic scanners (build guide step 38)
     ".github/workflows/sdlc-scan.yml",
-    # gate (e) is the owner's approving review; the merge App merges on it, and every other
+    # gate (deploy) is the owner's approving review; the merge App merges on it, and every other
     # pull request gets a passing sdlc/review (decision 36, ROADMAP R22); plugin 1.0.18
     ".github/workflows/sdlc-merge.yml",
     ".github/scripts/sdlc_pin.py",
@@ -911,7 +911,7 @@ def run(args) -> dict:
     report["change"] = {
         "id": st.id,
         "dir": str(change_dir.relative_to(root)).replace("\\", "/"),
-        "branch": c.branch_name(st.id, "a"),
+        "branch": c.branch_name(st.id, c.INTENT),
     }
     # R64: the copies this re-run refreshed, for the upgrade PR's body
     report["refreshed"] = {

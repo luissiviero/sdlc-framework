@@ -64,7 +64,9 @@ def pr(pending: bool = False, author: str = "github-actions[bot]", state: str = 
 
 
 # --- 1. the decision --------------------------------------------------------------------------
-@pytest.mark.parametrize("label", [c.NEEDS_HUMAN_LABEL, c.ready_label("b"), c.ready_label("e")])
+@pytest.mark.parametrize(
+    "label", [c.NEEDS_HUMAN_LABEL, c.ready_label("design"), c.ready_label("deploy")]
+)
 def test_a_waiting_label_requests_the_owner_s_review(label):
     gh = FakeGitHub()
     out = rr.sync_owner_review(gh, REPO, 5, label, {}, ENV, pr())
@@ -72,7 +74,7 @@ def test_a_waiting_label_requests_the_owner_s_review(label):
     assert gh.calls == [("request", 5, [OWNER])]
 
 
-@pytest.mark.parametrize("label", [c.NEEDS_HUMAN_LABEL, c.ready_label("c")])
+@pytest.mark.parametrize("label", [c.NEEDS_HUMAN_LABEL, c.ready_label("build")])
 def test_a_pending_request_is_removed_and_requested_again(label):
     """The owner's ``@claude`` comment or approval label leaves the request pending: every new
     wait gives one fresh push."""
@@ -104,7 +106,7 @@ def test_is_waiting_label():
 def test_the_owner_s_own_pr_is_skipped():
     """GitHub refuses a review request to a PR's author: the owner's own intent PR."""
     gh = FakeGitHub()
-    out = rr.sync_owner_review(gh, REPO, 5, c.ready_label("a"), {}, ENV, pr(author="OWNER"))
+    out = rr.sync_owner_review(gh, REPO, 5, c.ready_label("intent"), {}, ENV, pr(author="OWNER"))
     assert out["ok"] and "author" in out["skipped"] and gh.calls == []
 
 
@@ -194,7 +196,7 @@ def fake_routes(monkeypatch):
 
 
 def upsert(capsys, root: Path, *extra: str) -> dict:
-    code = pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "b", *extra])
+    code = pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "design", *extra])
     assert code == 0
     return json.loads(capsys.readouterr().out)
 
@@ -202,7 +204,7 @@ def upsert(capsys, root: Path, *extra: str) -> dict:
 def test_upsert_requests_the_review_only_with_the_flag(project, capsys, fake_routes):
     root, change = project
     git(root, "remote", "add", "origin", "https://github.com/o/r.git")
-    gate_json(change, "b", "wait", c.ready_label("b"))
+    gate_json(change, "b", "wait", c.ready_label("design"))
     out = upsert(capsys, root)
     assert out["created"] is True and "review_request" not in out
     assert fake_routes["calls"] == []  # the model's in-session upserts request nothing
@@ -220,7 +222,7 @@ def test_upsert_requests_the_review_only_with_the_flag(project, capsys, fake_rou
     ]
     # a later publication on the same PR, now carrying sdlc:fixing: the request is withdrawn
     fake_routes["calls"].clear()
-    fake_routes["existing"] = {**pr(pending=True), "number": 9, "labels": [c.ready_label("b")]}
+    fake_routes["existing"] = {**pr(pending=True), "number": 9, "labels": [c.ready_label("design")]}
     gate_json(change, "b", "wait", c.FIXING_LABEL)
     out = upsert(capsys, root, "--request-review")
     assert out["review_request"]["action"] == "withdrawn" and out["label"] == c.FIXING_LABEL
@@ -254,7 +256,7 @@ def _runner_project(root: Path, monkeypatch, default_owner: str | None) -> None:
         sdlc.write_text(sdlc.read_text(encoding="utf-8") + f"owner: {default_owner}\n", "utf-8")
         git(root, "commit", "-q", "-am", "owner on the default branch")
         git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
     text = sdlc.read_text(encoding="utf-8").replace(f"owner: {default_owner}\n", "")
     sdlc.write_text(text + "owner: intruder\n", encoding="utf-8")
     git(root, "commit", "-q", "-am", "the head names its own owner")
@@ -279,7 +281,7 @@ def test_on_a_runner_a_default_copy_without_owner_falls_to_the_repository_owner(
     root, change = project
     git(root, "remote", "add", "origin", "https://github.com/o/r.git")
     git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
     sdlc = root / "sdlc.yaml"
     sdlc.write_text(sdlc.read_text(encoding="utf-8") + "owner: intruder\n", encoding="utf-8")
     git(root, "commit", "-q", "-am", "the head names its own owner")
@@ -297,7 +299,7 @@ def test_a_new_pr_that_cannot_be_read_back_is_requested_as_nobody_s(
     """The re-read of a just-created PR failed: it is open and nobody is requested yet."""
     root, change = project
     git(root, "remote", "add", "origin", "https://github.com/o/r.git")
-    gate_json(change, "b", "wait", c.ready_label("b"))
+    gate_json(change, "b", "wait", c.ready_label("design"))
     monkeypatch.setattr(github, "pr_by_number", lambda *a, **k: {"ok": False, "reason": "HTTP 502"})
     out = upsert(capsys, root, "--request-review")
     assert out["created"] is True and out["review_request"]["action"] == "requested"
@@ -355,7 +357,7 @@ def test_the_runner_s_publishers_pass_request_review(tmp_path, monkeypatch):
     monkeypatch.setattr(run_phase, "write_park_result", lambda *a, **k: None)
     out = run_phase.ensure_pr(tmp_path, tmp_path, "0001", "c", REPO, {"GITHUB_TOKEN": "t"})
     assert out["ok"] and seen[-1][0] == "upsert" and seen[-1][-1] == "--request-review"
-    st = type("St", (), {"phase": "c", "id": "0001"})()
+    st = type("St", (), {"phase": "build", "id": "0001"})()
     run_phase.park_and_publish(tmp_path, tmp_path, tmp_path, st, "c", "gate: red")
     upserts = [argv for argv in seen if argv[0] == "upsert"]
     assert len(upserts) == 2 and "--request-review" in upserts[-1]
@@ -455,12 +457,12 @@ def test_only_the_sync_s_lookups_ask_gh_for_review_requests(monkeypatch):
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.setattr(github, "gh_path", lambda: "/usr/bin/gh")
     monkeypatch.setattr(github, "_gh_json", fake_gh_json)
-    github.find_open_pr(REPO, "sdlc/0001/b")
+    github.find_open_pr(REPO, "sdlc/0001/design")
     github.pr_by_number(REPO, 1)
-    github.find_pr(REPO, "sdlc/0001/b", "all")
+    github.find_pr(REPO, "sdlc/0001/design", "all")
     assert seen == [github.GH_PR_FIELDS] * 3 and "reviewRequests" not in github.GH_PR_FIELDS
     seen.clear()
-    github.find_open_pr(REPO, "sdlc/0001/b", reviewers=True)
+    github.find_open_pr(REPO, "sdlc/0001/design", reviewers=True)
     github.pr_by_number(REPO, 1, reviewers=True)
     assert seen == [github.GH_REVIEW_FIELDS] * 2
     assert "author" in github.GH_REVIEW_FIELDS and "reviewRequests" in github.GH_REVIEW_FIELDS

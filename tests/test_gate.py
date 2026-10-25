@@ -3,7 +3,7 @@ readers, run limits — and, against a temporary copy of the fixture project, th
 `continue` on a clean change, `wait` at a human gate, `park` with the right reason for each
 prepared failure (missing plan.md, failing test behind SAMPLE_FAIL=1, a diff touching
 .claude/settings.json, a risk-list word, an escalating or stale adversarial verdict, an open
-flagged concern, a limit hit), and gate (b): a spec.md without its rendered header or a design
+flagged concern, a limit hit), and gate (design): a spec.md without its rendered header or a design
 branch that touches source parks, while a clean one waits for the owner."""
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ import pytest
 from gate import artifacts as art
 from gate import checks, gate, limits, policy, preflight
 from gate import cli as gate_cli
+from state import conventions, yamlish
 from state import status as status_mod
-from state import yamlish
 from tests import fixture_repos
 from tests.model_records import write_reviewer_record
 
@@ -233,7 +233,7 @@ def project(tmp_path):
     branch with the implementation committed together with plan.md."""
     fixture_repos.copy("gate-project", tmp_path, _build_project)
     root = tmp_path / "proj"
-    start_run(root, "c")  # the runbook registers the run before the work (step 19)
+    start_run(root, "build")  # the runbook registers the run before the work (step 19)
     return root, root / "changes" / "0001-percent-helper"
 
 
@@ -242,11 +242,11 @@ def _build_project(base: Path) -> None:
     write(change / "spec.md", SPEC)
     write(change / "plan.md", PLAN)
     st = status_mod.read_status(change)
-    st.set_phase("c")
+    st.set_phase("build")
     status_mod.write_status(change, st)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "intent, spec and plan (as if the a and b PRs merged)")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
     write(root / "sample_pkg" / "percent.py", PERCENT)
     write(root / "tests" / "test_percent.py", TEST_PERCENT)
     init_py = root / "sample_pkg" / "__init__.py"
@@ -261,10 +261,10 @@ def _build_project(base: Path) -> None:
 @pytest.fixture
 def design_project(tmp_path):
     """Fixture copy initialised, the intent merged on main (as if the (a) PR did), and the
-    phase-(b) branch carrying only spec.md and plan.md — the state gate (b) judges."""
+    phase-(b) branch carrying only spec.md and plan.md — the state gate (design) judges."""
     fixture_repos.copy("gate-design-project", tmp_path, _build_design_project)
     root = tmp_path / "proj"
-    start_run(root, "b")
+    start_run(root, "design")
     return root, root / "changes" / "0001-percent-helper"
 
 
@@ -272,11 +272,11 @@ def _build_design_project(base: Path) -> None:
     root, change = _initialised_fixture(base)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "intent(0001): percent helper (as if the a PR merged)")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
     write(change / "spec.md", SPEC)
     write(change / "plan.md", PLAN)
     st = status_mod.read_status(change)
-    st.set_phase("b")
+    st.set_phase("design")
     status_mod.write_status(change, st)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): spec and plan")
@@ -370,7 +370,7 @@ def test_findings_and_verdict_readers(tmp_path):
     p.write_text(json.dumps({"findings": [{"severity": "Important", "summary": "x"}]}))
     data, err = checks.load_findings(p)
     assert err == "" and len(checks.important_findings(data)) == 1
-    v = tmp_path / "adversarial-review-c.json"
+    v = tmp_path / "adversarial-review-build.json"
     v.write_text(json.dumps({"verdict": "maybe"}), encoding="utf-8")
     assert checks.load_verdict(v)[1].startswith("malformed")
     v.write_text(json.dumps({"verdict": "continue", "classification": "routine"}))
@@ -382,7 +382,7 @@ def test_findings_and_verdict_readers(tmp_path):
 
 
 # --- run limits (step 19) with a bare context -------------------------------------------------
-def _ctx(tmp_path, config=None, iterations=0, phase="c", entry_route="idea"):
+def _ctx(tmp_path, config=None, iterations=0, phase="build", entry_route="idea"):
     change_dir = tmp_path / "changes" / "0001-x"
     (change_dir / "evidence").mkdir(parents=True, exist_ok=True)
     st = status_mod.Status(
@@ -414,7 +414,7 @@ def test_limits_iteration_cap_default_and_non_routine(tmp_path):
     assert not res.ok and "cap 3" in res.reason
     ctx = _ctx(tmp_path, iterations=3)
     write(
-        ctx.evidence_dir / "adversarial-review-b.json",
+        ctx.evidence_dir / "adversarial-review-design.json",
         json.dumps({"verdict": "continue", "classification": "non-routine", "head": "abc1234"}),
     )
     res = limits.check_limits(ctx)
@@ -436,20 +436,20 @@ def test_limits_wall_clock_and_budget(tmp_path):
     ctx = _ctx(tmp_path, {"gate": {"max_wall_clock_minutes": 30, "max_budget_usd": 2}})
     started = datetime.now(timezone.utc) - timedelta(minutes=45)
     write(
-        ctx.evidence_dir / "run-c.json",
+        ctx.evidence_dir / "run-build.json",
         json.dumps({"started_at": started.isoformat().replace("+00:00", "Z")}),
     )
     res = limits.check_limits(ctx)
     assert not res.ok and "wall-clock" in res.reason
     write(
-        ctx.evidence_dir / "run-c.json",
+        ctx.evidence_dir / "run-build.json",
         json.dumps({"started_at": datetime.now(timezone.utc).isoformat(), "spend_usd": 2.5}),
     )
     res = limits.check_limits(ctx)
     assert not res.ok and "budget" in res.reason
-    write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 2.5}))
+    write(ctx.evidence_dir / "run-build.json", json.dumps({"spend_usd": 2.5}))
     assert not limits.check_limits(ctx).ok
-    write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 1.0}))
+    write(ctx.evidence_dir / "run-build.json", json.dumps({"spend_usd": 1.0}))
     assert limits.check_limits(ctx).ok
 
 
@@ -489,17 +489,17 @@ def test_the_build_run_and_a_fix_round_get_the_build_wall_clock(tmp_path):
     and the wall-clock check gives that run ``build_max_wall_clock_minutes``; a record without
     the field (any other run, or one written before 1.0.8) keeps the general cap."""
     started = (datetime.now(timezone.utc) - timedelta(minutes=150)).isoformat()
-    ctx = _ctx(tmp_path, phase="c")
-    write(ctx.evidence_dir / "run-c.json", json.dumps({"started_at": started, "run": "build"}))
+    ctx = _ctx(tmp_path, phase="build")
+    write(ctx.evidence_dir / "run-build.json", json.dumps({"started_at": started, "run": "build"}))
     res = limits.check_limits(ctx)
     assert res.ok, res.reason
-    ctx = _ctx(tmp_path / "b", phase="b")
-    write(ctx.evidence_dir / "run-b.json", json.dumps({"started_at": started}))
+    ctx = _ctx(tmp_path / "design", phase="design")
+    write(ctx.evidence_dir / "run-design.json", json.dumps({"started_at": started}))
     res = limits.check_limits(ctx)
     assert not res.ok and res.details["max_wall_clock_minutes"] == 120
     assert "150 min elapsed, limit 120 min" in res.reason
     # a fix round at (b) carries the field: the build cap, with the owner's own setting
-    write(ctx.evidence_dir / "run-b.json", json.dumps({"started_at": started, "run": "build"}))
+    write(ctx.evidence_dir / "run-design.json", json.dumps({"started_at": started, "run": "build"}))
     assert limits.check_limits(ctx).ok
     ctx.config["gate"] = {"build_max_wall_clock_minutes": 140}
     res = limits.check_limits(ctx)
@@ -507,7 +507,7 @@ def test_the_build_run_and_a_fix_round_get_the_build_wall_clock(tmp_path):
 
 
 def test_start_run_records_the_build_run_and_a_fix_round(tmp_path, monkeypatch, capsys):
-    """``"run": "build"`` for ``--phase c``, for any phase under ``SDLC_RUN=fix`` (the runner
+    """``"run": "build"`` for ``--phase build``, for any phase under ``SDLC_RUN=fix`` (the runner
     marks the fix session) and for ``--run fix|build`` (a by-hand run); none otherwise."""
     change_dir, _st = status_mod.new_change(tmp_path, "x")
     monkeypatch.delenv(limits.RUN_KIND_ENV, raising=False)
@@ -519,16 +519,16 @@ def test_start_run_records_the_build_run_and_a_fix_round(tmp_path, monkeypatch, 
         path = change_dir / "evidence" / f"run-{phase}.json"
         return json.loads(path.read_text(encoding="utf-8"))
 
-    assert started("c")["run"] == "build"
-    for phase in ("b", "d", "e"):
+    assert started("build")["run"] == "build"
+    for phase in ("design", "test", "deploy"):
         assert "run" not in started(phase), phase
-    assert started("d", "--run", "fix")["run"] == "build"
-    assert started("e", "--run", "build")["run"] == "build"
+    assert started("test", "--run", "fix")["run"] == "build"
+    assert started("deploy", "--run", "build")["run"] == "build"
     monkeypatch.setenv(limits.RUN_KIND_ENV, "fix")
-    for phase in ("a", "b", "c", "d", "e"):
+    for phase in ("intent", "design", "build", "test", "deploy"):
         assert started(phase)["run"] == "build", phase
     monkeypatch.setenv(limits.RUN_KIND_ENV, "something else")
-    assert "run" not in started("b")
+    assert "run" not in started("design")
 
 
 def _stored(evidence: Path, source: str, usd) -> None:
@@ -543,12 +543,12 @@ def test_the_budget_binds_the_change_s_running_total_not_the_last_session(tmp_pa
     sample change 0002 cost almost four times a cap of 5 with no park. Two sessions below the
     cap whose sum exceeds it now park."""
     ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 2}})
-    write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 1.5}))
-    ledger = limits.record_spend_entry(ctx.evidence_dir, "c", "claude-c.json", 1.5)
-    _stored(ctx.evidence_dir, "claude-c.json", 1.5)
+    write(ctx.evidence_dir / "run-build.json", json.dumps({"spend_usd": 1.5}))
+    ledger = limits.record_spend_entry(ctx.evidence_dir, "build", "claude-build.json", 1.5)
+    _stored(ctx.evidence_dir, "claude-build.json", 1.5)
     assert ledger["total_usd"] == 1.5 and limits.check_limits(ctx).ok
-    ledger = limits.record_spend_entry(ctx.evidence_dir, "c", "claude-c-2.json", 1.5)
-    _stored(ctx.evidence_dir, "claude-c-2.json", 1.5)
+    ledger = limits.record_spend_entry(ctx.evidence_dir, "build", "claude-build-2.json", 1.5)
+    _stored(ctx.evidence_dir, "claude-build-2.json", 1.5)
     assert ledger["total_usd"] == 3.0
     res = limits.check_limits(ctx)
     assert not res.ok and res.details["stop"]
@@ -558,40 +558,40 @@ def test_the_budget_binds_the_change_s_running_total_not_the_last_session(tmp_pa
     assert res.details["spend_usd"] == 1.5 and res.details["spend_usd_total"] == 3.0
     assert res.details["spend_entries"] == 2
     # the cap is the change's, not the phase's: a (b) session's spend counts at (c)
-    assert limits.read_spend_ledger(_ctx(tmp_path, phase="b").evidence_dir)["total_usd"] == 3.0
+    assert limits.read_spend_ledger(_ctx(tmp_path, phase="design").evidence_dir)["total_usd"] == 3.0
     # M8: an emptied ledger changes nothing, the stored results still count
     (ctx.evidence_dir / limits.SPEND_FILE).unlink()
     assert not limits.check_limits(ctx).ok
     # without stored results (a by-hand run) the run record's figure still binds
-    for name in ("claude-c.json", "claude-c-2.json"):
+    for name in ("claude-build.json", "claude-build-2.json"):
         (ctx.evidence_dir / name).unlink()
     assert limits.check_limits(ctx).ok
-    write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 2.5}))
+    write(ctx.evidence_dir / "run-build.json", json.dumps({"spend_usd": 2.5}))
     res = limits.check_limits(ctx)
     assert not res.ok and res.details["spend_usd_total"] == 2.5
     assert res.details["spend_entries"] == 0
 
 
 def test_the_review_pass_and_each_fix_round_are_their_own_spend_entries(tmp_path):
-    """Issue #71: the review pass's cost went to run-e.json and the (e) session's start-run
+    """Issue #71: the review pass's cost went to run-deploy.json and the deploy session's start-run
     wiped it; a fix round's cost replaced the phase's. Each is an entry now, keyed by the
     stored result, so a repeated record of one session replaces its entry, never doubles it."""
-    ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 5}}, phase="e")
+    ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 5}}, phase="deploy")
     evidence = ctx.evidence_dir
-    limits.record_spend_entry(evidence, "d", "claude-d.json", 1.0, at="2026-10-02T10:00:00Z")
+    limits.record_spend_entry(evidence, "test", "claude-test.json", 1.0, at="2026-10-02T10:00:00Z")
     limits.record_spend_entry(evidence, "review", "claude-review.json", 0.65)
-    limits.record_spend_entry(evidence, "e", "claude-e.json", 2.04)
+    limits.record_spend_entry(evidence, "deploy", "claude-deploy.json", 2.04)
     limits.record_spend_entry(evidence, "fix", "claude-fix.json", 0.9)
     limits.record_spend_entry(evidence, "fix", "claude-fix-2.json", 0.5)
-    for source, usd in (("claude-d.json", 1.0), ("claude-review.json", 0.65),
-                        ("claude-e.json", 2.04), ("claude-fix.json", 0.9),
+    for source, usd in (("claude-test.json", 1.0), ("claude-review.json", 0.65),
+                        ("claude-deploy.json", 2.04), ("claude-fix.json", 0.9),
                         ("claude-fix-2.json", 0.5)):  # fmt: skip
         _stored(evidence, source, usd)
     ledger = limits.read_spend_ledger(evidence)
     assert [(e["run"], e["source"]) for e in ledger["entries"]] == [
-        ("d", "claude-d.json"),
+        ("test", "claude-test.json"),
         ("review", "claude-review.json"),
-        ("e", "claude-e.json"),
+        ("deploy", "claude-deploy.json"),
         ("fix", "claude-fix.json"),
         ("fix", "claude-fix-2.json"),
     ]
@@ -617,24 +617,26 @@ def test_a_spend_figure_is_finite_and_non_negative_and_zero_counts(tmp_path):
     evidence = ctx.evidence_dir
     for bad in (float("nan"), float("inf"), -1.0, "x"):
         with pytest.raises(ValueError, match="finite, non-negative"):
-            limits.record_spend_entry(evidence, "c", "bad.json", bad)
-    assert limits.record_spend_entry(evidence, "c", "zero.json", 0.0)["entries"][0]["usd"] == 0.0
-    limits.record_spend_entry(evidence, "c", "real.json", 0.02)
+            limits.record_spend_entry(evidence, "build", "bad.json", bad)
+    assert (
+        limits.record_spend_entry(evidence, "build", "zero.json", 0.0)["entries"][0]["usd"] == 0.0
+    )
+    limits.record_spend_entry(evidence, "build", "real.json", 0.02)
     # entries written behind the ledger's back are judged the same way on the read
     stored = json.loads((evidence / "spend.json").read_text(encoding="utf-8"))
     stored["entries"] += [
-        {"run": "c", "source": "nan.json", "usd": float("nan")},
-        {"run": "c", "source": "neg.json", "usd": -5},
-        {"run": "c", "source": "inf.json", "usd": float("inf")},
+        {"run": "build", "source": "nan.json", "usd": float("nan")},
+        {"run": "build", "source": "neg.json", "usd": -5},
+        {"run": "build", "source": "inf.json", "usd": float("inf")},
     ]
     write(evidence / "spend.json", json.dumps(stored))  # json writes NaN and Infinity
     ledger = limits.read_spend_ledger(evidence)
     assert [e["source"] for e in ledger["entries"]] == ["zero.json", "real.json"]
     assert ledger["total_usd"] == 0.02
     # the stored results are judged the same way: no figure is counted as no figure (M8)
-    for source, usd in (("claude-c.json", 0.0), ("claude-c-2.json", 0.02),
-                        ("claude-c-3.json", float("nan")), ("claude-c-4.json", -5),
-                        ("claude-c-5.json", float("inf"))):  # fmt: skip
+    for source, usd in (("claude-build.json", 0.0), ("claude-build-2.json", 0.02),
+                        ("claude-build-3.json", float("nan")), ("claude-build-4.json", -5),
+                        ("claude-build-5.json", float("inf"))):  # fmt: skip
         _stored(evidence, source, usd)
     assert limits.spend_from_runs(evidence)["total_usd"] == 0.02
     assert limits.spend_from_runs(evidence)["unknown"] == 3
@@ -642,7 +644,7 @@ def test_a_spend_figure_is_finite_and_non_negative_and_zero_counts(tmp_path):
     assert not res.ok and "budget exceeded: 0.02 USD" in res.reason
     status_mod.write_status(ctx.change_dir, ctx.status)  # the CLI reads the change's status
     proc = run_py(
-        str(GATE_CLI), "record-spend", "--root", str(tmp_path), "--id", "0001", "--phase", "c",
+        str(GATE_CLI), "record-spend", "--root", str(tmp_path), "--id", "0001", "--phase", "build",
         "--usd", "nan", cwd=tmp_path,
     )  # fmt: skip
     assert proc.returncode == 2 and "finite, non-negative" in proc.stderr
@@ -655,8 +657,8 @@ def _names(result, ok):
 
 def test_gate_continues_on_a_clean_change(project):
     root, change = project
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c")
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "continue", result.reason
     assert result.label is None and result.human_gate is False
     assert _names(result, False) == []
@@ -681,39 +683,39 @@ def test_gate_continues_on_a_clean_change(project):
         "ratchets",
     }
     st = status_mod.read_status(change)
-    assert st.gate.phase == "c" and st.gate.result == "passed" and st.parked_reason is None
-    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert st.gate.phase == "build" and st.gate.result == "passed" and st.parked_reason is None
+    recorded = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     assert recorded["result"] == "continue" and recorded["head"] == result.head
     assert result.what_i_need() == ""
 
 
 def test_gate_dry_run_writes_nothing_and_a_failed_check_parks(project):
-    """Gate (c) is the confidence gate's alone (decision 37, 1.0.21): it continues with no
+    """Gate (build) is the confidence gate's alone (decision 37, 1.0.21): it continues with no
     label; a dry run writes nothing, and a failed check parks."""
     root, change = project
     before = (change / "status.yaml").read_text(encoding="utf-8")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "park"  # the adversarial verdict is still needed at (c)
     assert "adversarial_review" in _names(result, False)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "continue" and result.label is None and not result.human_gate
     assert (change / "status.yaml").read_text(encoding="utf-8") == before
-    assert not (change / "evidence" / "gate-c.json").exists()
+    assert not (change / "evidence" / "gate-build.json").exists()
     # a failed check parks (uncommitted work is clean_tree's, not
     # plan_sync's: the plan is judged on the commits since 0.2.9)
     (root / "sample_pkg" / "percent.py").unlink()
     write(root / "sample_pkg" / "extra.py", "x = 1\n")
-    result = gate.run_gate(root, "0001", "c")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "park" and "clean_tree" in _names(result, False)
     assert "plan_sync" in _names(result, True)
 
 
 def test_gate_parks_without_plan_md(project):
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     (change / "plan.md").unlink()
-    result = gate.run_gate(root, "0001", "c")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "park"
     failed = {ch.name: ch for ch in result.failed}
     assert "artifacts" in failed and "plan.md is missing" in failed["artifacts"].reason
@@ -721,14 +723,14 @@ def test_gate_parks_without_plan_md(project):
     assert st.gate.result == "parked" and "plan.md is missing" in st.parked_reason
     block = result.what_i_need()
     assert block.startswith("## What I need from you") and "**artifacts**" in block
-    assert "--id 0001 --phase c" in block
+    assert "--id 0001 --phase build" in block
 
 
 def test_gate_parks_on_a_failing_test(project, monkeypatch):
     root, _ = project
-    verdict(root, "c")
+    verdict(root, "build")
     monkeypatch.setenv("SAMPLE_FAIL", "1")
-    result = gate.run_gate(root, "0001", "c")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "park"
     cmd = next(ch for ch in result.failed if ch.name == "commands")
     assert "test (exit 1)" in cmd.reason
@@ -746,19 +748,19 @@ def test_a_ci_session_s_gate_defers_the_commands_and_runs_no_target(project, mon
     deferred and runs nothing: a target that would fail (``SAMPLE_FAIL=1``) leaves the gate at
     ``continue``, and the record says the check is waiting for the runner."""
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     monkeypatch.setenv("SAMPLE_FAIL", "1")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    result = gate.run_gate(root, "0001", "c")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "continue", result.reason
     cmd = _commands_check(result)
     assert cmd.ok is True and cmd.details == {"deferred": True}
     assert cmd.reason == checks.COMMANDS_DEFERRED_REASON and "not yet run" in cmd.reason
-    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    recorded = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     assert gate.deferred_commands(recorded) is True
     # any other value of the variable, or none, runs the targets as before
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, "session")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "park" and "test (exit 1)" in _commands_check(result).reason
 
 
@@ -766,13 +768,13 @@ def test_the_runner_s_commands_step_parks_a_red_target_and_keeps_the_record_s_sh
     project, monkeypatch
 ):
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    deferred = gate.run_gate(root, "0001", "c")
-    before = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    deferred = gate.run_gate(root, "0001", "build")
+    before = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     monkeypatch.setenv("SAMPLE_FAIL", "1")
     # the runner's own environment may carry the mark too: the step runs the targets anyway
-    result = gate.run_deferred_commands(root, "0001", "c")
+    result = gate.run_deferred_commands(root, "0001", "build")
     assert result is not None and result.result == "park" and result.label == "sdlc:needs-human"
     cmd = _commands_check(result)
     assert cmd.ok is False and "test (exit 1)" in cmd.reason
@@ -783,9 +785,11 @@ def test_the_runner_s_commands_step_parks_a_red_target_and_keeps_the_record_s_sh
     # the shape: the same checks in the same order, the session's head and time
     assert [ch.name for ch in result.checks] == [ch.name for ch in deferred.checks]
     assert result.head == before["head"] and result.at == before["at"]
-    after = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    after = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     assert after["result"] == "park" and after["reason"].startswith("commands: not green")
-    assert "**commands**" in after["what_i_need"] and "--id 0001 --phase c" in after["what_i_need"]
+    assert (
+        "**commands**" in after["what_i_need"] and "--id 0001 --phase build" in after["what_i_need"]
+    )
     assert [ch["name"] for ch in after["checks"]] == [ch["name"] for ch in before["checks"]]
     st = status_mod.read_status(change)
     assert st.gate.result == "parked" and st.parked_reason.startswith("commands: not green")
@@ -794,10 +798,10 @@ def test_the_runner_s_commands_step_parks_a_red_target_and_keeps_the_record_s_sh
 @pytest.mark.parametrize(
     ("fixture", "phase", "expected", "label", "classification"),
     [
-        ("project", "c", "continue", None, "routine"),
-        ("design_project", "b", "wait", "sdlc:b-ready", "non-routine"),
+        ("project", "build", "continue", None, "routine"),
+        ("design_project", "design", "wait", "sdlc:design-ready", "non-routine"),
         # decision 30: a routine plan in a CI session passes gate (b) on the fast lane
-        ("design_project", "b", "continue", None, "routine"),
+        ("design_project", "design", "continue", None, "routine"),
     ],
 )
 def test_a_green_target_after_the_session_leaves_the_session_s_verdict_standing(
@@ -828,9 +832,9 @@ def test_a_crashing_check_in_the_runner_s_step_parks_as_the_gate_does(project, m
     ``gate.command_timeout`` that is not a number crashed the step and left the deferred record
     reading as passed: the fourth finding of the 0.3.0 review)."""
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    assert gate.run_gate(root, "0001", "c").result == "continue"
+    assert gate.run_gate(root, "0001", "build").result == "continue"
     original = checks.GateContext.gate_setting
     monkeypatch.setattr(
         checks.GateContext,
@@ -839,12 +843,12 @@ def test_a_crashing_check_in_the_runner_s_step_parks_as_the_gate_does(project, m
             "abc" if key == "command_timeout" else original(self, key, default)
         ),
     )
-    result = gate.run_deferred_commands(root, "0001", "c")
+    result = gate.run_deferred_commands(root, "0001", "build")
     assert result is not None and result.result == "park"
     cmd = _commands_check(result)
     assert cmd.ok is False and cmd.reason.startswith("check crashed: ValueError")
     assert cmd.details == {"ran_by": "runner"}
-    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    recorded = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     assert recorded["result"] == "park" and gate.deferred_commands(recorded) is False
     assert status_mod.read_status(change).gate.result == "parked"
 
@@ -854,10 +858,10 @@ def test_an_infrastructure_failure_of_the_runner_s_step_is_re_run_once(project, 
     red target: the step re-runs the targets once, not counted as a fix round, and parks
     with the reason saying it retried only when the second run crashes too."""
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    assert gate.run_gate(root, "0001", "c").result == "continue"
-    deferred = (change / "evidence" / "gate-c.json").read_text(encoding="utf-8")
+    assert gate.run_gate(root, "0001", "build").result == "continue"
+    deferred = (change / "evidence" / "gate-build.json").read_text(encoding="utf-8")
     original = checks.run_targets
     calls: list[int] = []
 
@@ -868,15 +872,15 @@ def test_an_infrastructure_failure_of_the_runner_s_step_is_re_run_once(project, 
         return original(ctx, only=only)
 
     monkeypatch.setattr(checks, "run_targets", lambda ctx, only=None: flaky(ctx, 1, only))
-    result = gate.run_deferred_commands(root, "0001", "c")
+    result = gate.run_deferred_commands(root, "0001", "build")
     assert calls == [None, None] and result.result == "continue", result.reason
     cmd = _commands_check(result)
     assert cmd.ok is True and cmd.details["retried"] == 1
     # twice: parked, the reason says the step was re-run once, the iteration count untouched
-    (change / "evidence" / "gate-c.json").write_text(deferred, encoding="utf-8")
+    (change / "evidence" / "gate-build.json").write_text(deferred, encoding="utf-8")
     calls.clear()
     monkeypatch.setattr(checks, "run_targets", lambda ctx, only=None: flaky(ctx, 5, only))
-    result = gate.run_deferred_commands(root, "0001", "c")
+    result = gate.run_deferred_commands(root, "0001", "build")
     assert len(calls) == 2 and result.result == "park"
     cmd = _commands_check(result)
     assert cmd.reason.startswith("check crashed: OSError")
@@ -892,9 +896,9 @@ def test_a_target_that_did_not_start_is_re_run_once_and_never_read_as_red(
     """No shell (no exit code, no timeout) or the shell's 126/127 (a tool missing on the
     runner) is an infrastructure failure (decision 29): only that target runs again, once."""
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    assert gate.run_gate(root, "0001", "c").result == "continue"
+    assert gate.run_gate(root, "0001", "build").result == "continue"
     calls: list = []
 
     def no_tool(ctx, only=None):
@@ -907,7 +911,7 @@ def test_a_target_that_did_not_start_is_re_run_once_and_never_read_as_red(
         return {n: r for n, r in runs.items() if only is None or n in only}
 
     monkeypatch.setattr(checks, "run_targets", no_tool)
-    result = gate.run_deferred_commands(root, "0001", "c")
+    result = gate.run_deferred_commands(root, "0001", "build")
     assert calls == [None, ["test"]] and result.result == "park"
     cmd = _commands_check(result)
     assert cmd.details["not_started"] == ["test"]
@@ -919,26 +923,26 @@ def test_the_runner_s_commands_step_leaves_a_record_without_the_deferred_mark_al
     """A gate run by hand (no mark) ran the targets itself: the step has nothing to do, and
     the record and status.yaml are byte-for-byte what the gate wrote."""
     root, change = project
-    verdict(root, "c")
-    gate.run_gate(root, "0001", "c")
-    record = change / "evidence" / "gate-c.json"
+    verdict(root, "build")
+    gate.run_gate(root, "0001", "build")
+    record = change / "evidence" / "gate-build.json"
     before = record.read_bytes(), (change / "status.yaml").read_bytes()
-    assert gate.run_deferred_commands(root, "0001", "c") is None
+    assert gate.run_deferred_commands(root, "0001", "build") is None
     assert (record.read_bytes(), (change / "status.yaml").read_bytes()) == before
     record.unlink()
-    assert gate.run_deferred_commands(root, "0001", "c") is None  # no record: nothing to run
+    assert gate.run_deferred_commands(root, "0001", "build") is None  # no record: nothing to run
     assert not record.exists()
     with pytest.raises(gate.GateError, match="no change folder"):
-        gate.run_deferred_commands(root, "0009", "c")
+        gate.run_deferred_commands(root, "0009", "build")
 
 
 # --- item 3b (0.3.2): the evidence logs deferred to the runner's same step -------------------
 def _at_phase_d(root: Path, change: Path) -> None:
-    """The project fixture moved to phase (d) with its run registered and its verdict written:
-    the state gate (d) judges, before the evidence writer has run."""
-    set_phase(change, "d")
-    start_run(root, "d")
-    verdict(root, "d")
+    """The project fixture moved to the test phase with its run registered and its verdict written:
+    the state gate (test) judges, before the evidence writer has run."""
+    set_phase(change, "test")
+    start_run(root, "test")
+    verdict(root, "test")
 
 
 def _check(result, name):
@@ -966,7 +970,7 @@ def test_a_ci_session_s_gate_at_d_accepts_the_marked_logs_only_while_the_deferra
     monkeypatch.setenv("SAMPLE_FAIL", "1")  # a target that would fail: nothing runs it here
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
     write_marked_logs(root, change)
-    result = gate.run_gate(root, "0001", "d")
+    result = gate.run_gate(root, "0001", "test")
     assert result.result == "continue", result.reason
     ev = _check(result, "evidence")
     assert ev.ok is True and ev.details == {
@@ -975,13 +979,13 @@ def test_a_ci_session_s_gate_at_d_accepts_the_marked_logs_only_while_the_deferra
     }
     assert ev.reason.startswith("deferred to the runner") and "not yet written" in ev.reason
     assert _check(result, "commands").details == {"deferred": True}
-    recorded = json.loads((change / "evidence" / "gate-d.json").read_text(encoding="utf-8"))
+    recorded = json.loads((change / "evidence" / "gate-test.json").read_text(encoding="utf-8"))
     assert gate.deferred_checks(recorded) == ["commands", "evidence"]
     assert gate.deferred_commands(recorded) is True
     # the mark is no evidence once the deferral is off: 0.3.1's gate parked on it as a log
     # without the collector header; 0.3.2's names the mark the runner never replaced
     monkeypatch.delenv(checks.COMMANDS_RUNNER_ENV)
-    by_hand = gate.run_gate(root, "0001", "d", dry_run=True)
+    by_hand = gate.run_gate(root, "0001", "test", dry_run=True)
     assert by_hand.result == "park"
     ev = _check(by_hand, "evidence")
     assert ev.ok is False and ev.details["red_files"] == ["test.log", "build.log", "lint.log"]
@@ -1000,9 +1004,9 @@ def test_the_runner_s_step_writes_the_three_logs_from_its_one_run_and_re_judges_
     write(change / "evidence" / "verifier.md", "# Verifier\nread, not run\n")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
     write_marked_logs(root, change)
-    deferred = gate.run_gate(root, "0001", "d")
-    before = json.loads((change / "evidence" / "gate-d.json").read_text(encoding="utf-8"))
-    result = gate.run_deferred_commands(root, "0001", "d")
+    deferred = gate.run_gate(root, "0001", "test")
+    before = json.loads((change / "evidence" / "gate-test.json").read_text(encoding="utf-8"))
+    result = gate.run_deferred_commands(root, "0001", "test")
     assert result is not None and result.result == "continue" and result.label is None
     cmd, ev = _check(result, "commands"), _check(result, "evidence")
     assert cmd.ok and cmd.details["ran_by"] == "runner" and "deferred" not in cmd.details
@@ -1021,19 +1025,19 @@ def test_the_runner_s_step_writes_the_three_logs_from_its_one_run_and_re_judges_
         assert float(header["seconds"]) >= 0 and header["at"].endswith("Z")
         assert art.parse_deferred_header(text) is None
     assert "passed" in (change / "evidence" / "test.log").read_text(encoding="utf-8")
-    recorded = json.loads((change / "evidence" / "gate-d.json").read_text(encoding="utf-8"))
+    recorded = json.loads((change / "evidence" / "gate-test.json").read_text(encoding="utf-8"))
     assert gate.deferred_checks(recorded) == [] and recorded["result"] == "continue"
     assert status_mod.read_status(change).gate.result == "passed"
     # the record's runs keep the tail of the output; the log keeps it whole
     assert "seconds" not in cmd.details["runs"]["test"]
     # a second step finds nothing deferred
-    assert gate.run_deferred_commands(root, "0001", "d") is None
+    assert gate.run_deferred_commands(root, "0001", "test") is None
 
     # the red case: the mark again, the target fails after the session
     write_marked_logs(root, change)
-    gate.run_gate(root, "0001", "d")
+    gate.run_gate(root, "0001", "test")
     monkeypatch.setenv("SAMPLE_FAIL", "1")
-    result = gate.run_deferred_commands(root, "0001", "d")
+    result = gate.run_deferred_commands(root, "0001", "test")
     assert result is not None and result.result == "park" and result.label == "sdlc:needs-human"
     cmd, ev = _check(result, "commands"), _check(result, "evidence")
     assert cmd.ok is False and "test (exit 1)" in cmd.reason
@@ -1059,7 +1063,7 @@ def test_a_marked_log_the_step_could_not_replace_fails_the_record(project, monke
     write(change / "evidence" / "verifier.md", "# Verifier\nread, not run\n")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
     write_marked_logs(root, change)
-    assert gate.run_gate(root, "0001", "d").result == "continue"
+    assert gate.run_gate(root, "0001", "test").result == "continue"
     original = checks.GateContext.gate_setting
     monkeypatch.setattr(
         checks.GateContext,
@@ -1068,14 +1072,14 @@ def test_a_marked_log_the_step_could_not_replace_fails_the_record(project, monke
             "abc" if key == "command_timeout" else original(self, key, default)
         ),
     )
-    result = gate.run_deferred_commands(root, "0001", "d")
+    result = gate.run_deferred_commands(root, "0001", "test")
     assert result is not None and result.result == "park"
     assert _check(result, "commands").reason.startswith("check crashed: ValueError")
     ev = _check(result, "evidence")
     assert ev.ok is False and ev.details["red_files"] == ["test.log", "build.log", "lint.log"]
     assert "the runner never replaced it" in ev.reason
     assert art.parse_deferred_header((change / "evidence" / "test.log").read_text("utf-8"))
-    recorded = json.loads((change / "evidence" / "gate-d.json").read_text(encoding="utf-8"))
+    recorded = json.loads((change / "evidence" / "gate-test.json").read_text(encoding="utf-8"))
     assert gate.deferred_checks(recorded) == [] and recorded["result"] == "park"
 
 
@@ -1088,15 +1092,15 @@ def test_the_runner_s_step_at_c_writes_the_marked_logs_it_finds_and_leaves_the_r
     from evidence import collect as collect_mod
 
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     write_logs(change, red="build")  # an older tree's logs, the build one red
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
     report, code = collect_mod.collect(root, "0001", only=["test"])
     assert code == 0 and report["deferred"] is True
-    assert gate.run_gate(root, "0001", "c").result == "continue"
-    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert gate.run_gate(root, "0001", "build").result == "continue"
+    recorded = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     assert gate.deferred_checks(recorded) == ["commands"]
-    result = gate.run_deferred_commands(root, "0001", "c")
+    result = gate.run_deferred_commands(root, "0001", "build")
     assert result is not None and result.result == "continue"
     test_log = (change / "evidence" / "test.log").read_text(encoding="utf-8")
     assert art.parse_evidence_header(test_log)["exit"] == "0" and "passed" in test_log
@@ -1123,13 +1127,13 @@ def test_the_runner_s_step_at_d_writes_all_three_logs_and_lifts_a_park_on_a_stal
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
     report, code = collect_mod.collect(root, "0001", only=["test"])
     assert code == 0 and report["deferred"] is True
-    session = gate.run_gate(root, "0001", "d")
+    session = gate.run_gate(root, "0001", "test")
     assert session.result == "park" and _check(session, "evidence").details["red_files"] == [
         "build.log"
     ]
-    recorded = json.loads((change / "evidence" / "gate-d.json").read_text(encoding="utf-8"))
+    recorded = json.loads((change / "evidence" / "gate-test.json").read_text(encoding="utf-8"))
     assert gate.deferred_checks(recorded) == ["commands"]
-    result = gate.run_deferred_commands(root, "0001", "d")
+    result = gate.run_deferred_commands(root, "0001", "test")
     assert result is not None and result.result == "continue" and result.label is None
     for name in art.EVIDENCE_TARGETS.values():
         text = (change / "evidence" / name).read_text(encoding="utf-8")
@@ -1151,15 +1155,15 @@ def test_a_record_whose_evidence_alone_is_deferred_keeps_the_session_s_commands_
     write(change / "evidence" / "verifier.md", "# Verifier\nread, not run\n")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
     write_marked_logs(root, change)
-    gate.run_gate(root, "0001", "d")
-    path = change / "evidence" / "gate-d.json"
+    gate.run_gate(root, "0001", "test")
+    path = change / "evidence" / "gate-test.json"
     recorded = json.loads(path.read_text(encoding="utf-8"))
     for ch in recorded["checks"]:
         if ch["name"] == "commands":
             ch["reason"], ch["details"] = "build, test and lint exit 0", {"runs": {"test": {}}}
     path.write_text(json.dumps(recorded), encoding="utf-8")
     assert gate.deferred_checks(recorded) == ["evidence"]
-    result = gate.run_deferred_commands(root, "0001", "d")
+    result = gate.run_deferred_commands(root, "0001", "test")
     assert result is not None and result.result == "continue"
     cmd = _check(result, "commands")
     assert cmd.details == {"runs": {"test": {}}} and "ran_by" not in cmd.details
@@ -1188,19 +1192,21 @@ def test_a_by_hand_gate_at_d_with_real_logs_is_untouched_by_3b(project, monkeypa
 
     report, code = collect_mod.collect(root, "0001")
     assert code == 0 and report["all_green"] is True and "deferred" not in report
-    result = gate.run_gate(root, "0001", "d")
+    result = gate.run_gate(root, "0001", "test")
     assert result.result == "continue" and _check(result, "evidence").details == {}
-    assert gate.run_deferred_commands(root, "0001", "d") is None
+    assert gate.run_deferred_commands(root, "0001", "test") is None
 
 
 def test_the_run_commands_cli_reports_the_step_and_exits_0_either_way(project, monkeypatch):
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    run_py(str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root)
+    run_py(
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "build", cwd=root
+    )
     env = {k: v for k, v in os.environ.items() if k != checks.COMMANDS_RUNNER_ENV}
     proc = run_py(
-        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "c",
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "build",
         cwd=root, env={**env, "SAMPLE_FAIL": "1"},
     )  # fmt: skip
     assert proc.returncode == 0, proc.stderr
@@ -1209,7 +1215,7 @@ def test_the_run_commands_cli_reports_the_step_and_exits_0_either_way(project, m
     assert "## What I need from you" in proc.stderr and "**commands**" in proc.stderr
     # a second call finds the targets already run
     proc = run_py(
-        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "c",
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "build",
         cwd=root, env=env,
     )  # fmt: skip
     assert proc.returncode == 0 and json.loads(proc.stdout) == {
@@ -1217,23 +1223,23 @@ def test_the_run_commands_cli_reports_the_step_and_exits_0_either_way(project, m
         "reason": "the gate record carries no check deferred to the runner",
     }
     proc = run_py(
-        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "b",
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "design",
         cwd=root, env=env,
     )  # fmt: skip
     assert proc.returncode == 0 and json.loads(proc.stdout)["ran"] is False  # no gate-b.json
-    (change / "evidence" / "gate-c.json").write_text("not json", encoding="utf-8")
+    (change / "evidence" / "gate-build.json").write_text("not json", encoding="utf-8")
     proc = run_py(
-        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "c",
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "build",
         cwd=root, env=env,
     )  # fmt: skip
-    assert proc.returncode == 2 and "gate-c.json unreadable" in proc.stderr
+    assert proc.returncode == 2 and "gate-build.json unreadable" in proc.stderr
 
 
 def test_a_gate_record_round_trips_through_from_dict(project):
     root, change = project
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c")
-    data = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build")
+    data = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     again = gate.GateResult.from_dict(data)
     assert again.as_dict() == data == result.as_dict()
     assert gate.GateResult.from_dict({}).result == "park"  # an empty record fails closed
@@ -1241,21 +1247,21 @@ def test_a_gate_record_round_trips_through_from_dict(project):
 
 def test_gate_parks_when_the_diff_touches_settings_json(project):
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     settings = root / ".claude" / "settings.json"
     data = json.loads(settings.read_text(encoding="utf-8"))
     data["permissions"]["allow"].append("Bash(rm *)")
     write(settings, json.dumps(data, indent=2))
     # uncommitted, the edit is clean_tree's: the gate judges HEAD (deliverable 6(d))
-    result = gate.run_gate(root, "0001", "c")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "park"
     assert "clean_tree" in _names(result, False)
     assert "guardrails" in _names(result, True)
     # committed, it is on the branch the PR would merge, and guardrails parks
     git(root, "add", ".claude/settings.json")
     git(root, "commit", "-q", "-m", "widen the permissions")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c")
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "park"
     g = next(ch for ch in result.failed if ch.name == "guardrails")
     assert ".claude/settings.json" in g.reason
@@ -1267,8 +1273,8 @@ def test_gate_parks_when_the_diff_touches_settings_json(project):
     )
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "self-declared framework change")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c")
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build")
     g = next(ch for ch in result.failed if ch.name == "guardrails")
     assert "intent.md changed on this branch" in g.reason
     git(root, "reset", "-q", "--hard", "HEAD~1")
@@ -1281,8 +1287,8 @@ def test_gate_parks_when_the_diff_touches_settings_json(project):
         ),
         "intent: framework change (merged at gate a)",
     )
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c")
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build")
     assert "guardrails" not in _names(result, False)
     assert "clean_tree" not in _names(result, False)
     g = next(ch for ch in result.checks if ch.name == "guardrails")
@@ -1301,8 +1307,8 @@ def test_a_risk_list_word_is_reported_never_parked_and_accepted_by_hand(project)
     )
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "auth ttl")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c")
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "continue", result.reason
     r = next(ch for ch in result.checks if ch.name == "risk_list")
     assert r.ok and r.details["hits"] == {"auth": ["sample_pkg/auth.py"]}
@@ -1320,12 +1326,12 @@ def test_a_risk_list_word_is_reported_never_parked_and_accepted_by_hand(project)
     )
     assert proc.returncode == 0 and json.loads(proc.stdout)["risk_accepted"] == ["auth"]
     # the acceptance is the owner's and counts only once they committed it (step 24.5)
-    result = gate.run_gate(root, "0001", "c")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "park" and "owner_actions" in _names(result, False)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "owner: accept the auth risk for change 0001")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c")
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "continue", result.reason
     r = next(ch for ch in result.checks if ch.name == "risk_list")
     assert r.details["accepted"] == ["auth"]
@@ -1334,16 +1340,16 @@ def test_a_risk_list_word_is_reported_never_parked_and_accepted_by_hand(project)
 
 def test_gate_parks_on_escalate_missing_or_stale_verdict(project):
     root, change = project
-    result = gate.run_gate(root, "0001", "c")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "park"
     assert "missing" in next(ch for ch in result.failed if ch.name == "adversarial_review").reason
-    verdict(root, "c", "escalate", "non-routine")
-    result = gate.run_gate(root, "0001", "c")
+    verdict(root, "build", "escalate", "non-routine")
+    result = gate.run_gate(root, "0001", "build")
     a = next(ch for ch in result.failed if ch.name == "adversarial_review")
     assert "escalate" in a.reason and "blast radius" in a.reason
-    verdict(root, "c", head="0000000000deadbeef")
+    verdict(root, "build", head="0000000000deadbeef")
     a = next(
-        ch for ch in gate.run_gate(root, "0001", "c").failed if ch.name == "adversarial_review"
+        ch for ch in gate.run_gate(root, "0001", "build").failed if ch.name == "adversarial_review"
     )
     assert a.details.get("stale") is True
 
@@ -1354,8 +1360,8 @@ def test_gate_parks_on_open_concern_and_unsynced_commit(project):
     write(root / "sample_pkg" / "helper.py", "y = 2\n")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "departure without plan.md")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c")
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build")
     names = _names(result, False)
     assert "open_concerns" in names and "plan_sync" in names
     p = next(ch for ch in result.failed if ch.name == "plan_sync")
@@ -1371,9 +1377,9 @@ def test_plan_sync_judges_the_committed_diff_only(project):
     plan_sync parked on ".env not listed in plan.md". The working tree says nothing about
     the plan; the commits do, as design_scope has judged since 0.2.3."""
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     write(root / ".env", "SAMPLE_FLAG=masked-by-the-sandbox\n")  # tracked, dirty, uncommitted
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     p = next(ch for ch in result.checks if ch.name == "plan_sync")
     assert p.ok, p.reason
     assert "clean_tree" in _names(result, True)  # .env is a sandbox-masked name
@@ -1381,11 +1387,13 @@ def test_plan_sync_judges_the_committed_diff_only(project):
 
 def test_plan_sync_records_the_plan_s_growth_since_gate_b(project):
     """R26, choice 257 (R60's port): at (c) to (e) the gate records the files the plan gained
-    and lost against the copy the owner approved at gate (b); no park, no cap change."""
+    and lost against the copy the owner approved at gate (design); no park, no cap change."""
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     p = next(
-        ch for ch in gate.run_gate(root, "0001", "c", dry_run=True).checks if ch.name == "plan_sync"
+        ch
+        for ch in gate.run_gate(root, "0001", "build", dry_run=True).checks
+        if ch.name == "plan_sync"
     )
     assert p.details["plan_growth"] == {"added": [], "removed": []}
     plan = (change / "plan.md").read_text(encoding="utf-8")
@@ -1396,8 +1404,8 @@ def test_plan_sync_records_the_plan_s_growth_since_gate_b(project):
     write(change / "plan.md", plan)
     write(root / "sample_pkg" / "extra.py", "X = 1\n")
     commit_all(root, "build: a file the plan did not have")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     p = next(ch for ch in result.checks if ch.name == "plan_sync")
     assert p.details["plan_growth"] == {
         "added": ["sample_pkg/extra.py"],
@@ -1406,7 +1414,7 @@ def test_plan_sync_records_the_plan_s_growth_since_gate_b(project):
 
 
 def test_the_banner_says_how_much_the_plan_grew_since_gate_b(tmp_path):
-    """Choice 257 (R60's port): "The plan grew by N files since gate (b)" on the build PR,
+    """Choice 257 (R60's port): "The plan grew by N files since gate (design)" on the build PR,
     from the newest gate record the PR covers; a banner of its own when nothing hit."""
     from gate import risk
 
@@ -1420,16 +1428,17 @@ def test_the_banner_says_how_much_the_plan_grew_since_gate_b(tmp_path):
         write(evidence / f"gate-{phase}.json", json.dumps({"checks": [check]}))
 
     st = status_mod.Status(id="0001", slug="x", title="X")
-    assert risk.banner_lines(change, "e", st) == []
-    record("c", ["a.py"])
-    record("d", ["a.py", "b.py"])
-    lines = risk.banner_lines(change, "e", st)
+    assert risk.banner_lines(change, "deploy", st) == []
+    record("build", ["a.py"])
+    record("test", ["a.py", "b.py"])
+    lines = risk.banner_lines(change, "deploy", st)
     assert lines[0].startswith(risk.BANNER_HEADING + ": the plan changed after you approved it")
-    assert lines[1] == "- The plan grew by 2 files since gate (b): `a.py`, `b.py`."
+    assert lines[1] == "- The plan grew by 2 files since gate (design): `a.py`, `b.py`."
     assert (
-        risk.banner_lines(change, "c", st)[1] == "- The plan grew by 1 file since gate (b): `a.py`."
+        risk.banner_lines(change, "build", st)[1]
+        == "- The plan grew by 1 file since gate (design): `a.py`."
     )
-    assert risk.banner_lines(change, "b", st) == []  # the design PR: the plan is being written
+    assert risk.banner_lines(change, "design", st) == []  # the design PR: the plan is being written
     assert risk.banner_shown("\n".join(lines), [])
 
 
@@ -1445,18 +1454,18 @@ def test_the_banner_keeps_the_risk_ask_beside_the_plan_s_growth(tmp_path):
     growth = {"name": "plan_sync", "ok": True,
               "details": {"plan_growth": {"added": ["a.py"], "removed": []}}}  # fmt: skip
     hit = {"name": "risk_list", "ok": True, "details": {"hits": {"auth": ["src/auth.py"]}}}
-    write(evidence / "gate-c.json", json.dumps({"checks": [growth, hit]}))
+    write(evidence / "gate-build.json", json.dumps({"checks": [growth, hit]}))
     st = status_mod.Status(id="0001", slug="x", title="X")
-    lines = risk.banner_lines(change, "e", st)
+    lines = risk.banner_lines(change, "deploy", st)
     assert lines[0].startswith(risk.BANNER_HEADING + ": this change touches risk-list items.")
-    assert risk.BANNER_ASK["e"] in lines[0]
-    assert lines[1] == "- The plan grew by 1 file since gate (b): `a.py`."
-    assert lines[2].startswith("- `auth` — first found at gate (c)")
+    assert risk.BANNER_ASK["deploy"] in lines[0]
+    assert lines[1] == "- The plan grew by 1 file since gate (design): `a.py`."
+    assert lines[2].startswith("- `auth` — first found at gate (build)")
     assert risk.banner_shown("\n".join(lines), ["auth"])
     # a newer record whose plan_sync holds no growth (no approved copy): none is shown
-    write(evidence / "gate-d.json", json.dumps({"checks": [{"name": "plan_sync", "ok": True}]}))
-    assert risk.plan_grown(change, "e") is None
-    assert not any("plan grew" in line for line in risk.banner_lines(change, "e", st))
+    write(evidence / "gate-test.json", json.dumps({"checks": [{"name": "plan_sync", "ok": True}]}))
+    assert risk.plan_grown(change, "deploy") is None
+    assert not any("plan grew" in line for line in risk.banner_lines(change, "deploy", st))
 
 
 def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
@@ -1471,8 +1480,8 @@ def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
     write(settings, json.dumps(data, indent=2))  # tracked, modified
     write(root / "CLAUDE.md", "# Project\nA line the run wrote.\n")  # a guardrail file
     write(root / "sample_pkg" / "auth.py", "TOKEN_TTL = 60\n")  # untracked risk-list hit
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert {"guardrails", "risk_list"} <= set(_names(result, True)), result.reason
     assert next(ch for ch in result.checks if ch.name == "risk_list").details["hits"] == {}
     ct = next(ch for ch in result.failed if ch.name == "clean_tree")
@@ -1480,8 +1489,8 @@ def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
 
     git(root, "add", ".claude/settings.json", "CLAUDE.md", "sample_pkg/auth.py")
     git(root, "commit", "-q", "-m", "the same change, committed")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "park"
     g = next(ch for ch in result.failed if ch.name == "guardrails")
     assert g.details["touched"] == [".claude/settings.json", "CLAUDE.md"]
@@ -1497,8 +1506,8 @@ def test_a_committed_policy_source_parks_on_the_guardrails(project):
     write(root / "policies" / "security-baseline.md", "Every endpoint is public.\n")
     git(root, "add", "policies/security-baseline.md")
     git(root, "commit", "-q", "-m", "a run rewrites the policy")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "park"
     g = next(ch for ch in result.failed if ch.name == "guardrails")
     assert g.details["touched"] == ["policies/security-baseline.md"]
@@ -1522,8 +1531,8 @@ def test_a_sandbox_masked_env_no_longer_trips_guardrails_or_risk_list(project):
     on_base(root, protect_env, "owner: protect .env and put it on the risk list")
     write(root / ".env", "SANDBOX=1\n")  # tracked: shows as modified, nobody's work
     assert ".env" in checks.diffmod.collect(root).files  # what the two checks used to read
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert {"guardrails", "risk_list", "clean_tree"} <= set(_names(result, True)), result.reason
     assert result.result == "continue", result.reason
 
@@ -1538,14 +1547,14 @@ DIFF_CHECKS = (
 
 
 def _single_branch_repo(tmp_path: Path, branch: str) -> Path:
-    """One branch, no remote: a change 0001 at phase (c) and a committed guardrail edit."""
+    """One branch, no remote: a change 0001 at the build phase and a committed guardrail edit."""
     root = tmp_path / branch
     write(root / "sdlc.yaml", "protected_paths: []\nrisk_list:\n  - auth\n")
     git(root, "init", "-q", "-b", branch)
     git(root, "config", "user.email", "owner@example.com")
     git(root, "config", "user.name", "Owner")
     change_dir, st = status_mod.new_change(root, "Percent helper")
-    st.set_phase("c")
+    st.set_phase("build")
     status_mod.write_status(change_dir, st)
     write(root / "CLAUDE.md", "# Project\n")
     write(root / "sample_pkg" / "auth.py", "TOKEN_TTL = 60\n")
@@ -1559,7 +1568,7 @@ def test_the_diff_checks_fail_when_no_default_branch_exists(tmp_path):
     compares HEAD with itself and the committed diff is empty whatever the branch carries;
     the four checks that judge it used to pass silently on that empty list."""
     root = _single_branch_repo(tmp_path, "trunk")
-    ctx = gate.build_context(root, "0001", "c")
+    ctx = gate.build_context(root, "0001", "build")
     assert ctx.diff is not None and ctx.diff.base == "HEAD" and "no base" in ctx.diff.note
     for check in DIFF_CHECKS:
         res = check(ctx)
@@ -1576,9 +1585,9 @@ def test_the_diff_checks_fail_when_the_branch_shares_no_history_with_the_base(tm
     committed diff and the four checks passed on it — the silent pass M2 fixed for the
     no-base case. Now ``merge_base`` None fails them, naming the base."""
     root = _single_branch_repo(tmp_path, "main")
-    git(root, "checkout", "-q", "--orphan", "sdlc/0001/c")
+    git(root, "checkout", "-q", "--orphan", "sdlc/0001/build")
     git(root, "commit", "-q", "-m", "an unrelated history with the same files")
-    ctx = gate.build_context(root, "0001", "c")
+    ctx = gate.build_context(root, "0001", "build")
     assert ctx.diff is not None and ctx.diff.base == "main" and ctx.diff.merge_base is None
     assert ctx.diff.commits == [] and "cannot be judged" in ctx.diff.note
     assert checks.diffmod.committed_files(root, ctx.diff.merge_base, ctx.diff.head) == []
@@ -1593,7 +1602,7 @@ def test_the_diff_checks_judge_a_checkout_of_the_default_branch_itself(tmp_path)
     """A single-branch repository on its default branch is not "no base": the merge base is
     HEAD because nothing was committed on top of the base yet, and the empty diff passes."""
     root = _single_branch_repo(tmp_path, "main")
-    ctx = gate.build_context(root, "0001", "c")
+    ctx = gate.build_context(root, "0001", "build")
     assert ctx.diff is not None and ctx.diff.base == "main"
     assert ctx.diff.merge_base == ctx.diff.head
     for check in DIFF_CHECKS:
@@ -1613,13 +1622,13 @@ def test_default_base_prefers_the_environment_value_when_its_remote_branch_exist
     origin = tmp_path / "origin.git"
     git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
     git(root, "remote", "add", "origin", str(origin))
-    git(root, "push", "-q", "origin", "main", "main:trunk", "main:sdlc/0001/a")
+    git(root, "push", "-q", "origin", "main", "main:trunk", "main:sdlc/0001/intent")
     git(root, "fetch", "-q", "origin")
     git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
     assert diff.default_base(root) == "refs/remotes/origin/main"  # qualified since 0.2.27
     monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "trunk")
     assert diff.default_base(root) == "refs/remotes/origin/trunk"
-    for fallthrough in ("sdlc/0001/a", "nonexistent"):
+    for fallthrough in ("sdlc/0001/intent", "nonexistent"):
         monkeypatch.setenv("SDLC_DEFAULT_BRANCH", fallthrough)
         assert diff.default_base(root) == "refs/remotes/origin/main", fallthrough
     # the review of the 0.2.27 diff, M2: a tag named origin/main (anyone with write access
@@ -1736,7 +1745,7 @@ PLAN_PROOF_UNKNOWN_RATCHET = (
 def _ratchet_repo(tmp_path: Path, plan_body: str, sdlc_yaml: str = RATCHET_SDLC_YAML):
     """A one-branch repo ('main') with the given plan.md committed as approved, a
     tests/test_keep.py file, a two-file eval case ('foo') and a one-file eval case ('bar');
-    checked out on 'sdlc/0001/c' for the test's own commit."""
+    checked out on 'sdlc/0001/build' for the test's own commit."""
     root = tmp_path / "repo"
     write(root / "sdlc.yaml", sdlc_yaml)
     write(root / "tests" / "test_keep.py", "def test_keep():\n    assert True\n")
@@ -1748,11 +1757,11 @@ def _ratchet_repo(tmp_path: Path, plan_body: str, sdlc_yaml: str = RATCHET_SDLC_
     git(root, "config", "user.name", "Owner")
     change_dir, st = status_mod.new_change(root, "x", change_id="0001")
     write(change_dir / "plan.md", plan_body)
-    st.set_phase("c")
+    st.set_phase("build")
     status_mod.write_status(change_dir, st)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "base (as if the a and b PRs merged)")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
     return root, change_dir
 
 
@@ -1761,7 +1770,7 @@ def test_ratchets_drop_test_file_undeclared_is_a_hit(tmp_path):
     (root / "tests" / "test_keep.py").unlink()
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "drop a test")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
 
@@ -1771,7 +1780,7 @@ def test_ratchets_drop_test_file_declared_in_files_that_change_ok(tmp_path):
     (root / "tests" / "test_keep.py").unlink()
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "drop a test, declared")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok, res.reason
     assert "tests/test_keep.py (plan)" in res.details["declared"]
 
@@ -1781,7 +1790,7 @@ def test_ratchets_drop_test_file_declared_in_proof_ok(tmp_path):
     (root / "tests" / "test_keep.py").unlink()
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "drop a test, declared via proof")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok, res.reason
 
 
@@ -1791,7 +1800,7 @@ def test_ratchets_plan_edited_after_merge_base_does_not_excuse_drop(tmp_path):
     write(change_dir / "plan.md", PLAN_FILES_DECLARES_TEST)  # edited only on this branch
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "drop a test and edit plan.md in the same commit")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
 
@@ -1800,7 +1809,7 @@ def test_ratchets_rename_within_test_paths_is_not_a_drop(tmp_path):
     root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
     git(root, "mv", "tests/test_keep.py", "tests/test_renamed.py")
     git(root, "commit", "-q", "-m", "rename within test_paths")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok, res.reason
 
 
@@ -1808,7 +1817,7 @@ def test_ratchets_rename_out_of_test_paths_is_a_drop(tmp_path):
     root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
     git(root, "mv", "tests/test_keep.py", "renamed_out_of_scope.py")
     git(root, "commit", "-q", "-m", "rename out of test_paths")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
 
@@ -1818,7 +1827,7 @@ def test_ratchets_drop_eval_case_folder_emptied_is_a_hit(tmp_path):
     (root / "evals" / "cases" / "bar" / "only.yaml").unlink()
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "empty the bar case")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: evals"] == ["evals/cases/bar/"]
 
@@ -1832,7 +1841,7 @@ def test_ratchets_drop_eval_case_dot_rename_is_a_hit(tmp_path):
     (root / "evals" / "cases" / "bar" / "only.yaml").rename(dest)
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "hide the bar case")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: evals"] == ["evals/cases/bar/"]
 
@@ -1847,7 +1856,7 @@ def test_ratchets_eval_case_dot_rename_wins_over_a_surviving_sibling(tmp_path):
     (root / "evals" / "cases" / "foo" / "a.yaml").rename(dest)
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "hide one file of the foo case, b.yaml survives")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: evals"] == ["evals/cases/foo/"]
 
@@ -1857,7 +1866,7 @@ def test_ratchets_drop_eval_case_declared_in_files_that_change_ok(tmp_path):
     (root / "evals" / "cases" / "bar" / "only.yaml").unlink()
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "empty the bar case, declared")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok, res.reason
     assert "evals/cases/bar/ (plan)" in res.details["declared"]
 
@@ -1867,7 +1876,7 @@ def test_ratchets_drop_eval_case_declared_in_proof_ok(tmp_path):
     (root / "evals" / "cases" / "bar" / "only.yaml").unlink()
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "empty the bar case, declared via proof")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok, res.reason
 
 
@@ -1876,7 +1885,7 @@ def test_ratchets_eval_case_partial_delete_is_not_a_drop(tmp_path):
     (root / "evals" / "cases" / "foo" / "a.yaml").unlink()
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "drop one file of a multi-file case")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok, res.reason
 
 
@@ -1884,7 +1893,7 @@ def test_ratchets_eval_case_internal_move_is_not_a_drop(tmp_path):
     root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
     git(root, "mv", "evals/cases/foo/a.yaml", "evals/cases/foo/a2.yaml")
     git(root, "commit", "-q", "-m", "move within the same case")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok, res.reason
 
 
@@ -1898,7 +1907,7 @@ def test_ratchets_accepted_hit_passes_on_later_run(tmp_path):
     status_mod.write_status(change_dir, st)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "accept the risk")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok, res.reason
     assert res.details["accepted"] == ["ratchet: tests"]
     assert res.details["hits"] == {"ratchet: tests": ["tests/test_keep.py"]}  # still shown
@@ -1916,7 +1925,7 @@ def test_ratchets_risk_list_tests_configured_does_not_satisfy_ratchet_hit(tmp_pa
     status_mod.write_status(change_dir, st)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "accept the bare risk-list item")
-    ctx = gate.build_context(root, "0001", "c")
+    ctx = gate.build_context(root, "0001", "build")
     ratchets_res = checks.check_ratchets(ctx)
     risk_res = checks.check_risk_list(ctx)
     assert ratchets_res.ok and ratchets_res.details["accepted"] == []  # reported, decision 35
@@ -1953,7 +1962,7 @@ def test_ratchets_skip_markers_listed_never_fail(tmp_path):
     write(root / "tests" / "test_skip_marker_supplement.py", supplement)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "the real runbook test file and the token supplement")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok, res.reason
     hit_tokens = {h["token"] for h in res.details["skip_markers"]}
     assert hit_tokens == set(checks.SKIP_MARKER_TOKENS)
@@ -1967,16 +1976,16 @@ def test_ratchets_declaring_unknown_ratchet_name_is_inert(tmp_path):
     (root / "tests" / "test_keep.py").unlink()
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "drop a test, unrelated proof line present")
-    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    res = checks.check_ratchets(gate.build_context(root, "0001", "build"))
     assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
 
 
 def test_checks_by_phase_ratchets_membership():
-    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["c"]
-    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["d"]
-    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["e"]
-    for phase in ("a", "b", "f"):
+    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["build"]
+    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["test"]
+    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["deploy"]
+    for phase in ("intent", "design", "maintain"):
         assert checks.check_ratchets not in checks.CHECKS_BY_PHASE[phase]
 
 
@@ -1986,14 +1995,14 @@ def test_risk_list_reads_the_committed_spec(design_project):
     root, change = design_project
     concern = "- auth: the helper reads the caller's session token; the owner decides.\n"
     write(change / "spec.md", SPEC.replace("## Acceptance", concern + "\n## Acceptance"))
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert "risk_list" in _names(result, True), result.reason
     assert next(ch for ch in result.checks if ch.name == "risk_list").details["hits"] == {}
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): a risk item flagged")
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     hit = next(ch for ch in result.checks if ch.name == "risk_list")
     assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
 
@@ -2008,14 +2017,14 @@ def test_plan_sync_wants_plan_md_only_in_a_commit_that_departs_from_the_plan(pro
     write(root / "sample_pkg" / "percent.py", PERCENT.replace("Percent helper", "Step 2"))
     git(root, "add", "sample_pkg/percent.py")
     git(root, "commit", "-q", "-m", "build: step 2 on a planned file, no plan.md")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "plan_sync" in _names(result, True), result.reason
     write(root / "sample_pkg" / "helper.py", "y = 2\n")
     git(root, "add", "sample_pkg/helper.py")
     git(root, "commit", "-q", "-m", "departure without plan.md")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     p = next(ch for ch in result.failed if ch.name == "plan_sync")
     assert p.details["unplanned"] == ["sample_pkg/helper.py"]
     assert len(p.details["unsynced_commits"]) == 1  # the step-2 commit is inside the plan
@@ -2023,60 +2032,60 @@ def test_plan_sync_wants_plan_md_only_in_a_commit_that_departs_from_the_plan(pro
 
 def test_gate_phase_d_requires_evidence_and_findings_at_e(project):
     root, change = project
-    with pytest.raises(gate.GateError, match="in phase \\(c\\); gate \\(d\\)"):
-        gate.run_gate(root, "0001", "d")  # the phase must be set before its gate runs
+    with pytest.raises(gate.GateError, match="in phase \\(build\\); gate \\(test\\)"):
+        gate.run_gate(root, "0001", "test")  # the phase must be set before its gate runs
     st = status_mod.read_status(change)
-    st.set_phase("d")
+    st.set_phase("test")
     status_mod.write_status(change, st)
-    verdict(root, "d")
-    result = gate.run_gate(root, "0001", "d")
+    verdict(root, "test")
+    result = gate.run_gate(root, "0001", "test")
     limits_check = result.checks[0]
     assert not limits_check.ok and "did not register its start" in limits_check.reason
-    start_run(root, "d")
-    result = gate.run_gate(root, "0001", "d")
+    start_run(root, "test")
+    result = gate.run_gate(root, "0001", "test")
     ev = next(ch for ch in result.failed if ch.name == "evidence")
     assert ev.details["missing"] == ["test.log", "build.log", "lint.log"]
     for name in ("test.log", "build.log", "lint.log"):
         write(change / "evidence" / name, "ok\n")  # no collector header: not evidence
-    ev = next(ch for ch in gate.run_gate(root, "0001", "d").failed if ch.name == "evidence")
+    ev = next(ch for ch in gate.run_gate(root, "0001", "test").failed if ch.name == "evidence")
     assert "collector header" in ev.reason
     write_logs(change)
-    assert gate.run_gate(root, "0001", "d").result == "continue"
+    assert gate.run_gate(root, "0001", "test").result == "continue"
     # gate (e) is human; the findings JSON is mandatory there, tied to HEAD, and Important
     # findings park
     st = status_mod.read_status(change)
-    st.set_phase("e")
+    st.set_phase("deploy")
     status_mod.write_status(change, st)
-    result = gate.run_gate(root, "0001", "e")
+    result = gate.run_gate(root, "0001", "deploy")
     assert result.result == "park" and "findings" in _names(result, False)
     head = git(root, "rev-parse", "HEAD").strip()
     findings = change / "evidence" / "review-findings.json"
     write(findings, json.dumps({"findings": [{"severity": "nit", "summary": "naming"}]}))
-    f = next(ch for ch in gate.run_gate(root, "0001", "e").failed if ch.name == "findings")
+    f = next(ch for ch in gate.run_gate(root, "0001", "deploy").failed if ch.name == "findings")
     assert "no 'head'" in f.reason
     write(findings, json.dumps({"findings": [], "head": "0000000000deadbeef"}))
-    f = next(ch for ch in gate.run_gate(root, "0001", "e").failed if ch.name == "findings")
+    f = next(ch for ch in gate.run_gate(root, "0001", "deploy").failed if ch.name == "findings")
     assert f.details.get("stale") is True
     write(
         findings,
         json.dumps({"findings": [{"severity": "nit", "summary": "naming"}], "head": head}),
     )
-    result = gate.run_gate(root, "0001", "e")
-    assert result.result == "wait" and result.label == "sdlc:e-ready", result.reason
+    result = gate.run_gate(root, "0001", "deploy")
+    assert result.result == "wait" and result.label == "sdlc:deploy-ready", result.reason
     write(
         findings,
         json.dumps({"findings": [{"severity": "important", "summary": "leaks PII"}], "head": head}),
     )
-    assert "findings" in _names(gate.run_gate(root, "0001", "e"), False)
+    assert "findings" in _names(gate.run_gate(root, "0001", "deploy"), False)
 
 
 def test_gate_parks_on_iteration_cap_and_pause_flag(project):
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     st = status_mod.read_status(change)
     st.iterations = 4
     status_mod.write_status(change, st)
-    result = gate.run_gate(root, "0001", "c")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "park" and [ch.name for ch in result.checks] == ["limits"]
     proc = run_py(
         str(GATE_CLI),
@@ -2093,7 +2102,7 @@ def test_gate_parks_on_iteration_cap_and_pause_flag(project):
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
     assert "paused: false" in text  # written by /sdlc-init from the template
     write(root / "sdlc.yaml", text.replace("paused: false", "paused: true"))
-    result = gate.run_gate(root, "0001", "c")
+    result = gate.run_gate(root, "0001", "build")
     # an sdlc.yaml edited on the branch is ignored for limits (the base copy rules); while
     # uncommitted it is clean_tree's, and committed it is a guardrail hit (the gate judges
     # HEAD, deliverable 6(d)); the pause flag counts once the owner merged it
@@ -2102,8 +2111,8 @@ def test_gate_parks_on_iteration_cap_and_pause_flag(project):
     assert "guardrails" in _names(result, True)
     git(root, "add", "sdlc.yaml")
     git(root, "commit", "-q", "-m", "pause from the branch")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c")
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build")
     assert result.config_note.startswith("sdlc.yaml changed on the branch")
     assert "paused" not in result.reason and "guardrails" in _names(result, False)
     git(root, "reset", "-q", "--soft", "HEAD~1")  # keeps the uncommitted iteration reset
@@ -2117,24 +2126,32 @@ def test_gate_parks_on_iteration_cap_and_pause_flag(project):
         ),
         "pause",
     )
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c")
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "park" and "paused" in result.reason
 
 
 def test_gate_cli_exit_codes_and_run_files(project):
     root, change = project
     proc = run_py(
-        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "build", cwd=root
     )
     assert proc.returncode == 4, proc.stderr
     out = json.loads(proc.stdout)
     assert out["result"] == "park" and "What I need from you" in proc.stderr
-    verdict(root, "c")
+    verdict(root, "build")
     proc = run_py(
-        str(GATE_CLI), "start-run", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root
+        str(GATE_CLI),
+        "start-run",
+        "--root",
+        str(root),
+        "--id",
+        "0001",
+        "--phase",
+        "build",
+        cwd=root,
     )
-    assert proc.returncode == 0 and (change / "evidence" / "run-c.json").exists()
+    assert proc.returncode == 0 and (change / "evidence" / "run-build.json").exists()
     proc = run_py(
         str(GATE_CLI),
         "record-spend",
@@ -2143,7 +2160,7 @@ def test_gate_cli_exit_codes_and_run_files(project):
         "--id",
         "0001",
         "--phase",
-        "c",
+        "build",
         "--usd",
         "0.4",
         cwd=root,
@@ -2152,22 +2169,22 @@ def test_gate_cli_exit_codes_and_run_files(project):
     assert proc.returncode == 0 and recorded["spend_usd"] == 0.4
     assert recorded["spend_usd_total"] == 0.4 and recorded["spend_entries"] == 1  # issue #71
     proc = run_py(
-        str(GATE_CLI), "record-spend", "--root", str(root), "--id", "0001", "--phase", "e",
+        str(GATE_CLI), "record-spend", "--root", str(root), "--id", "0001", "--phase", "deploy",
         "--usd", "0.65", "--run", "review", "--source", "claude-review.json", cwd=root,
     )  # fmt: skip
     assert proc.returncode == 0 and json.loads(proc.stdout)["spend_usd_total"] == 1.05
     ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
     assert [(e["run"], e["source"], e["usd"]) for e in ledger["entries"]] == [
-        ("c", None, 0.4),
+        ("build", None, 0.4),
         ("review", "claude-review.json", 0.65),
     ]
     proc = run_py(
-        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "build", cwd=root
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert json.loads(proc.stdout)["result"] == "continue"
     proc = run_py(
-        str(GATE_CLI), "check", "--root", str(root), "--id", "0009", "--phase", "c", cwd=root
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0009", "--phase", "build", cwd=root
     )
     assert proc.returncode == 2
 
@@ -2175,13 +2192,15 @@ def test_gate_cli_exit_codes_and_run_files(project):
 def test_gate_refuses_without_sdlc_yaml(tmp_path):
     change_dir, _ = status_mod.new_change(tmp_path, "x")
     with pytest.raises(gate.GateError):
-        gate.run_gate(tmp_path, "0001", "a")
+        gate.run_gate(tmp_path, "0001", "intent")
 
 
 def test_gate_cli_main_dry_run(project, capsys):
     root, _ = project
-    verdict(root, "c")
-    rc = gate_cli.main(["check", "--root", str(root), "--id", "0001", "--phase", "c", "--dry-run"])
+    verdict(root, "build")
+    rc = gate_cli.main(
+        ["check", "--root", str(root), "--id", "0001", "--phase", "build", "--dry-run"]
+    )
     assert rc == 0 and json.loads(capsys.readouterr().out)["dry_run"] is True
 
 
@@ -2193,10 +2212,10 @@ def test_sdlc_yaml_gate_block_is_read_from_the_base(project):
     st = status_mod.read_status(change)
     st.iterations = 5
     status_mod.write_status(change, st)
-    verdict(root, "c")
+    verdict(root, "build")
     # relaxing the cap in the working tree changes nothing: the base copy rules
     write(root / "sdlc.yaml", text.replace("max_iterations: 3", "max_iterations: 5"))
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.checks[0].name == "limits" and not result.checks[0].ok
     assert result.checks[0].details["cap"] == 3 and result.config_note
     git(root, "checkout", "-q", "--", "sdlc.yaml")
@@ -2211,22 +2230,22 @@ def test_sdlc_yaml_gate_block_is_read_from_the_base(project):
         ),
         "raise the cap",
     )
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.checks[0].ok and result.checks[0].details["cap"] == 5 and not result.config_note
     assert result.result == "continue", result.reason
 
 
 def test_gate_parks_on_uncommitted_work_outside_the_change_folder(project):
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     write(root / "sample_pkg" / "scratch.py", "x = 1\n")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     ct = next(ch for ch in result.failed if ch.name == "clean_tree")
     assert ct.details["dirty"] == ["sample_pkg/scratch.py"]
     (root / "sample_pkg" / "scratch.py").unlink()
     write(change / "evidence" / "note.md", "inside the change folder: fine\n")
-    assert "clean_tree" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    assert "clean_tree" not in _names(gate.run_gate(root, "0001", "build", dry_run=True), False)
 
 
 def test_run_command_timeout_kills_the_whole_tree(tmp_path):
@@ -2241,7 +2260,7 @@ def test_run_command_timeout_kills_the_whole_tree(tmp_path):
 def test_gate_cli_rejects_a_malformed_id(project):
     root, _ = project
     proc = run_py(
-        str(GATE_CLI), "check", "--root", str(root), "--id", "x", "--phase", "c", cwd=root
+        str(GATE_CLI), "check", "--root", str(root), "--id", "x", "--phase", "build", cwd=root
     )
     assert proc.returncode == 2 and "four digits" in proc.stderr
 
@@ -2249,10 +2268,10 @@ def test_gate_cli_rejects_a_malformed_id(project):
 # --- gate (b): the design gate (steps 22-23) ---------------------------------------------------
 def test_gate_b_waits_for_the_owner(design_project, monkeypatch):
     root, change = design_project
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert result.result == "wait", result.reason
-    assert result.label == "sdlc:b-ready"
+    assert result.label == "sdlc:design-ready"
     assert _names(result, False) == []
     assert set(_names(result, True)) == {
         "limits",
@@ -2275,17 +2294,17 @@ def test_gate_b_waits_for_the_owner(design_project, monkeypatch):
     monkeypatch.setattr(
         gate, "load_sdlc_config", lambda r: {**loaded(r), "profile": "full", "review": "parked"}
     )
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert result.result == "wait", result.reason
-    assert result.label == "sdlc:b-ready" and result.human_gate is True
+    assert result.label == "sdlc:design-ready" and result.human_gate is True
     assert "profile: full" in result.config_note and "decision 37" in result.config_note
 
 
 def test_gate_b_parks_on_a_spec_without_the_header(design_project):
     root, change = design_project
-    verdict(root, "b")
+    verdict(root, "design")
     write(change / "spec.md", SPEC_BODY)  # the five sections, no header line
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert result.result == "park"
     a = next(ch for ch in result.failed if ch.name == "artifacts")
     assert "spec.md header lacks Change id:, Produced by:" in a.reason
@@ -2294,22 +2313,22 @@ def test_gate_b_parks_on_a_spec_without_the_header(design_project):
 
 def test_gate_b_parks_when_the_branch_touches_source(design_project):
     root, _change = design_project
-    verdict(root, "b")
-    assert "design_scope" not in _names(gate.run_gate(root, "0001", "b", dry_run=True), False)
+    verdict(root, "design")
+    assert "design_scope" not in _names(gate.run_gate(root, "0001", "design", dry_run=True), False)
     # the plan run of phase (b) is read-only on source (decision 2; OPERATING_MODEL section 8)
     write(root / "sample_pkg" / "percent.py", PERCENT)
     git(root, "add", "sample_pkg/percent.py")
     git(root, "commit", "-q", "-m", "implementation written in the design phase")
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert result.result == "park"
     ds = next(ch for ch in result.failed if ch.name == "design_scope")
     assert ds.details["outside"] == ["sample_pkg/percent.py"]
-    assert "phase (c)" in ds.need and "changes/0001-percent-helper/" in ds.need
+    assert "the build phase" in ds.need and "changes/0001-percent-helper/" in ds.need
     # the same tree with only changes/** in the diff passes
     git(root, "reset", "-q", "--hard", "HEAD~1")
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert "design_scope" not in _names(result, False) and result.result == "wait", result.reason
 
 
@@ -2322,8 +2341,8 @@ def test_gate_b_judges_the_committed_diff_not_the_working_tree(design_project):
     (root / ".idea").mkdir()
     write(root / ".idea" / "workspace.xml", "<project/>\n")  # untracked, not empty
     (root / ".bashrc").write_text("", encoding="utf-8")  # zero bytes: a placeholder
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert "design_scope" not in _names(result, False), result.reason
     ds = next(ch for ch in result.checks if ch.name == "design_scope")
     assert ".env" in ds.details["dirty"] and ".idea/workspace.xml" in ds.details["dirty"]
@@ -2332,8 +2351,8 @@ def test_gate_b_judges_the_committed_diff_not_the_working_tree(design_project):
 
     # an uncommitted stray is reported and still does not park: only the PR's diff counts
     write(root / "stray.py", "x = 1\n")
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert "design_scope" not in _names(result, False), result.reason
     ds = next(ch for ch in result.checks if ch.name == "design_scope")
     assert "stray.py" in ds.details["dirty"]
@@ -2367,7 +2386,7 @@ def test_clean_tree_ignores_a_nested_env_the_sandbox_mounted_over(project, monke
     """Change 0001's second build run on 0.3.3 (2026-10-03, run 37138722554): inside the
     session the sandbox mounts /dev/null over every ``.env*`` the deny rule names, at any
     depth, so this repository's tracked ``tests/fixtures/sample-python-project/.env`` read
-    as modified and gate (c) parked on ``clean_tree`` with every other check green. What the
+    as modified and gate (build) parked on ``clean_tree`` with every other check green. What the
     sandbox mounted over is its view, not the change's (0.3.4), inside a CI session only; a
     nested ``.env.local`` the session wrote, with no mount over it, is still the session's
     uncommitted work, and the checkout's root is never a mask."""
@@ -2385,27 +2404,27 @@ def test_clean_tree_ignores_a_nested_env_the_sandbox_mounted_over(project, monke
     masked = {root / "tests" / "fixtures" / "inner" / ".env", root / "config" / "secrets", root}
     monkeypatch.setattr(checks.diffmod, "_mount_masked", lambda path: Path(path) in masked)
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)  # a CI session
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "clean_tree" not in _names(result, False), result.reason
     ct = next(ch for ch in result.checks if ch.name == "clean_tree")
     assert ct.details["ignored"] == ["config/secrets/README.md", "tests/fixtures/inner/.env"]
     # an untracked nested .env.local with content, not mounted over: the session's work
     # (the root being a mount point, as in a container, masks nothing below it)
     write(root / "tests" / "fixtures" / "inner" / ".env.local", "X=1\n")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     ct = next(ch for ch in result.failed if ch.name == "clean_tree")
     assert ct.details["dirty"] == ["tests/fixtures/inner/.env.local"]
     (root / "tests" / "fixtures" / "inner" / ".env.local").unlink()
     # by hand (no mark) a mount over a tracked path is nobody's mask: everything is reported
     monkeypatch.delenv(checks.COMMANDS_RUNNER_ENV)
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     ct = next(ch for ch in result.failed if ch.name == "clean_tree")
     assert ct.details["dirty"] == ["config/secrets/README.md", "tests/fixtures/inner/.env"]
     # and inside a CI session with nothing mounted over, the same
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
     monkeypatch.setattr(checks.diffmod, "_mount_masked", lambda path: False)
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     ct = next(ch for ch in result.failed if ch.name == "clean_tree")
     assert ct.details["dirty"] == ["config/secrets/README.md", "tests/fixtures/inner/.env"]
 
@@ -2422,17 +2441,17 @@ def test_dirty_files_reads_a_staged_rename_as_two_paths(project):
 
 def test_gate_b_parks_on_a_stray_file_the_branch_committed(design_project):
     """What the branch carries is the verdict: a source file committed outside the change
-    folder is the departure from phase (b) design_scope exists to catch."""
+    folder is the departure from the design phase design_scope exists to catch."""
     root, _change = design_project
     write(root / "stray.py", "x = 1\n")
     git(root, "add", "stray.py")
-    git(root, "commit", "-q", "-m", "a file phase (b) had no business writing")
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    git(root, "commit", "-q", "-m", "a file the design phase had no business writing")
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert result.result == "park"
     ds = next(ch for ch in result.failed if ch.name == "design_scope")
     assert ds.details["outside"] == ["stray.py"]
-    assert "phase (c)" in ds.need
+    assert "the build phase" in ds.need
 
 
 def test_clean_tree_ignores_the_placeholders_and_the_masked_paths(project):
@@ -2443,8 +2462,8 @@ def test_clean_tree_ignores_the_placeholders_and_the_masked_paths(project):
     (root / ".env").write_text("SANDBOX=1\n", encoding="utf-8")  # tracked: shows as modified
     write(root / ".vscode" / "settings.json", "{}\n")  # untracked, not empty
     (root / ".idea").mkdir()
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "clean_tree" not in _names(result, False), result.reason
     ct = next(ch for ch in result.checks if ch.name == "clean_tree")
     assert ct.details["ignored"] == [".bashrc", ".env", ".vscode/settings.json"]
@@ -2452,7 +2471,7 @@ def test_clean_tree_ignores_the_placeholders_and_the_masked_paths(project):
     assert checks.diffmod.sandbox_masked([".env", "src/.env", ".idea/x"]) == [".env", ".idea/x"]
 
     write(root / "sample_pkg" / "calc.py", "x = 1\n")  # real work, uncommitted
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     ct = next(ch for ch in result.failed if ch.name == "clean_tree")
     assert ct.details["dirty"] == ["sample_pkg/calc.py"]
 
@@ -2461,7 +2480,7 @@ def test_clean_tree_sets_aside_the_review_pass_s_record(project):
     """``changes/.review-seen.json`` is written by ``review/cli.py validate`` right before the
     gate reads the findings beside it, and lives outside the change folder (one file per
     project): until 0.3.5 the gate read it as uncommitted work, and every fix round of change
-    0001 at gate (e) parked on it (2026-10-03, PROGRESS "Session 19"). At (d) and (e),
+    0001 at gate (deploy) parked on it (2026-10-03, PROGRESS "Session 19"). At (d) and (e),
     untracked or modified, it is set aside and listed under ``ignored``; a sibling under
     changes/ is still work, and so is anything at that path that is not the record's shape."""
     root, change = project
@@ -2475,10 +2494,10 @@ def test_clean_tree_sets_aside_the_review_pass_s_record(project):
 
     seen = root / "changes" / ".review-seen.json"
     write(seen, '{"27da52344010278e": {"count": 1, "first_change": "0001"}}\n')  # untracked
-    verdict(root, "c")
-    ct = clean_tree_at("c")  # (c): the review pass never runs there
+    verdict(root, "build")
+    ct = clean_tree_at("build")  # (c): the review pass never runs there
     assert not ct.ok and ct.details["dirty"] == ["changes/.review-seen.json"]
-    for phase in ("d", "e"):
+    for phase in ("test", "deploy"):
         ct = clean_tree_at(phase)
         assert ct.ok, ct.reason
         assert ct.details["ignored"] == ["changes/.review-seen.json"]
@@ -2486,12 +2505,12 @@ def test_clean_tree_sets_aside_the_review_pass_s_record(project):
     git(root, "add", "changes/.review-seen.json")
     git(root, "commit", "-q", "-m", "review record")
     write(seen, '{"27da52344010278e": {"count": 2, "first_change": "0001"}}\n')  # modified
-    ct = clean_tree_at("e")
+    ct = clean_tree_at("deploy")
     assert ct.ok, ct.reason
     assert ct.details["ignored"] == ["changes/.review-seen.json"]
 
     write(root / "changes" / "scratch.json", "{}\n")  # any other file under changes/ is work
-    ct = clean_tree_at("e")
+    ct = clean_tree_at("deploy")
     assert not ct.ok
     assert ct.details["dirty"] == ["changes/scratch.json"]
     assert ct.details["ignored"] == ["changes/.review-seen.json"]
@@ -2500,16 +2519,16 @@ def test_clean_tree_sets_aside_the_review_pass_s_record(project):
     # the review of the 0.3.5 diff: only the record's own shape is set aside — a deleted
     # record, a non-JSON payload or a symlink at that path is work the gate reports
     seen.write_text("not json\n", encoding="utf-8")
-    ct = clean_tree_at("e")
+    ct = clean_tree_at("deploy")
     assert not ct.ok
     assert ct.details["dirty"] == ["changes/.review-seen.json"] and ct.details["ignored"] == []
     seen.unlink()
-    ct = clean_tree_at("e")
+    ct = clean_tree_at("deploy")
     assert not ct.ok
     assert ct.details["dirty"] == ["changes/.review-seen.json"]
     if os.name != "nt":
         seen.symlink_to(root / "sample_pkg" / "calc.py")
-        ct = clean_tree_at("e")
+        ct = clean_tree_at("deploy")
         assert not ct.ok
         assert ct.details["dirty"] == ["changes/.review-seen.json"]
 
@@ -2521,8 +2540,8 @@ def test_a_committed_empty_file_is_still_part_of_the_diff(design_project):
     write(root / "sample_pkg" / "marker.py", "")
     git(root, "add", "sample_pkg/marker.py")
     git(root, "commit", "-q", "-m", "an empty module, committed")
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     ds = next(ch for ch in result.failed if ch.name == "design_scope")
     assert ds.details["outside"] == ["sample_pkg/marker.py"]
 
@@ -2598,13 +2617,13 @@ def test_gate_cli_bump_iteration_counts_rounds_and_reports_the_cap(project):
     rc, out = bump(root)
     assert rc == 3 and out["iterations"] == 4 and out["cap_reached"] is True
     # and the gate agrees: the same count parks the change
-    verdict(root, "c")
-    assert gate.run_gate(root, "0001", "c", dry_run=True).result == "park"
+    verdict(root, "build")
+    assert gate.run_gate(root, "0001", "build", dry_run=True).result == "park"
     # a non-routine plan tightens the cap (step 19)
     assert (
         gate_cli.main(["set-iterations", "--root", str(root), "--id", "0001", "--count", "1"]) == 0
     )
-    verdict(root, "c", classification="non-routine")
+    verdict(root, "build", classification="non-routine")
     rc, out = bump(root)
     assert rc == 0 and out == {
         "iterations": 2,
@@ -2637,24 +2656,24 @@ def accept_risk(root: Path, change: Path, item: str = "auth") -> None:
 
 def test_owner_actions_ties_a_risk_acceptance_to_the_owner(project):
     root, change = project
-    verdict(root, "c")
-    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    verdict(root, "build")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "build", dry_run=True), False)
     # an acceptance sitting in the working tree was committed by nobody
     accept_risk(root, change)
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert "risk_accepted gained auth" in oa.reason and "in no commit" in oa.reason
     assert "a run cannot approve itself" in oa.need and "accept-risk" in oa.need
     # the owner commits it: it counts
     commit_all(root, "owner: accept the auth risk")
-    verdict(root, "c")
-    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    verdict(root, "build")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "build", dry_run=True), False)
     # the very same acceptance made by the automation identity does not
     git(root, "reset", "-q", "--hard", "HEAD~1")
     accept_risk(root, change)
     sha = commit_all(root, "accept the auth risk", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "park" and result.label == "sdlc:needs-human"
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert f"commit {sha[:10]}" in oa.reason and "github-actions[bot]" in oa.reason
@@ -2668,19 +2687,19 @@ def test_owner_actions_parks_on_an_iteration_reset_by_the_automation_identity(pr
     st.iterations = 2  # two fix rounds, counted by the run itself: that is not owner state
     status_mod.write_status(change, st)
     commit_all(root, "build(0001): two fix rounds")
-    verdict(root, "c")
-    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    verdict(root, "build")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "build", dry_run=True), False)
     # the reset itself is the owner's act: uncommitted it belongs to nobody
     assert (
         gate_cli.main(["set-iterations", "--root", str(root), "--id", "0001", "--count", "0"]) == 0
     )
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert "iterations dropped from 2 to 0" in oa.reason and "in no commit" in oa.reason
     # committed by the automation identity it is still not the owner's
     sha = commit_all(root, "reset the iteration count", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "park"
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert f"iterations dropped from 2 to 0 in commit {sha[:10]}" in oa.reason
@@ -2690,8 +2709,8 @@ def test_owner_actions_parks_on_an_iteration_reset_by_the_automation_identity(pr
         gate_cli.main(["set-iterations", "--root", str(root), "--id", "0001", "--count", "0"]) == 0
     )
     commit_all(root, "owner: allow another round")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "continue", result.reason
 
 
@@ -2715,11 +2734,11 @@ def set_phase(change: Path, phase: str) -> None:
 
 def test_gate_c_parks_without_the_verifier_report(project):
     """The continue case is test_gate_continues_on_a_clean_change; this is its mirror: the
-    only evidence gate (c) requires is the verifier report (artifacts.REQUIRED_EVIDENCE)."""
+    only evidence gate (build) requires is the verifier report (artifacts.REQUIRED_EVIDENCE)."""
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     (change / "evidence" / art.EVIDENCE_VERIFIER).unlink()
-    result = gate.run_gate(root, "0001", "c")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "park" and result.label == "sdlc:needs-human"
     ev = next(ch for ch in result.failed if ch.name == "evidence")
     assert ev.details["missing"] == ["verifier.md"]
@@ -2730,17 +2749,17 @@ def test_gate_c_parks_without_the_verifier_report(project):
 
 def test_gate_d_continues_on_green_logs_and_parks_on_a_red_test_log(project):
     root, change = project
-    set_phase(change, "d")
-    start_run(root, "d")
+    set_phase(change, "test")
+    start_run(root, "test")
     write_logs(change)
-    verdict(root, "d")
-    result = gate.run_gate(root, "0001", "d", dry_run=True)
+    verdict(root, "test")
+    result = gate.run_gate(root, "0001", "test", dry_run=True)
     assert result.result == "continue", result.reason
     assert result.label is None and result.human_gate is False
     assert "evidence" in _names(result, True)
     # a red log parks the change even though the gate's own re-run of the suite is green
     write_logs(change, red="test")
-    result = gate.run_gate(root, "0001", "d")
+    result = gate.run_gate(root, "0001", "test")
     assert result.result == "park" and result.label == "sdlc:needs-human"
     ev = next(ch for ch in result.failed if ch.name == "evidence")
     assert "evidence/test.log" in ev.reason and "exited 1" in ev.reason
@@ -2752,8 +2771,8 @@ def test_gate_d_continues_on_green_logs_and_parks_on_a_red_test_log(project):
 
 def test_gate_e_waits_for_the_owner_and_parks_on_an_important_finding(project):
     root, change = project
-    set_phase(change, "e")
-    start_run(root, "e")
+    set_phase(change, "deploy")
+    start_run(root, "deploy")
     write_logs(change)
     head = git(root, "rev-parse", "HEAD").strip()
     findings = change / "evidence" / art.REVIEW_FINDINGS
@@ -2763,9 +2782,9 @@ def test_gate_e_waits_for_the_owner_and_parks_on_an_important_finding(project):
             {"head": head, "findings": [{"severity": "nit", "summary": "naming"}], "tally": {}}
         ),
     )
-    result = gate.run_gate(root, "0001", "e", dry_run=True)
+    result = gate.run_gate(root, "0001", "deploy", dry_run=True)
     assert result.result == "wait", result.reason
-    assert result.label == "sdlc:e-ready" and result.human_gate is True
+    assert result.label == "sdlc:deploy-ready" and result.human_gate is True
     assert _names(result, False) == []
     write(
         findings,
@@ -2776,7 +2795,7 @@ def test_gate_e_waits_for_the_owner_and_parks_on_an_important_finding(project):
             }
         ),
     )
-    result = gate.run_gate(root, "0001", "e")
+    result = gate.run_gate(root, "0001", "deploy")
     assert result.result == "park" and result.label == "sdlc:needs-human"
     f = next(ch for ch in result.failed if ch.name == "findings")
     assert "1 Important review finding(s) open" in f.reason
@@ -2798,8 +2817,8 @@ def test_gate_b_ignores_risk_list_words_in_the_spec_s_prose(design_project):
     write(change / "spec.md", SPEC.replace("## Design\n", "## Design\n" + RISK_PROSE))
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): the spec names the risk items it checked")
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert result.result == "wait", result.reason
     assert "risk_list" not in _names(result, False)
 
@@ -2812,8 +2831,8 @@ def test_gate_b_reports_a_risk_list_item_declared_under_flagged_concerns(design_
     write(change / "spec.md", SPEC.replace("## Acceptance", concern + "\n## Acceptance"))
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): a risk item flagged")
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert result.result == "park" and "open_concerns" in _names(result, False)
     assert "risk_list" not in _names(result, False)
     hit = next(ch for ch in result.checks if ch.name == "risk_list")
@@ -2826,8 +2845,8 @@ def test_gate_b_reports_a_risk_list_item_declared_under_flagged_concerns(design_
     )
     write(change / "spec.md", SPEC.replace("## Acceptance", declared + "\n## Acceptance"))
     git(root, "commit", "-q", "-am", "design(0001): the risk item declared")
-    verdict(root, "b", classification="non-routine")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design", classification="non-routine")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert result.result == "wait", result.reason
     hit = next(ch for ch in result.checks if ch.name == "risk_list")
     assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
@@ -2859,8 +2878,8 @@ def test_owner_actions_honours_a_label_the_owner_applied_and_the_run_committed(p
     root, change = project
     _label_act(change, c.ACCEPT_RISK_LABEL, "luissiviero")
     commit_all(root, "owner labels applied: sdlc:accept-risk", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "owner_actions" not in _names(result, False)
     oa = next(ch for ch in result.checks if ch.name == "owner_actions")
     assert oa.details["label_actors"] == {"risk_accepted": {"auth": "luissiviero"}}
@@ -2893,8 +2912,8 @@ def test_owner_actions_honours_a_second_reset_by_the_same_person(project):
     commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
     st = status_mod.read_status(change)
     assert st.iterations_reset_by == "luissiviero" and st.iterations_reset_at != first_stamp
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "owner_actions" not in _names(result, False), result.reason
     oa = next(ch for ch in result.checks if ch.name == "owner_actions")
     assert oa.details["label_actors"] == {"iterations_reset": "luissiviero"}
@@ -2907,8 +2926,8 @@ def test_owner_actions_honours_a_second_reset_by_the_same_person(project):
     st.iterations = 0  # no label: actor and stamp unchanged
     status_mod.write_status(change, st)
     commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "owner_actions" in _names(result, False)
 
 
@@ -2948,8 +2967,8 @@ def test_a_by_hand_reset_after_a_label_is_marked_and_judged_by_its_author(projec
     assert st.iterations == 0 and st.iterations_reset_by is None
     assert st.iterations_reset_at and st.iterations_reset_at != label_stamp
     sha = commit_all(root, "reset the iteration count", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert f"iterations dropped from 2 to 0 in commit {sha[:10]}" in oa.reason
     assert "no owner label actor is recorded for it" in oa.reason
@@ -2959,8 +2978,8 @@ def test_a_by_hand_reset_after_a_label_is_marked_and_judged_by_its_author(projec
         gate_cli.main(["set-iterations", "--root", str(root), "--id", "0001", "--count", "0"]) == 0
     )
     commit_all(root, "owner: allow another round")
-    verdict(root, "c")
-    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    verdict(root, "build")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "build", dry_run=True), False)
 
 
 def test_owner_actions_accepts_the_runner_s_marked_reset_only_with_its_record(project):
@@ -2982,21 +3001,21 @@ def test_owner_actions_accepts_the_runner_s_marked_reset_only_with_its_record(pr
     st.iterations_reset_at = "2026-10-17T10:00:00Z"
     status_mod.write_status(change, st)
     sha = commit_all(root, "run(c): judged reset (decision 29)", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert f"iterations dropped from 3 to 0 in commit {sha[:10]}" in oa.reason
     assert "'sdlc-runner:777' is not a person" in oa.reason
     record = {"reset": True, "actor": "sdlc-runner:777", "at": "2026-10-17T10:00:00Z"}
     write(change / "evidence" / c.AUTO_RESET_FILE, json.dumps(record))
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "owner_actions" not in _names(result, False), result.reason
     oa = next(ch for ch in result.checks if ch.name == "owner_actions")
     assert oa.details["runner_resets"] == {"iterations_reset": "sdlc-runner:777"}
     assert oa.details["label_actors"] == {}  # not a person's act
     # a record of another stamp is not this reset
     write(change / "evidence" / c.AUTO_RESET_FILE, json.dumps({**record, "at": "2026-10-18"}))
-    assert "owner_actions" in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    assert "owner_actions" in _names(gate.run_gate(root, "0001", "build", dry_run=True), False)
 
 
 def test_owner_actions_rejects_a_label_actor_that_is_the_automation_identity(project):
@@ -3014,8 +3033,8 @@ def test_owner_actions_rejects_a_label_actor_that_is_the_automation_identity(pro
     st.iterations_reset_by = "github-actions[bot]"
     status_mod.write_status(change, st)
     sha = commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert f"iterations dropped from 2 to 0 in commit {sha[:10]}" in oa.reason
     assert "'github-actions[bot]' is not a person" in oa.reason
@@ -3024,8 +3043,8 @@ def test_owner_actions_rejects_a_label_actor_that_is_the_automation_identity(pro
     git(root, "reset", "-q", "--hard", "HEAD~1")
     _label_act(change, c.RESET_ITERATIONS_LABEL, "luissiviero")
     commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "continue", result.reason
     oa = next(ch for ch in result.checks if ch.name == "owner_actions")
     assert oa.details["label_actors"] == {"iterations_reset": "luissiviero"}
@@ -3033,9 +3052,9 @@ def test_owner_actions_rejects_a_label_actor_that_is_the_automation_identity(pro
     git(root, "reset", "-q", "--hard", "HEAD~1")
     accept_risk(root, change)
     commit_all(root, "accept the auth risk", author=BOT_AUTHOR)
-    verdict(root, "c")
+    verdict(root, "build")
     oa = next(
-        ch for ch in gate.run_gate(root, "0001", "c", dry_run=True).failed
+        ch for ch in gate.run_gate(root, "0001", "build", dry_run=True).failed
         if ch.name == "owner_actions"
     )  # fmt: skip
     assert "no owner label actor is recorded" in oa.reason
@@ -3097,8 +3116,8 @@ def _detection_record(tier: int = 3, rule: str = "we1") -> dict:
 
 @pytest.fixture
 def maintain_project(tmp_path):
-    """Fixture copy initialised, and an incident change 0002 filed at phase (f) on its
-    sdlc/0002/a branch: the detection record, the intent and a pull_request proposal."""
+    """Fixture copy initialised, and an incident change 0002 filed at the maintain phase on its
+    sdlc/0002/intent branch: the detection record, the intent and a pull_request proposal."""
     from detect import finding
 
     root, _change = _initialised_fixture(tmp_path)
@@ -3110,9 +3129,9 @@ def maintain_project(tmp_path):
     )  # fmt: skip
     assert proc.returncode == 0, proc.stderr
     change = root / "changes" / "0002-ci-failure-rate-breach"
-    git(root, "checkout", "-q", "-b", "sdlc/0002/a")
+    git(root, "checkout", "-q", "-b", "sdlc/0002/intent")
     st = status_mod.read_status(change)
-    st.set_phase("f")
+    st.set_phase("maintain")
     status_mod.write_status(change, st)
     finding.write(change / "evidence" / finding.DETECTION_FILE, _detection_record())
     write(change / "intent.md", INCIDENT_INTENT)
@@ -3124,7 +3143,15 @@ def maintain_project(tmp_path):
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "maintain(0002): diagnosis")
     proc = run_py(
-        str(GATE_CLI), "start-run", "--root", str(root), "--id", "0002", "--phase", "f", cwd=root
+        str(GATE_CLI),
+        "start-run",
+        "--root",
+        str(root),
+        "--id",
+        "0002",
+        "--phase",
+        "maintain",
+        cwd=root,
     )
     assert proc.returncode == 0, proc.stderr
     return root, change
@@ -3132,8 +3159,8 @@ def maintain_project(tmp_path):
 
 def test_gate_f_waits_for_the_owner_s_triage_with_the_finding_and_its_route(maintain_project):
     root, change = maintain_project
-    result = gate.run_gate(root, "0002", "f")
-    assert result.result == "wait" and result.label == "sdlc:f-ready", result.reason
+    result = gate.run_gate(root, "0002", "maintain")
+    assert result.result == "wait" and result.label == "sdlc:maintain-ready", result.reason
     names = [ch.name for ch in result.checks]
     assert names == ["limits", "artifacts", "evidence_links", "design_scope", "guardrails",
                      "risk_list", "detection", "route"]  # fmt: skip
@@ -3141,16 +3168,16 @@ def test_gate_f_waits_for_the_owner_s_triage_with_the_finding_and_its_route(main
     assert detection.details["tier"] == 3 and detection.details["rule"] == "we1"
     route = next(ch for ch in result.checks if ch.name == "route")
     assert "this intent PR is the route" in route.reason
-    assert (change / "evidence" / "gate-f.json").is_file()
+    assert (change / "evidence" / "gate-maintain.json").is_file()
     # the change stays at phase f: the owner's merge is gate (a) of this intent (decision 25)
-    assert status_mod.read_status(change).phase == "f"
+    assert status_mod.read_status(change).phase == "maintain"
 
 
 def test_gate_f_parks_on_an_intent_without_its_evidence_section(maintain_project):
     root, change = maintain_project
     write(change / "intent.md", INCIDENT_INTENT.split("## Evidence")[0])
     git(root, "commit", "-q", "-am", "drop the evidence")
-    result = gate.run_gate(root, "0002", "f")
+    result = gate.run_gate(root, "0002", "maintain")
     assert result.result == "park"
     artifacts = next(ch for ch in result.checks if ch.name == "artifacts")
     assert not artifacts.ok and "## Evidence" in artifacts.reason
@@ -3167,14 +3194,14 @@ def test_gate_f_parks_on_a_dismissed_finding_and_on_a_logged_tier(maintain_proje
         dismissals.add(dismissals.load(path), record["signature"], kind="detect",
                        reason="known flaky suite", by="owner", change_id="0001"),
     )  # fmt: skip
-    result = gate.run_gate(root, "0002", "f")
+    result = gate.run_gate(root, "0002", "maintain")
     detection = next(ch for ch in result.checks if ch.name == "detection")
     assert result.result == "park" and not detection.ok
     assert "dismissed by owner" in detection.reason and "known flaky suite" in detection.reason
     path.unlink()
     finding.write(change / "evidence" / finding.DETECTION_FILE, _detection_record(1, "we3"))
     git(root, "commit", "-q", "-am", "a 1 sigma record")
-    result = gate.run_gate(root, "0002", "f")
+    result = gate.run_gate(root, "0002", "maintain")
     detection = next(ch for ch in result.checks if ch.name == "detection")
     assert not detection.ok and "only logs" in detection.reason
 
@@ -3189,7 +3216,7 @@ def test_gate_f_route_go_requested_parks_and_a_ran_runbook_passes(maintain_proje
     )  # fmt: skip
     # the template lists rollback-deploy with authorization go and the fixture declares no
     # runbook command: unsupported, so the proposal is refused with that reason
-    result = gate.run_gate(root, "0002", "f")
+    result = gate.run_gate(root, "0002", "maintain")
     route = next(ch for ch in result.checks if ch.name == "route")
     assert result.result == "park" and "no runbook named 'rollback-deploy'" in route.reason
     write(
@@ -3197,22 +3224,22 @@ def test_gate_f_route_go_requested_parks_and_a_ran_runbook_passes(maintain_proje
         json.dumps({"schema_version": 1, "tier": 3, "route": "runbook:revert-pr",
                     "args": {"sha": "0" * 40}, "rationale": "commit x broke it"}),
     )  # fmt: skip
-    result = gate.run_gate(root, "0002", "f")
+    result = gate.run_gate(root, "0002", "maintain")
     route = next(ch for ch in result.checks if ch.name == "route")
     assert not route.ok and "no evidence/runbook-revert-pr.json" in route.reason
     record = change / "evidence" / "runbook-revert-pr.json"
     write(record, json.dumps({"runbook": "revert-pr", "status": "go-requested"}))
-    result = gate.run_gate(root, "0002", "f")
+    result = gate.run_gate(root, "0002", "maintain")
     route = next(ch for ch in result.checks if ch.name == "route")
     assert not route.ok and "Go requested" in route.reason and "`sdlc:go`" in route.need
     write(record, json.dumps({"runbook": "revert-pr", "status": "failed", "reason": "conflicts"}))
-    result = gate.run_gate(root, "0002", "f")
+    result = gate.run_gate(root, "0002", "maintain")
     route = next(ch for ch in result.checks if ch.name == "route")
     assert not route.ok and "conflicts" in route.reason
     write(record, json.dumps({"runbook": "revert-pr", "status": "ran", "pr_url": "https://x/9"}))
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "route recorded")
-    result = gate.run_gate(root, "0002", "f")
+    result = gate.run_gate(root, "0002", "maintain")
     route = next(ch for ch in result.checks if ch.name == "route")
     assert route.ok and "https://x/9" in route.reason and result.result == "wait"
 
@@ -3222,9 +3249,9 @@ def test_gate_f_parks_when_the_diagnosis_committed_source(maintain_project):
     write(root / "sample_pkg" / "hotfix.py", "x = 1\n")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "a fix the diagnosis must not make")
-    result = gate.run_gate(root, "0002", "f")
+    result = gate.run_gate(root, "0002", "maintain")
     scope = next(ch for ch in result.checks if ch.name == "design_scope")
-    assert result.result == "park" and not scope.ok and "phase (f)" in scope.need
+    assert result.result == "park" and not scope.ok and "the maintain phase" in scope.need
 
 
 # --- lesson and eval, gate (e) only (change 0003) ---------------------------------------------
@@ -3262,7 +3289,7 @@ def _lesson_setup(
 
 
 def _e_ctx(tmp_path):
-    return _ctx(tmp_path, phase="e", entry_route="incident")
+    return _ctx(tmp_path, phase="deploy", entry_route="incident")
 
 
 def test_lesson_and_eval_passes_when_everything_is_present(tmp_path):
@@ -3272,16 +3299,16 @@ def test_lesson_and_eval_passes_when_everything_is_present(tmp_path):
 
 
 def test_lesson_and_eval_does_not_run_outside_an_incident_change_at_gate_e(tmp_path):
-    assert checks.lesson_and_eval(_ctx(tmp_path, phase="e", entry_route="idea")).ok
-    assert checks.lesson_and_eval(_ctx(tmp_path, phase="c", entry_route="incident")).ok
+    assert checks.lesson_and_eval(_ctx(tmp_path, phase="deploy", entry_route="idea")).ok
+    assert checks.lesson_and_eval(_ctx(tmp_path, phase="build", entry_route="incident")).ok
 
 
 def test_lesson_and_eval_guard_holds_even_called_directly_at_phase_f(tmp_path):
     """The guard itself, not only its absence from CHECKS_BY_PHASE['f']: an incident change
-    at phase (f) has neither the lesson nor the eval yet, and the check must still pass."""
-    res = checks.lesson_and_eval(_ctx(tmp_path, phase="f", entry_route="incident"))
+    at the maintain phase has neither the lesson nor the eval yet, and the check must still pass."""
+    res = checks.lesson_and_eval(_ctx(tmp_path, phase="maintain", entry_route="incident"))
     assert res.ok, res.reason
-    assert "lesson_and_eval" not in [fn.__name__ for fn in checks.CHECKS_BY_PHASE["f"]]
+    assert "lesson_and_eval" not in [fn.__name__ for fn in checks.CHECKS_BY_PHASE["maintain"]]
 
 
 def test_lesson_and_eval_fails_on_a_missing_lesson_file(tmp_path):
@@ -3429,18 +3456,18 @@ def test_owner_actions_ties_a_test_lock_lift_to_the_owner(project):
     root, change = project
     _set_lock(change, True)
     commit_all(root, "build: the reproducing test; tests locked")
-    verdict(root, "c")
-    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    verdict(root, "build")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "build", dry_run=True), False)
     # lifted in the working tree: nobody's
     _set_lock(change, False)
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert "test-file lock was lifted in the working tree" in oa.reason
     assert "unlock-tests" in oa.need and "sdlc:unlock-tests" in oa.need
     # lifted by the automation identity with no actor recorded: parks
     sha = commit_all(root, "unlock the tests", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "park" and result.label == "sdlc:needs-human"
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert f"test-file lock was lifted in commit {sha[:10]}" in oa.reason
@@ -3449,8 +3476,8 @@ def test_owner_actions_ties_a_test_lock_lift_to_the_owner(project):
     git(root, "reset", "-q", "--hard", "HEAD~1")
     _set_lock(change, True, change_type="feature")
     commit_all(root, "it is a feature now", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "owner_actions" in _names(result, False)
     assert (
         "test-file lock was lifted"
@@ -3460,8 +3487,8 @@ def test_owner_actions_ties_a_test_lock_lift_to_the_owner(project):
     git(root, "reset", "-q", "--hard", "HEAD~1")
     _set_lock(change, False, unlocked_by="luissiviero")
     commit_all(root, "apply sdlc:unlock-tests", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "owner_actions" not in _names(result, False), result.reason
     oa = next(ch for ch in result.checks if ch.name == "owner_actions")
     assert oa.details["label_actors"] == {"tests_unlocked": "luissiviero"}
@@ -3469,16 +3496,16 @@ def test_owner_actions_ties_a_test_lock_lift_to_the_owner(project):
     git(root, "reset", "-q", "--hard", "HEAD~1")
     _set_lock(change, False, unlocked_by="github-actions[bot]")
     commit_all(root, "apply sdlc:unlock-tests", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert "is not a person" in oa.reason
     # the owner's own commit: counts
     git(root, "reset", "-q", "--hard", "HEAD~1")
     _set_lock(change, False)
     commit_all(root, "owner: the test itself was wrong, unlock")
-    verdict(root, "c")
-    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    verdict(root, "build")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "build", dry_run=True), False)
 
 
 def test_test_lock_refuses_a_test_changed_while_the_lock_stands(project):
@@ -3490,8 +3517,8 @@ def test_test_lock_refuses_a_test_changed_while_the_lock_stands(project):
     root, change = project
     _set_lock(change, True)
     lock_sha = commit_all(root, "build: the reproducing test; tests locked")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     tl = next(ch for ch in result.checks if ch.name == "test_lock")
     assert tl.ok and tl.details["lock_commit"] == lock_sha
     # a test edited after the lock, the lock untouched in HEAD: parks
@@ -3499,8 +3526,8 @@ def test_test_lock_refuses_a_test_changed_while_the_lock_stands(project):
     write(test_file, test_file.read_text(encoding="utf-8") + "\n# weakened\n")
     write(change / "plan.md", (change / "plan.md").read_text(encoding="utf-8") + "\nmore\n")
     commit_all(root, "weaken the test", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "park"
     tl = next(ch for ch in result.failed if ch.name == "test_lock")
     assert "tests/test_percent.py" in tl.reason and f"lock commit {lock_sha[:10]}" in tl.reason
@@ -3508,16 +3535,18 @@ def test_test_lock_refuses_a_test_changed_while_the_lock_stands(project):
     # the owner's unlock lifts it: owner_actions judges the lift, test_lock stands down
     _set_lock(change, False)
     commit_all(root, "owner: the test was wrong, unlock")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     names = _names(result, False)
     assert "test_lock" not in names and "owner_actions" not in names
     # a feature-type change has no lock
     _set_lock(change, True, change_type="feature")
     commit_all(root, "a feature")
-    verdict(root, "c")
+    verdict(root, "build")
     tl = next(
-        ch for ch in gate.run_gate(root, "0001", "c", dry_run=True).checks if ch.name == "test_lock"
+        ch
+        for ch in gate.run_gate(root, "0001", "build", dry_run=True).checks
+        if ch.name == "test_lock"
     )
     assert tl.ok and "not a fix-type" in tl.reason
 
@@ -3539,7 +3568,7 @@ def test_lock_tests_clears_the_recorded_unlock_actor():
 def test_a_leftover_profile_override_changes_nothing(project):
     """Decision 37 (1.0.21): no per-change override any more. A ``status.yaml`` an older plugin
     wrote with ``profile_override: full`` and ``review_override: parked``, on the copy the
-    owner approved, still loads, and gate (c) is still the confidence gate's alone."""
+    owner approved, still loads, and gate (build) is still the confidence gate's alone."""
     root, change = project
 
     def leftover(r: Path) -> None:
@@ -3548,8 +3577,8 @@ def test_a_leftover_profile_override_changes_nothing(project):
         yamlish.dump_file(change / "status.yaml", raw)
 
     on_base(root, leftover, "an older plugin's status.yaml")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "continue" and result.label is None, result.reason
 
 
@@ -3565,7 +3594,7 @@ def test_design_scope_exempts_change_0000_by_its_folder_and_at_gate_a_only(proje
     st = status_mod.read_status(change)
     st.id = "0000"  # the session's forgery; the folder is still 0001's
     d = diffmod.collect(root, None)
-    for phase in ("a", "b", "c", "f"):
+    for phase in ("intent", "design", "build", "maintain"):
         ctx = checks.GateContext(root, change, phase, st, {"profile": "standard"}, d, True, "")
         assert not checks.check_design_scope(ctx).ok, phase
 
@@ -3578,8 +3607,8 @@ def test_owner_actions_judges_every_risk_gaining_commit(project):
     sha = commit_all(root, "accept the auth risk", author=BOT_AUTHOR)  # the run's own act
     accept_risk(root, change, "payments")
     commit_all(root, "owner: accept the payments risk")  # the owner's, newer
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert f"risk_accepted gained auth in commit {sha[:10]}" in oa.reason
     assert "payments" not in oa.reason
@@ -3589,8 +3618,8 @@ def test_owner_actions_judges_every_risk_gaining_commit(project):
 
     _label_act(change, c.ACCEPT_RISK_LABEL, "luissiviero", items=("auth",))
     commit_all(root, "owner labels applied: sdlc:accept-risk", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "owner_actions" not in _names(result, False), result.reason
     oa = next(ch for ch in result.checks if ch.name == "owner_actions")
     assert oa.details["label_actors"] == {"risk_accepted": {"auth": "luissiviero"}}
@@ -3616,8 +3645,8 @@ def test_owner_actions_judges_every_drop_and_every_lift(project):
     commit_all(root, "fix(0001): one round")
     _label_act(change, c.RESET_ITERATIONS_LABEL, "luissiviero")  # the owner's, newer
     commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert f"iterations dropped from 2 to 0 in commit {sha[:10]}" in oa.reason
 
@@ -3637,14 +3666,14 @@ def test_owner_actions_judges_a_panel_calls_drop_like_an_iterations_drop(project
     st = status_mod.read_status(change)
     st.panel_calls = 0
     status_mod.write_status(change, st)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert "panel_calls dropped from 3 to 0 in the working tree, in no commit" in oa.reason
     # in the run's own commit with no actor recorded
     sha = commit_all(root, "panel calls back to zero", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     oa = next(ch for ch in result.failed if ch.name == "owner_actions")
     assert f"panel_calls dropped from 3 to 0 in commit {sha[:10]}" in oa.reason
     assert "no owner label actor is recorded" in oa.reason
@@ -3654,8 +3683,8 @@ def test_owner_actions_judges_a_panel_calls_drop_like_an_iterations_drop(project
     commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
     st = status_mod.read_status(change)
     assert st.iterations == 0 and st.panel_calls == 0
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "owner_actions" not in _names(result, False), result.reason
     oa = next(ch for ch in result.checks if ch.name == "owner_actions")
     assert oa.details["label_actors"] == {
@@ -3670,10 +3699,11 @@ def test_important_findings_strips_the_severity():
 
 
 def _intent_branch(tmp_path) -> tuple[Path, Path]:
-    """Change 0001 at gate (a): the intent committed on ``sdlc/0001/a`` and nothing else."""
+    """Change 0001 at gate (intent): the intent committed on ``sdlc/0001/intent`` and nothing
+    else."""
     root, change = _initialised_fixture(tmp_path)
     git(root, "stash", "push", "-q", "-u")  # the intent, not yet committed
-    git(root, "checkout", "-q", "-b", "sdlc/0001/a")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/intent")
     git(root, "stash", "pop", "-q")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "intent(0001): percent helper")
@@ -3682,19 +3712,19 @@ def _intent_branch(tmp_path) -> tuple[Path, Path]:
 
 def test_gate_a_refuses_a_source_file_on_the_intent_branch(tmp_path):
     """OPERATING_MODEL section 4.2: the fix round at (a) is refused a source file by
-    ``design_scope``; gate (a) never ran the check (1.0.0 readiness review, group A)."""
+    ``design_scope``; gate (intent) never ran the check (1.0.0 readiness review, group A)."""
     root, _change = _intent_branch(tmp_path)
-    assert checks.check_design_scope in checks.CHECKS_BY_PHASE["a"]
-    result = gate.run_gate(root, "0001", "a", dry_run=True)
+    assert checks.check_design_scope in checks.CHECKS_BY_PHASE["intent"]
+    result = gate.run_gate(root, "0001", "intent", dry_run=True)
     assert result.result == "wait", result.reason
     write(root / "sample_pkg" / "percent.py", PERCENT)
     git(root, "add", "sample_pkg/percent.py")
     git(root, "commit", "-q", "-m", "implementation written at the intent stage")
-    result = gate.run_gate(root, "0001", "a", dry_run=True)
+    result = gate.run_gate(root, "0001", "intent", dry_run=True)
     assert result.result == "park"
     ds = next(ch for ch in result.failed if ch.name == "design_scope")
     assert ds.details["outside"] == ["sample_pkg/percent.py"]
-    assert "phase (a) commits only changes/0001-percent-helper/" in ds.need
+    assert "the intent phase commits only changes/0001-percent-helper/" in ds.need
     assert "the intent PR carries the intent alone" in ds.need
 
 
@@ -3708,12 +3738,12 @@ def test_gate_a_exempts_change_0000_from_design_scope(tmp_path):
     git(root, "config", "user.name", "Owner")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "fixture")
-    git(root, "checkout", "-q", "-b", "sdlc/0000/a")
+    git(root, "checkout", "-q", "-b", "sdlc/0000/intent")
     proc = run_py(str(INIT), "--root", str(root), "--profile", "standard", cwd=root)
     assert proc.returncode == 0, proc.stderr
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "sdlc-init")
-    result = gate.run_gate(root, "0000", "a", dry_run=True)
+    result = gate.run_gate(root, "0000", "intent", dry_run=True)
     ds = next(ch for ch in result.checks if ch.name == "design_scope")
     assert ds.ok and "change 0000 installs the framework" in ds.reason
     assert "design_scope" not in _names(result, False)
@@ -3761,7 +3791,7 @@ def test_quick_intent_helpers():
 
 
 def test_a_quick_intent_s_spec_must_state_what_it_assumed(tmp_path):
-    ctx = _ctx(tmp_path, phase="b")
+    ctx = _ctx(tmp_path, phase="design")
     write(ctx.change_dir / "intent.md", QUICK_INTENT)
     write(ctx.change_dir / "plan.md", PLAN)
     write(ctx.change_dir / "spec.md", SPEC)
@@ -3802,7 +3832,7 @@ PROOF_PLAN = PLAN.replace(
 )
 
 
-def _drive_ctx(tmp_path, phase="c", plan=PROOF_PLAN, gate_cfg=None, deferred=False):
+def _drive_ctx(tmp_path, phase="build", plan=PROOF_PLAN, gate_cfg=None, deferred=False):
     script = tmp_path / "drive.py"
     write(script, DRIVE_SCRIPT)
     config = {
@@ -3834,33 +3864,33 @@ def test_the_drive_is_read_apart_from_the_three_targets():
 
 def test_the_drive_timeout_is_capped_at_600_at_c_and_d_and_not_at_e(tmp_path):
     ctx = _drive_ctx(tmp_path, gate_cfg={"drive_timeout": 900})
-    assert checks.drive_timeout(ctx, "c") == 600 and checks.drive_timeout(ctx, "d") == 600
-    assert checks.drive_timeout(ctx, "e") == 900
+    assert checks.drive_timeout(ctx, "build") == 600 and checks.drive_timeout(ctx, "test") == 600
+    assert checks.drive_timeout(ctx, "deploy") == 900
     assert limits.drive_timeout_refusal(ctx.config) == (
         "gate.drive_timeout=900 exceeds the 600 s the test and build jobs hold: 600 applied; "
         "lower it, or raise timeout-minutes and SDLC_JOB_TIMEOUT_MINUTES together in a reviewed PR"
     )
     assert limits.drive_timeout_refusal({"commands": {"drive": "x"}}) is None
     assert limits.drive_timeout_refusal({"gate": {"drive_timeout": 900}}) is None  # no drive
-    assert checks.DRIVE_PHASES == ("c", "d", "e")
+    assert checks.DRIVE_PHASES == ("build", "test", "deploy")
 
 
 def test_gate_b_refuses_items_without_a_drive_and_malformed_items(tmp_path):
-    ctx = _ctx(tmp_path, phase="b")
+    ctx = _ctx(tmp_path, phase="design")
     write(ctx.change_dir / "plan.md", PLAN)  # prose-only Proof
     assert checks.check_proof_items(ctx).ok
     write(ctx.change_dir / "plan.md", PROOF_PLAN)
     res = checks.check_proof_items(ctx)
     assert not res.ok and len(res.details["problems"]) == 2
     assert "needs commands.drive" in res.reason and "set the drive" in res.need
-    ctx = _drive_ctx(tmp_path / "with-drive", phase="b")
+    ctx = _drive_ctx(tmp_path / "with-drive", phase="design")
     assert checks.check_proof_items(ctx).ok
     write(ctx.change_dir / "plan.md", PROOF_PLAN + "- state: evidence/proof/a.json x is 1\n")
     res = checks.check_proof_items(ctx)
     assert not res.ok and "line 22" in res.reason and "the verb must be one of" in res.reason
-    assert checks.check_proof_items in checks.CHECKS_BY_PHASE["b"]
-    assert all(checks.check_proof in checks.CHECKS_BY_PHASE[p] for p in "cde")
-    assert checks.check_proof not in checks.CHECKS_BY_PHASE["b"]
+    assert checks.check_proof_items in checks.CHECKS_BY_PHASE["design"]
+    assert all(checks.check_proof in checks.CHECKS_BY_PHASE[p] for p in ("build", "test", "deploy"))
+    assert checks.check_proof not in checks.CHECKS_BY_PHASE["design"]
 
 
 def test_the_drive_run_clears_proof_caps_images_and_writes_the_manifest(tmp_path, monkeypatch):
@@ -3872,7 +3902,7 @@ def test_the_drive_run_clears_proof_caps_images_and_writes_the_manifest(tmp_path
     monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.com")
     monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
-    run = checks.run_drive(ctx, "abc123", "c")
+    run = checks.run_drive(ctx, "abc123", "build")
     assert run["exit_code"] == 0 and "drove the product" in run["output"], run
     assert run["seconds"] >= 0 and "refused" not in run
     proof = ctx.evidence_dir / "proof"
@@ -3888,7 +3918,7 @@ def test_the_drive_run_clears_proof_caps_images_and_writes_the_manifest(tmp_path
             "url": "https://github.com/o/r/actions/runs/77",
             "event": "workflow_dispatch",
         },
-        "phase": "c",
+        "phase": "build",
         "at": manifest["at"],
         "files": [
             {"path": "home.png", "bytes": 100},
@@ -3904,11 +3934,11 @@ def test_the_drive_run_clears_proof_caps_images_and_writes_the_manifest(tmp_path
     assert checks.manifest_run() is None
     # a drive_timeout over the cap runs at 600 and says why
     ctx.config["gate"]["drive_timeout"] = 900
-    assert "600 applied" in checks.run_drive(ctx, "abc123", "d")["refused"]
-    assert "refused" not in checks.run_drive(ctx, "abc123", "e")
+    assert "600 applied" in checks.run_drive(ctx, "abc123", "test")["refused"]
+    assert "refused" not in checks.run_drive(ctx, "abc123", "deploy")
     # a non-numeric gate.proof_image_kb runs at the default instead of crashing the step
     ctx.config["gate"]["proof_image_kb"] = "fifty"
-    assert checks.run_drive(ctx, "abc123", "e")["exit_code"] == 0
+    assert checks.run_drive(ctx, "abc123", "deploy")["exit_code"] == 0
 
 
 def test_the_drive_s_environment_adds_two_variables_and_nothing_else(tmp_path):
@@ -3943,7 +3973,7 @@ def test_the_image_caps_by_size_and_by_count(tmp_path):
 
 def test_judge_proof_reads_the_approved_plan_and_reports_added_items(tmp_path, monkeypatch):
     ctx = _drive_ctx(tmp_path)
-    checks.run_drive(ctx, "abc123", "c")
+    checks.run_drive(ctx, "abc123", "build")
     res = checks.judge_proof(ctx, checks.read_manifest(ctx))
     assert res.ok, res.reason
     assert [(i["kind"], i["approved"], i["outcome"]) for i in res.details["items"]] == [
@@ -3953,21 +3983,21 @@ def test_judge_proof_reads_the_approved_plan_and_reports_added_items(tmp_path, m
     assert res.details["commit"] == "abc123" and res.details["manifest"].endswith("manifest.json")
     # a value that differs fails the entry, with what was seen
     monkeypatch.setenv("DRIVE_MODE", "differs")
-    checks.run_drive(ctx, "abc124", "c")
+    checks.run_drive(ctx, "abc124", "build")
     res = checks.judge_proof(ctx, checks.read_manifest(ctx))
     assert not res.ok and res.details["items"][0]["seen"] == 500
     assert "status.code == 200 (differs)" in res.reason and "fix the code" in res.need
     # an image over the cap is dropped and its item not produced
     monkeypatch.setenv("DRIVE_MODE", "ok")
     monkeypatch.setenv("DRIVE_PNG_BYTES", str(60 * 1024))
-    checks.run_drive(ctx, "abc125", "c")
+    checks.run_drive(ctx, "abc125", "build")
     res = checks.judge_proof(ctx, checks.read_manifest(ctx))
     shot = res.details["items"][1]
     assert not res.ok and shot["outcome"] == "not produced" and "dropped" in shot["seen"]
     assert res.details["dropped"][0]["path"] == "home.png"
     # an item the session added is reported, never the bar; the approved items are judged
     monkeypatch.setenv("DRIVE_PNG_BYTES", "100")
-    checks.run_drive(ctx, "abc126", "c")
+    checks.run_drive(ctx, "abc126", "build")
     added = PROOF_PLAN + "- state: evidence/proof/status.json change == 9\n"
     write(ctx.change_dir / "plan.md", added)
     ctx.approved_artifact = lambda name: PROOF_PLAN if name == "plan.md" else None
@@ -4000,7 +4030,7 @@ def test_check_proof_with_and_without_a_drive(tmp_path):
     res = checks.check_proof(ctx)
     assert not res.ok and res.details["drive_removed"] is True
     assert res.reason == (
-        "drive removed after gate (b): the approved plan names 2 state/screenshot item(s) and "
+        "drive removed after gate (design): the approved plan names 2 state/screenshot item(s) and "
         "commands.drive is empty"
     )
     assert [i["outcome"] for i in res.details["items"]] == ["not produced", "not produced"]
@@ -4008,7 +4038,7 @@ def test_check_proof_with_and_without_a_drive(tmp_path):
 
 
 def test_check_evidence_defers_the_missing_drive_log_in_a_ci_session_only(tmp_path):
-    ctx = _drive_ctx(tmp_path, phase="d", deferred=True)
+    ctx = _drive_ctx(tmp_path, phase="test", deferred=True)
     write(ctx.evidence_dir / "verifier.md", "# Verifier\nok\n")
     marked = art.render_deferred_header("x", "2026-10-24T00:00:00Z") + "\n"
     for name in ("test.log", "build.log", "lint.log"):
@@ -4071,23 +4101,23 @@ def test_the_e_wall_clock_gives_up_the_drive_minutes_and_floors_at_30(tmp_path):
     assert limits.drive_minutes({"commands": {"drive": "x"}}) == 5
     assert limits.drive_minutes({"commands": {"drive": "x"}, "gate": {"drive_timeout": 900}}) == 15
     started = (datetime.now(timezone.utc) - timedelta(minutes=118)).isoformat()
-    ctx = _drive_ctx(tmp_path, phase="e", gate_cfg={"drive_timeout": 300})
-    write(ctx.evidence_dir / "run-e.json", json.dumps({"started_at": started}))
+    ctx = _drive_ctx(tmp_path, phase="deploy", gate_cfg={"drive_timeout": 300})
+    write(ctx.evidence_dir / "run-deploy.json", json.dumps({"started_at": started}))
     res = limits.check_limits(ctx)
     assert not res.ok and "limit 115 min" in res.reason
     # a fix round at (e) carries the build mark: 180 - 5
-    write(ctx.evidence_dir / "run-e.json", json.dumps({"started_at": started, "run": "build"}))
+    write(ctx.evidence_dir / "run-deploy.json", json.dumps({"started_at": started, "run": "build"}))
     res = limits.check_limits(ctx)
     assert res.ok and res.details["drive_minutes"] == 5
     # (c) gives up nothing
-    ctx = _drive_ctx(tmp_path / "c", phase="c")
-    write(ctx.evidence_dir / "run-c.json", json.dumps({"started_at": started}))
+    ctx = _drive_ctx(tmp_path / "build", phase="build")
+    write(ctx.evidence_dir / "run-build.json", json.dumps({"started_at": started}))
     assert limits.check_limits(ctx).ok
     # a drive that would take the cap below 30 parks with the figure
-    ctx = _drive_ctx(tmp_path / "floor", phase="e", gate_cfg={"drive_timeout": 6000})
-    write(ctx.evidence_dir / "run-e.json", json.dumps({"started_at": started}))
+    ctx = _drive_ctx(tmp_path / "floor", phase="deploy", gate_cfg={"drive_timeout": 6000})
+    write(ctx.evidence_dir / "run-deploy.json", json.dumps({"started_at": started}))
     res = limits.check_limits(ctx)
-    assert not res.ok and "takes 100 min off the (e) session's 120 min" in res.reason
+    assert not res.ok and "takes 100 min off the deploy session's 120 min" in res.reason
     assert limits.drive_floor_refusal(ctx.config, False) == res.reason
     # nit 5 of the review: a cap already under 30 gives up nothing and is no park, as the
     # runner's run_caps reads it
@@ -4124,16 +4154,16 @@ def test_the_runner_s_step_runs_the_drive_after_the_targets_and_judges_the_proof
     root, change = project
     _with_drive_on_base(root)
     _approve(monkeypatch, PROOF_PLAN)
-    verdict(root, "c")
+    verdict(root, "build")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    session = gate.run_gate(root, "0001", "c")
+    session = gate.run_gate(root, "0001", "build")
     assert session.result == "continue", session.reason
     assert _check(session, "proof").details == {"deferred": True}
-    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    recorded = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     assert gate.deferred_checks(recorded) == ["commands", "proof"]
     stale = change / "evidence" / "proof" / "stale.txt"
     write(stale, "from an earlier run")
-    result = gate.run_deferred_commands(root, "0001", "c")
+    result = gate.run_deferred_commands(root, "0001", "build")
     assert result is not None and result.result == "continue", result.reason
     cmd, proof = _check(result, "commands"), _check(result, "proof")
     assert list(cmd.details["runs"]) == ["build", "test", "lint", "drive"]
@@ -4145,14 +4175,14 @@ def test_the_runner_s_step_runs_the_drive_after_the_targets_and_judges_the_proof
     assert [ch.name for ch in result.checks] == [ch.name for ch in session.checks]
 
     # a red drive parks like a red target
-    gate.run_gate(root, "0001", "c")
+    gate.run_gate(root, "0001", "build")
     monkeypatch.setenv("DRIVE_MODE", "red")
-    result = gate.run_deferred_commands(root, "0001", "c")
+    result = gate.run_deferred_commands(root, "0001", "build")
     assert result.result == "park" and "drive (exit 1)" in _check(result, "commands").reason
     # a green drive whose value differs fails the proof entry with the value seen
-    gate.run_gate(root, "0001", "c")
+    gate.run_gate(root, "0001", "build")
     monkeypatch.setenv("DRIVE_MODE", "differs")
-    result = gate.run_deferred_commands(root, "0001", "c")
+    result = gate.run_deferred_commands(root, "0001", "build")
     assert result.result == "park" and _check(result, "commands").ok
     proof = _check(result, "proof")
     assert not proof.ok and proof.details["items"][0]["seen"] == 500
@@ -4162,9 +4192,9 @@ def test_a_drive_that_did_not_start_is_re_run_once_on_a_fresh_proof_folder(proje
     root, change = project
     _with_drive_on_base(root)
     _approve(monkeypatch, PROOF_PLAN)
-    verdict(root, "c")
+    verdict(root, "build")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    assert gate.run_gate(root, "0001", "c").result == "continue"
+    assert gate.run_gate(root, "0001", "build").result == "continue"
     calls: list[str] = []
     original = checks.run_command
 
@@ -4177,7 +4207,7 @@ def test_a_drive_that_did_not_start_is_re_run_once_on_a_fresh_proof_folder(proje
         return original(command, root_, timeout, tail=tail, env=env)
 
     monkeypatch.setattr(checks, "run_command", first_missing)
-    result = gate.run_deferred_commands(root, "0001", "c")
+    result = gate.run_deferred_commands(root, "0001", "build")
     assert len(calls) == 2 and result.result == "continue", result.reason
     assert _check(result, "commands").details["retried"] == 1
     assert not (change / "evidence" / "proof" / "first.txt").exists()
@@ -4191,11 +4221,11 @@ def test_the_runner_s_step_at_d_writes_drive_log_and_re_judges_the_evidence(proj
     write(change / "evidence" / "verifier.md", "# Verifier\nread, not run\n")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
     write_marked_logs(root, change)
-    session = gate.run_gate(root, "0001", "d")
+    session = gate.run_gate(root, "0001", "test")
     assert session.result == "continue", session.reason
     ev = _check(session, "evidence")
     assert ev.details["deferred_logs"] == ["test.log", "build.log", "lint.log", "drive.log"]
-    result = gate.run_deferred_commands(root, "0001", "d")
+    result = gate.run_deferred_commands(root, "0001", "test")
     assert result.result == "continue", result.reason
     assert _check(result, "evidence").reason == (
         "evidence present: test.log, build.log, lint.log, verifier.md, drive.log"
@@ -4206,10 +4236,10 @@ def test_the_runner_s_step_at_d_writes_drive_log_and_re_judges_the_evidence(proj
 def test_no_drive_runs_at_b(design_project, monkeypatch):
     root, change = design_project
     _with_drive_on_base(root)
-    verdict(root, "b", classification="non-routine")
+    verdict(root, "design", classification="non-routine")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    gate.run_gate(root, "0001", "b")
-    result = gate.run_deferred_commands(root, "0001", "b")
+    gate.run_gate(root, "0001", "design")
+    result = gate.run_deferred_commands(root, "0001", "design")
     assert result.result == "wait", result.reason
     assert list(_check(result, "commands").details["runs"]) == ["build", "test", "lint"]
     assert not (change / "evidence" / "drive.log").exists()
@@ -4219,11 +4249,11 @@ def test_no_drive_runs_at_b(design_project, monkeypatch):
 
 def test_an_empty_drive_keeps_today_s_logs_and_verdict(project, monkeypatch):
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    session = gate.run_gate(root, "0001", "c")
+    session = gate.run_gate(root, "0001", "build")
     assert _check(session, "proof").reason == "no drive target: nothing to compare"
-    result = gate.run_deferred_commands(root, "0001", "c")
+    result = gate.run_deferred_commands(root, "0001", "build")
     assert result.result == "continue", result.reason
     assert list(_check(result, "commands").details["runs"]) == ["build", "test", "lint"]
     assert _check(result, "commands").reason == "build, test and lint exit 0"
@@ -4233,11 +4263,71 @@ def test_an_empty_drive_keeps_today_s_logs_and_verdict(project, monkeypatch):
 def test_the_drive_removed_after_gate_b_parks_and_is_never_deferred(project, monkeypatch):
     root, change = project
     _approve(monkeypatch, PROOF_PLAN)
-    verdict(root, "c")
+    verdict(root, "build")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    result = gate.run_gate(root, "0001", "c")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "park"
     proof = _check(result, "proof")
     assert not proof.ok and proof.details["drive_removed"] is True
     assert "deferred" not in proof.details
-    assert "drive removed after gate (b)" in status_mod.read_status(change).parked_reason
+    assert "drive removed after gate (design)" in status_mod.read_status(change).parked_reason
+
+
+# --- R45: the phase names, and the letters an older plugin wrote --------------------------------
+def test_the_gate_cli_reads_a_letter_and_writes_the_name(project, capsys):
+    """``--phase c`` is read as ``build`` (one release), the adversarial verdict an older
+    plugin's reviewer wrote under the letter (``adversarial-review-c.json``) is read, and
+    the record is written under the name: ``gate-build.json``, ``phase: build``."""
+    root, change = project
+    verdict(root, "c")  # the letter's file, as a plugin before R45 wrote it
+    rc = gate_cli.main(["check", "--root", str(root), "--id", "0001", "--phase", "c"])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0 and out["phase"] == "build", out
+    evidence = change / "evidence"
+    assert (evidence / "gate-build.json").is_file() and not (evidence / "gate-c.json").exists()
+    record = json.loads((evidence / "gate-build.json").read_text(encoding="utf-8"))
+    assert record["phase"] == "build" and status_mod.read_status(change).gate.phase == "build"
+    assert "Gate (build)" in gate.GateResult.from_dict({**record, "result": "park"}).what_i_need()
+
+
+def test_start_run_and_record_spend_write_names_and_read_a_letter_s_run_file(tmp_path, capsys):
+    change_dir, _st = status_mod.new_change(tmp_path, "x")
+    evidence = change_dir / "evidence"
+    write(evidence / "run-c.json", json.dumps({"phase": "c", "started_at": "2026-10-25T10:00:00Z"}))
+    argv = ["record-spend", "--root", str(tmp_path), "--id", "0001", "--phase", "c", "--usd", "1"]
+    assert gate_cli.main(argv) == 0
+    capsys.readouterr()
+    data = json.loads((evidence / "run-build.json").read_text(encoding="utf-8"))
+    assert data["started_at"] == "2026-10-25T10:00:00Z"  # carried over from the letter's file
+    assert data["phase"] == "build" and data["spend_usd"] == 1.0
+    assert limits.read_spend_ledger(evidence)["entries"][0]["run"] == "build"
+
+
+def test_older_records_are_read_under_their_phase_name(tmp_path):
+    """Readers of history: a stored session result ``claude-c.json``, a spend entry
+    ``run: c``, a verdict ``adversarial-review-b.json`` and a run record ``run-d.json``."""
+    ctx = _ctx(tmp_path, phase="d")
+    assert ctx.phase == "test"  # GateContext normalises a letter on construction
+    evidence = ctx.evidence_dir
+    _stored(evidence, "claude-c.json", 0.5)
+    _stored(evidence, "claude-fix.json", 0.25)
+    assert [ln["run"] for ln in limits.run_lines(evidence)] == ["build", "fix"]
+    write(evidence / "spend.json", json.dumps({"entries": [{"run": "c", "usd": 1.0}]}))
+    assert limits.read_spend_ledger(evidence)["entries"] == [{"run": "build", "usd": 1.0}]
+    write(
+        evidence / "adversarial-review-b.json",
+        json.dumps({"verdict": "continue", "classification": "non-routine", "head": "abc1234"}),
+    )
+    assert limits.classification_in(evidence, "test") == "non-routine"
+    write(evidence / "run-d.json", json.dumps({"started_at": "2026-10-25T10:00:00Z"}))
+    assert limits.read_run(ctx)["started_at"] == "2026-10-25T10:00:00Z"
+    assert limits.drive_timeout_seconds({}, "e") is None  # no drive set; a letter is accepted
+
+
+def test_phase_tables_are_keyed_by_name():
+    assert set(checks.CHECKS_BY_PHASE) == set(art.REQUIRED_ARTIFACTS) == set(conventions.PHASES)
+    assert checks.DRIVE_PHASES == ("build", "test", "deploy")
+    assert gate.FAST_LANE_PHASE == "design"
+    assert gate.fast_lane_applies("b", True, [], True) == gate.fast_lane_applies(
+        "design", True, [], True
+    )

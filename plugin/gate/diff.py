@@ -13,6 +13,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from state import conventions as c
 from state import gitops
 
 
@@ -205,7 +206,7 @@ def sandbox_masked(files: list[str]) -> list[str]:
 # over a file, a tmpfs over a directory. To git inside the session a tracked file so masked
 # is modified (a character device where a regular file was) and a tracked file under a
 # masked directory is deleted; neither is the session's work. Change 0001's second build
-# run on 0.3.3 (2026-10-03, run 37138722554) parked gate (c) on ``clean_tree`` for this
+# run on 0.3.3 (2026-10-03, run 37138722554) parked gate (build) on ``clean_tree`` for this
 # repository's fixture ``tests/fixtures/sample-python-project/.env`` with every other check
 # green. The mount is what identifies the mask (``os.path.ismount``: the entry's device
 # differs from its parent's), and the mount alone: a character device by itself is not a
@@ -402,11 +403,17 @@ def is_ancestor(root: Path, commit: str, ref: str) -> bool:
 
 
 # Decision 30 (the fast lane, ROADMAP R46): the ``status.yaml: fast_lane`` entry whose commit
-# is the approved copy of a phase. Phase (b) was cut from the owner's unmerged intent PR (entry
-# ``a``); the build branch, and the test, deploy and review runs and the fix rounds on it,
-# from the design commit whose gate passed on a routine plan (entry ``b``). Every other phase
-# (the intent PR's own rounds at (a), phase (f)) reads the merge base as before.
-FAST_LANE_ENTRY = {"b": "a", "c": "b", "d": "b", "e": "b", "review": "b"}
+# is the approved copy of a phase. The design phase was cut from the owner's unmerged intent PR
+# (entry ``intent``); the build branch, and the test, deploy and review runs and the fix rounds on
+# it, from the design commit whose gate passed on a routine plan (entry ``design``). Every other
+# phase (the intent PR's own rounds at (intent), the maintain phase) reads the merge base as before.
+FAST_LANE_ENTRY = {
+    c.DESIGN: c.INTENT,
+    c.BUILD: c.DESIGN,
+    c.TEST: c.DESIGN,
+    c.DEPLOY: c.DESIGN,
+    "review": c.DESIGN,
+}
 
 
 def fast_lane_sha(
@@ -422,8 +429,10 @@ def fast_lane_sha(
     default branch), a squash merge (the next branch then cut from the default branch, the
     commit not in it) and a change that never took the fast lane all give None, and the
     caller reads the merge base exactly as before."""
-    key = FAST_LANE_ENTRY.get(phase)
-    entry = (fast_lane or {}).get(key) if key and isinstance(fast_lane, dict) else None
+    key = FAST_LANE_ENTRY.get(c.phase_name(phase))
+    # R45: an entry an older plugin recorded under its letter (``fast_lane: {b: ...}``)
+    lane = {c.phase_name(k): v for k, v in fast_lane.items()} if isinstance(fast_lane, dict) else {}
+    entry = lane.get(key) if key else None
     sha = entry.get("sha") if isinstance(entry, dict) else None
     if not isinstance(sha, str) or not sha:
         return None
@@ -447,7 +456,7 @@ def approved_base(
     of HEAD with the default branch, None when there is none), as before decision 30. The
     gate (``GateContext.approved_base``) and the runner (``guardrail_changes``) both call it.
     The PR's own diff (``committed_files`` from the merge base) is unchanged: the owner sees
-    intent, spec, plan and code together at (e)."""
+    intent, spec, plan and code together at (deploy)."""
     if not merge_base:
         return None
     return fast_lane_sha(Path(root), fast_lane, phase, base, head) or merge_base

@@ -99,7 +99,7 @@ def test_keys_are_stable_and_kinds_are_the_fixed_list():
 
 def test_validate_entry_and_decision_file():
     item = {"kind": "concern", "key": "concern:x", "item": OPEN_CONCERN}
-    entry = ledger.new_entry(1, "b", item, DECISION, "abc123", 0.3)
+    entry = ledger.new_entry(1, "design", item, DECISION, "abc123", 0.3)
     assert ledger.validate_entry(entry) == []
     assert entry["rationale"] == DECISION["rationale"] and entry["overturned"] is None
     bad = dict(entry, kind="risk_list", rationale=["1", "2", "3", "4", "5", "6"], decision="a\nb")
@@ -131,38 +131,45 @@ def test_verdict_clause_is_the_first_paragraph_under_the_heading():
 def test_ledger_round_trip_render_and_cost(tmp_path):
     change = tmp_path / "changes" / "0001-x"
     item = {"kind": "concern", "key": "concern:x", "item": OPEN_CONCERN}
-    entries = [ledger.new_entry(1, "b", item, DECISION, "abc123", 0.3)]
-    entries.append(ledger.new_entry(2, "b", dict(item, key="concern:y"), DECISION, "abc123", None))
+    entries = [ledger.new_entry(1, "design", item, DECISION, "abc123", 0.3)]
+    entries.append(
+        ledger.new_entry(2, "design", dict(item, key="concern:y"), DECISION, "abc123", None)
+    )
     entries[1]["overturned"] = {"comment": "use half-even", "at": "2026-09-24T10:00:00Z"}
-    ledger.save_ledger(change, "b", entries)
-    assert ledger.load_ledger(change, "b") == entries
-    assert ledger.ledger_error(change, "b") is None
+    ledger.save_ledger(change, "design", entries)
+    assert ledger.load_ledger(change, "design") == entries
+    assert ledger.ledger_error(change, "design") is None
     assert [e["n"] for e in ledger.active(entries)] == [1]
     assert ledger.decided_keys(entries) == {"concern:x"}
     assert ledger.total_cost(entries) == 0.3
-    text = ledger.ledger_md_path(change, "b").read_text(encoding="utf-8")
-    assert "Decisions taken for you — phase (b)" in text
+    text = ledger.ledger_md_path(change, "design").read_text(encoding="utf-8")
+    assert "Decisions taken for you — the design phase" in text
     assert "1. [concern] " + OPEN_CONCERN in text and "cost: $0.30" in text
     assert "OVERTURNED by the owner's review comment: use half-even" in text
     assert "Total panel cost: $0.30" in text
-    ledger.ledger_path(change, "b").write_text("{not json", encoding="utf-8")
-    assert "unreadable" in ledger.ledger_error(change, "b")
-    assert ledger.load_ledger(change, "b") == []
-    assert ledger.load_ledger(change, "c") == [] and ledger.ledger_error(change, "c") is None
+    ledger.ledger_path(change, "design").write_text("{not json", encoding="utf-8")
+    assert "unreadable" in ledger.ledger_error(change, "design")
+    assert ledger.load_ledger(change, "design") == []
+    assert (
+        ledger.load_ledger(change, "build") == [] and ledger.ledger_error(change, "build") is None
+    )
 
 
 def test_the_total_says_n_a_when_no_line_carries_a_cost():
     """NOTES §55: `panel record` without --cost-usd writes null (the members' spend is inside
-    the session's), and the sample's decisions-b.md read "Total panel cost: $0.00", a
+    the session's), and the sample's decisions-design.md read "Total panel cost: $0.00", a
     measured zero where nothing was measured."""
     item = {"kind": "concern", "key": "concern:x", "item": OPEN_CONCERN}
-    unpriced = [ledger.new_entry(1, "b", item, DECISION, "abc123", None)]
-    text = ledger.render_md("b", unpriced)
+    unpriced = [ledger.new_entry(1, "design", item, DECISION, "abc123", None)]
+    text = ledger.render_md("design", unpriced)
     assert "cost: n/a" in text and "Total panel cost: n/a" in text and "$0.00" not in text
-    assert "Total panel cost: n/a" in ledger.render_md("b", [])
+    assert "Total panel cost: n/a" in ledger.render_md("design", [])
     # one priced line is enough for a figure; a measured zero still reads $0.00
-    priced = [*unpriced, ledger.new_entry(2, "b", dict(item, key="concern:y"), DECISION, "a", 0)]
-    assert "Total panel cost: $0.00" in ledger.render_md("b", priced)
+    priced = [
+        *unpriced,
+        ledger.new_entry(2, "design", dict(item, key="concern:y"), DECISION, "intent", 0),
+    ]
+    assert "Total panel cost: $0.00" in ledger.render_md("design", priced)
     assert ledger.total_cost(unpriced) == 0.0  # the gate's figure stays a number
 
 
@@ -170,7 +177,7 @@ def test_apply_decision_closes_the_concern_in_spec_md(tmp_path):
     change = tmp_path / "changes" / "0001-x"
     open_the_concern(change)
     item = {"kind": "concern", "key": ledger.concern_key(OPEN_CONCERN), "item": OPEN_CONCERN}
-    entry = ledger.new_entry(1, "b", item, DECISION, "abc123", None)
+    entry = ledger.new_entry(1, "design", item, DECISION, "abc123", None)
     assert ledger.apply_decision(change, entry) is True
     spec = (change / "spec.md").read_text(encoding="utf-8")
     assert art.open_concerns(spec) == []
@@ -199,7 +206,7 @@ def test_clean_decision_strips_the_copied_closing_and_the_restated_item():
     )
     assert ledger.clean_decision("  keep   half-up  ", item) == "keep half-up"
     assert ledger.clean_decision("a — b", "unrelated concern text here") == "a — b"
-    entry = ledger.new_entry(2, "b", {"kind": "concern", "key": "k", "item": item},
+    entry = ledger.new_entry(2, "design", {"kind": "concern", "key": "k", "item": item},
                              dict(DECISION, decision=raw), "abc", None)  # fmt: skip
     assert entry["decision"] == "`Sequence[float]`"
     # the 0.2.14 form (no number) is still a closing; the number is read when present
@@ -226,8 +233,8 @@ def test_items_lists_the_fixed_list_and_the_parks(design_project):  # noqa: F811
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
-    verdict(root, "b", verdict="escalate")
-    rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])
+    verdict(root, "design", verdict="escalate")
+    rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", "design"])
     # decision 37 (1.0.21): deferred review is the only mode, so ``items`` names none
     assert rc == 0 and "mode" not in out and out["gate"] == "park"
     kinds = [(i["kind"], i["decided"]) for i in out["items"]]
@@ -236,13 +243,13 @@ def test_items_lists_the_fixed_list_and_the_parks(design_project):  # noqa: F811
     assert out["items"][1]["key"].startswith("escalate:")
     assert out["parks"] == [] and out["pending"] == [1, 2]
     assert out["iterations"] == {"used": 0, "cap": 3, "left": 3}
-    assert ledger.items_path(change, "b").is_file()
+    assert ledger.items_path(change, "design").is_file()
     # a never-to-panel failure is a park, not an item
     write(root / "sample_pkg" / "stray.py", "x = 1\n")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "a source file at (b)")
-    verdict(root, "b", verdict="escalate")
-    rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])
+    verdict(root, "design", verdict="escalate")
+    rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", "design"])
     assert [p["check"] for p in out["parks"]] == ["design_scope"]
     assert len(out["items"]) == 2
 
@@ -252,14 +259,14 @@ def test_record_decides_and_counts_one_panel_call(design_project):  # noqa: F811
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
-    verdict(root, "b")
-    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
-    write_members(change, "b", 1)
-    decision = ledger.member_path(change, "b", 1, "conciliator")
+    verdict(root, "design")
+    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "design"])[0] == 0
+    write_members(change, "design", 1)
+    decision = ledger.member_path(change, "design", 1, "conciliator")
     decision.parent.mkdir(parents=True, exist_ok=True)
     decision.write_text(json.dumps(DECISION), encoding="utf-8")
     rc, out = run(
-        ["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1",
+        ["record", "--root", str(root), "--id", "0001", "--phase", "design", "--item", "1",
          "--cost-usd", "0.42"]
     )  # fmt: skip
     assert rc == 0, out
@@ -273,14 +280,16 @@ def test_record_decides_and_counts_one_panel_call(design_project):  # noqa: F811
     assert st.panel_calls == 1 and st.iterations == 0
     spec = (change / "spec.md").read_text(encoding="utf-8")
     assert art.open_concerns(spec) == [] and ledger.panel_closings(spec)[0][0] == 1
-    assert (change / "evidence" / "decisions-b.md").is_file()
+    assert (change / "evidence" / "decisions-design.md").is_file()
     # record committed the decision itself: spec, status and ledger are in HEAD
     head = git(root, "rev-parse", "HEAD").strip()
     assert out["commit"] == head and head != before
     assert git(root, "log", "-1", "--format=%s").strip() == "design(0001): panel decision 1"
     assert git(root, "status", "--porcelain", "--", "changes").strip() == ""
     # idempotent: the same item again is not recorded twice
-    rc, out = run(["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"])
+    rc, out = run(
+        ["record", "--root", str(root), "--id", "0001", "--phase", "design", "--item", "1"]
+    )
     assert rc == 0 and out["recorded"] is False and out["reason"] == "already decided"
     # the gate now continues past the concern and reads the ledger; a tidied closing line
     # still matches its ledger line by number
@@ -295,25 +304,25 @@ def test_record_decides_and_counts_one_panel_call(design_project):  # noqa: F811
     write(change / "spec.md", spec)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): tidy")
-    verdict(root, "b")
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    verdict(root, "design")
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     assert result.result == "wait", result.reason
     panel = next(ch for ch in result.checks if ch.name == "panel")
     assert panel.ok and panel.details["decisions"][0]["kind"] == "concern"
     assert panel.details["cost_usd"] == 0.42
     # the PR summary opens with the decision
-    body = desc.build_description(root, "0001", "b")
+    body = desc.build_description(root, "0001", "design")
     first = body.splitlines()[0]
     assert first.startswith("**Decisions taken for you (1)**")
-    assert f"1. (b) [concern] {OPEN_CONCERN} → **{DECISION['decision']}**" in body
-    assert "evidence/decisions-b.md, line 1" in body
+    assert f"1. (design) [concern] {OPEN_CONCERN} → **{DECISION['decision']}**" in body
+    assert "evidence/decisions-design.md, line 1" in body
     # the owner overturns it with a review comment
     rc, out = run(
-        ["overturn", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1",
+        ["overturn", "--root", str(root), "--id", "0001", "--phase", "design", "--item", "1",
          "--comment", "use half-even after all"]
     )  # fmt: skip
     assert rc == 0 and out["entry"]["overturned"]["comment"] == "use half-even after all"
-    body = desc.build_description(root, "0001", "b")
+    body = desc.build_description(root, "0001", "design")
     assert body.splitlines()[0].startswith("**Decisions taken for you (0)** — 1 overturned")
 
 
@@ -325,37 +334,37 @@ def test_record_needs_both_blind_verdicts_and_takes_them_from_their_files(design
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
-    verdict(root, "b")
-    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
-    decision = ledger.member_path(change, "b", 1, "conciliator")
+    verdict(root, "design")
+    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "design"])[0] == 0
+    decision = ledger.member_path(change, "design", 1, "conciliator")
     decision.parent.mkdir(parents=True, exist_ok=True)
     restated = dict(DECISION, reviewer="the conciliator's words", advocate="also its words")
     decision.write_text(json.dumps(restated), encoding="utf-8")
-    argv = ["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"]
-    reviewer = ledger.member_path(change, "b", 1, "reviewer")
-    advocate = ledger.member_path(change, "b", 1, "advocate")
+    argv = ["record", "--root", str(root), "--id", "0001", "--phase", "design", "--item", "1"]
+    reviewer = ledger.member_path(change, "design", 1, "reviewer")
+    advocate = ledger.member_path(change, "design", 1, "advocate")
     cases = (
-        ({}, "b-1-reviewer.md is missing"),
-        ({"reviewer": "## Verdict\nkeep half-up\n"}, "b-1-advocate.md is missing"),
+        ({}, "design-1-reviewer.md is missing"),
+        ({"reviewer": "## Verdict\nkeep half-up\n"}, "design-1-advocate.md is missing"),
         (
             {"reviewer": "## Verdict\nkeep half-up\n", "advocate": "## Verdict\n\n## Why\nx\n"},
-            "b-1-advocate.md has no '## Verdict' clause",
+            "design-1-advocate.md has no '## Verdict' clause",
         ),
     )
     for files, message in cases:
         for path in (reviewer, advocate):
             path.unlink(missing_ok=True)
         for member, text in files.items():
-            ledger.member_path(change, "b", 1, member).write_text(text, encoding="utf-8")
+            ledger.member_path(change, "design", 1, member).write_text(text, encoding="utf-8")
         proc = subprocess.run(
             [sys.executable, str(PANEL_CLI), *argv], capture_output=True, text=True,
             encoding="utf-8",
         )  # fmt: skip
         assert proc.returncode == panel_cli.EXIT_USAGE, proc.stdout
         assert message in proc.stderr, proc.stderr
-        assert ledger.load_ledger(change, "b") == []
+        assert ledger.load_ledger(change, "design") == []
         assert status_mod.read_status(change).panel_calls == 0  # nothing was spent
-    write_members(change, "b", 1)
+    write_members(change, "design", 1)
     rc, out = run(argv)
     assert rc == 0, out
     entry = out["entry"]
@@ -371,26 +380,29 @@ def test_record_needs_the_advocate_model_record_and_the_advocate_model(design_pr
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
-    verdict(root, "b")
-    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
-    write_members(change, "b", 1)
-    decision = ledger.member_path(change, "b", 1, "conciliator")
+    verdict(root, "design")
+    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "design"])[0] == 0
+    write_members(change, "design", 1)
+    decision = ledger.member_path(change, "design", 1, "conciliator")
     decision.write_text(json.dumps(DECISION), encoding="utf-8")
-    argv = ["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"]
-    record = ledger.advocate_model_path(change, "b", 1)
+    argv = ["record", "--root", str(root), "--id", "0001", "--phase", "design", "--item", "1"]
+    record = ledger.advocate_model_path(change, "design", 1)
     cases = (
-        (lambda: record.unlink(), "b-1-advocate.model.json is missing"),
+        (lambda: record.unlink(), "design-1-advocate.model.json is missing"),
         (
-            lambda: write_advocate_model(change, "b", 1, agent="general-purpose"),
+            lambda: write_advocate_model(change, "design", 1, agent="general-purpose"),
             "written by general-purpose, not by the devil's advocate",
         ),
-        (lambda: write_advocate_model(change, "b", 1, agent=None), "written by the main session"),
         (
-            lambda: write_advocate_model(change, "b", 1, models=()),
+            lambda: write_advocate_model(change, "design", 1, agent=None),
+            "written by the main session",
+        ),
+        (
+            lambda: write_advocate_model(change, "design", 1, models=()),
             "the advocate's model is unproved",
         ),
         (
-            lambda: write_advocate_model(change, "b", 1, models=("claude-sonnet-5",)),
+            lambda: write_advocate_model(change, "design", 1, models=("claude-sonnet-5",)),
             f"ran on claude-sonnet-5, not on {ADVOCATE_MODEL}",
         ),
     )
@@ -402,8 +414,8 @@ def test_record_needs_the_advocate_model_record_and_the_advocate_model(design_pr
         )  # fmt: skip
         assert proc.returncode == panel_cli.EXIT_USAGE, (message, proc.stdout)
         assert message in proc.stderr, proc.stderr
-        assert ledger.load_ledger(change, "b") == []
-    write_advocate_model(change, "b", 1)
+        assert ledger.load_ledger(change, "design") == []
+    write_advocate_model(change, "design", 1)
     rc, out = run(argv)
     assert rc == 0 and out["recorded"], out
     # the record is committed with the decision, so the gate can re-check it in HEAD
@@ -421,13 +433,13 @@ def test_gate_parks_a_panel_decision_whose_advocate_ran_on_another_model(project
     head = git(root, "rev-parse", "HEAD").strip()
     reasons = ["blast radius larger than the plan says"]
     item = {"n": 1, "kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
-    write_members(change, "c", 1)
-    write_advocate_model(change, "c", 1, models=("claude-sonnet-5",))
-    _ledger_entry(change, "c", item, "continue: the plan lists every file", head)
+    write_members(change, "build", 1)
+    write_advocate_model(change, "build", 1, models=("claude-sonnet-5",))
+    _ledger_entry(change, "build", item, "continue: the plan lists every file", head)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build(0001): panel decision 1")
-    verdict(root, "c", verdict="escalate")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build", verdict="escalate")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
     assert f"ran on claude-sonnet-5, not on {ADVOCATE_MODEL}" in panel.reason
 
@@ -437,31 +449,35 @@ def test_record_stops_at_the_iteration_cap_and_validates_the_decision(design_pro
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
-    verdict(root, "b")
-    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
-    write_members(change, "b", 1)
-    decision = ledger.member_path(change, "b", 1, "conciliator")
+    verdict(root, "design")
+    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "design"])[0] == 0
+    write_members(change, "design", 1)
+    decision = ledger.member_path(change, "design", 1, "conciliator")
     decision.parent.mkdir(parents=True, exist_ok=True)
     decision.write_text(json.dumps({"decision": "x"}), encoding="utf-8")
-    rc, _out = run(["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"])
+    rc, _out = run(
+        ["record", "--root", str(root), "--id", "0001", "--phase", "design", "--item", "1"]
+    )
     assert rc == panel_cli.EXIT_USAGE  # no reviewer clause, no rationale
     decision.write_text(json.dumps(DECISION), encoding="utf-8")
     st = status_mod.read_status(change)
     st.iterations = 3  # the fix-iteration cap: not the panel's
     st.panel_calls = 4  # gate.max_panel_calls (default 4)
     status_mod.write_status(change, st)
-    rc, out = run(["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"])
+    rc, out = run(
+        ["record", "--root", str(root), "--id", "0001", "--phase", "design", "--item", "1"]
+    )
     assert rc == panel_cli.EXIT_CAP and out["reason"] == "panel-call cap reached"
     assert out["panel_calls"] == 4 and out["cap"] == 4
-    assert ledger.load_ledger(change, "b") == [] and art.open_concerns(
+    assert ledger.load_ledger(change, "design") == [] and art.open_concerns(
         (change / "spec.md").read_text(encoding="utf-8")
     )
-    rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])
+    rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", "design"])
     assert rc == 0 and out["panel_calls"] == {"used": 4, "cap": 4, "left": 0}
     # the gate parks on the count once it is past the cap, and says how to lift it
     st.panel_calls = 5
     status_mod.write_status(change, st)
-    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    result = gate.run_gate(root, "0001", "design", dry_run=True)
     limits_check = next(ch for ch in result.checks if ch.name == "limits")
     assert (
         not limits_check.ok
@@ -471,11 +487,13 @@ def test_record_stops_at_the_iteration_cap_and_validates_the_decision(design_pro
     # --no-commit leaves the commit to the caller
     st.panel_calls = 0
     status_mod.write_status(change, st)
-    rc, out = run(["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1",
-                   "--no-commit"])  # fmt: skip
+    rc, out = run(["record", "--root", str(root), "--id", "0001", "--phase", "design",
+                   "--item", "1", "--no-commit"])  # fmt: skip
     assert rc == 0 and out["commit"] is None
     assert git(root, "status", "--porcelain", "--", "changes").strip() != ""
-    rc, _out = run(["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "9"])
+    rc, _out = run(
+        ["record", "--root", str(root), "--id", "0001", "--phase", "design", "--item", "9"]
+    )
     assert rc == panel_cli.EXIT_USAGE
 
 
@@ -484,22 +502,22 @@ def test_prompts_name_the_item_the_files_and_the_blindness(design_project):  # n
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
-    verdict(root, "b")
-    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
+    verdict(root, "design")
+    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "design"])[0] == 0
     texts = {}
     for member in ledger.MEMBERS:
         proc = subprocess.run(
             [sys.executable, str(PANEL_CLI), "prompt", "--root", str(root), "--id", "0001",
-             "--phase", "b", "--item", "1", "--member", member],
+             "--phase", "design", "--item", "1", "--member", member],
             capture_output=True, text=True, encoding="utf-8",
         )  # fmt: skip
         assert proc.returncode == 0, proc.stderr
         texts[member] = proc.stdout
         assert OPEN_CONCERN in proc.stdout and "Kind: concern" in proc.stdout
         assert "{" not in proc.stdout.replace("{{", "").replace("}}", "").split("```")[0]
-    assert "evidence/panel/b-1-reviewer.md" in texts["reviewer"].replace("\\", "/")
-    assert "must not look for" in texts["advocate"] and "b-1-advocate.md" in texts["advocate"]
-    assert "b-1-conciliator.json" in texts["conciliator"]
+    assert "evidence/panel/design-1-reviewer.md" in texts["reviewer"].replace("\\", "/")
+    assert "must not look for" in texts["advocate"] and "design-1-advocate.md" in texts["advocate"]
+    assert "design-1-conciliator.json" in texts["conciliator"]
     assert '"rationale"' in texts["conciliator"] and "at most five lines" in texts["conciliator"]
     assert prompts.APPLY_HINT["concern"].split(" ")[0] in texts["conciliator"]
     # the advocate runs on another model: the design command says which key names it
@@ -511,7 +529,7 @@ BRIEF_FIXTURES = ROOT / "tests" / "fixtures" / "panel-briefs"
 
 
 @pytest.mark.parametrize("member", ledger.MEMBERS)
-@pytest.mark.parametrize(("phase", "kind"), [("b", "concern"), ("f", "unlisted-kind")])
+@pytest.mark.parametrize(("phase", "kind"), [("design", "concern"), ("maintain", "unlisted-kind")])
 def test_each_brief_renders_exactly_the_recorded_text(tmp_path, member, phase, kind):
     """The rendered brief, byte for byte, against the text recorded from the briefs as Python
     constants: moving them into files must not change what a member reads. The unlisted kind
@@ -540,26 +558,28 @@ def _ledger_entry(change: Path, phase: str, item: dict, decision: str, head: str
 
 def test_gate_accepts_an_escalate_the_panel_decided_to_continue(project):  # noqa: F811
     root, change = project
-    verdict(root, "c", verdict="escalate")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build", verdict="escalate")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "adversarial_review" in _names(result, False)
     head = git(root, "rev-parse", "HEAD").strip()
     reasons = ["blast radius larger than the plan says"]
     item = {"kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
-    _ledger_entry(change, "c", item, "continue: the plan lists every file the diff touches", head)
+    _ledger_entry(
+        change, "build", item, "continue: the plan lists every file the diff touches", head
+    )
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build(0001): panel decisions")
-    verdict(root, "c", verdict="escalate")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build", verdict="escalate")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "continue", result.reason
     adv = next(ch for ch in result.checks if ch.name == "adversarial_review")
     assert adv.ok and "the review panel decided to continue" in adv.reason
     assert adv.details["settled_by_panel"] == 1
     # a decision that does not say continue keeps the park, and says what the panel said
-    entries = ledger.load_ledger(change, "c")
+    entries = ledger.load_ledger(change, "build")
     entries[0]["decision"] = "park: the owner must see the blast radius"
-    ledger.save_ledger(change, "c", entries)
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    ledger.save_ledger(change, "build", entries)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     adv = next(ch for ch in result.failed if ch.name == "adversarial_review")
     assert "the panel decided: park" in adv.need
 
@@ -581,7 +601,7 @@ def _gate_with_escalate_decision(root: Path, change: Path, phase: str, decision:
     return gate.run_gate(root, "0001", phase, dry_run=True)
 
 
-@pytest.mark.parametrize(("phase", "fixture"), [("b", "design_project"), ("c", "project")])
+@pytest.mark.parametrize(("phase", "fixture"), [("design", "design_project"), ("build", "project")])
 def test_a_panel_park_on_an_escalate_parks_the_gate_fail_closed(request, phase, fixture):
     """NOTES 45 gap 1 (choice 205): PR #186's body listed "-> **park**" under ``b-ready``:
     ``check_panel`` did not read the decision. A standing ``escalate`` decision that does not
@@ -608,14 +628,14 @@ def test_a_panel_park_on_an_escalate_parks_the_gate_fail_closed(request, phase, 
     for decision in ("continue", "Continue: add the test first", "  CONTINUE "):
         result = _gate_with_escalate_decision(root, change, phase, decision)
         assert "panel" in _names(result, True), (decision, result.reason)
-        assert result.result == ("wait" if phase == "b" else "continue"), result.reason
+        assert result.result == ("wait" if phase == "design" else "continue"), result.reason
     overturned = {"comment": "go on: the blast radius is fine", "at": "2026-10-18T10:00:00Z"}
     result = _gate_with_escalate_decision(root, change, phase, "park", overturned=overturned)
     assert "panel" in _names(result, True), result.reason
-    assert result.result == ("wait" if phase == "b" else "continue"), result.reason
+    assert result.result == ("wait" if phase == "design" else "continue"), result.reason
 
 
-@pytest.mark.parametrize(("phase", "fixture"), [("b", "design_project"), ("c", "project")])
+@pytest.mark.parametrize(("phase", "fixture"), [("design", "design_project"), ("build", "project")])
 def test_the_owner_s_overturn_of_a_panel_park_lets_the_phase_continue(request, phase, fixture):
     """The way out of a gap-1 park (1.0.8): the owner overturns the panel's ``park`` with a
     review comment (``sdlc-fix.md``: the owner's word replaces the panel's), so the reviewer
@@ -626,7 +646,7 @@ def test_the_owner_s_overturn_of_a_panel_park_lets_the_phase_continue(request, p
     _gate_with_escalate_decision(root, change, phase, "park", overturned=overturned)
     verdict(root, phase, verdict="escalate")  # the same reasons as the overturned line
     result = gate.run_gate(root, "0001", phase, dry_run=True)
-    assert result.result == ("wait" if phase == "b" else "continue"), result.reason
+    assert result.result == ("wait" if phase == "design" else "continue"), result.reason
     adv = next(ch for ch in result.checks if ch.name == "adversarial_review")
     assert adv.ok and adv.details["settled_by_owner"] == 1
     assert gate.settled_by_panel(result.checks)  # not the reviewer's own continue: no fast lane
@@ -662,36 +682,36 @@ def test_gate_parks_a_panel_decision_whose_blind_verdict_is_not_committed(projec
     head = git(root, "rev-parse", "HEAD").strip()
     reasons = ["blast radius larger than the plan says"]
     item = {"n": 1, "kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
-    write_members(change, "c", 1)
-    entry = _ledger_entry(change, "c", item, "continue: the plan lists every file", head)
+    write_members(change, "build", 1)
+    entry = _ledger_entry(change, "build", item, "continue: the plan lists every file", head)
     assert entry["item_n"] == 1
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build(0001): panel decision 1")
-    verdict(root, "c", verdict="escalate")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build", verdict="escalate")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "panel" in _names(result, True), result.reason
     # the advocate's file removed from HEAD: the decision rests on one verdict only
-    git(root, "rm", "-q", str(ledger.member_path(change, "c", 1, "advocate")))
+    git(root, "rm", "-q", str(ledger.member_path(change, "build", 1, "advocate")))
     git(root, "commit", "-q", "-m", "build(0001): the advocate's file removed")
-    verdict(root, "c", verdict="escalate")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build", verdict="escalate")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
-    assert "c-1-advocate.md is missing" in panel.reason
+    assert "build-1-advocate.md is missing" in panel.reason
     # an empty verdict is no verdict either
-    write(ledger.member_path(change, "c", 1, "advocate"), "## Verdict\n\n## Why\nx\n")
+    write(ledger.member_path(change, "build", 1, "advocate"), "## Verdict\n\n## Why\nx\n")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build(0001): an empty advocate verdict")
-    verdict(root, "c", verdict="escalate")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build", verdict="escalate")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
-    assert "c-1-advocate.md has no '## Verdict' clause" in panel.reason
+    assert "build-1-advocate.md has no '## Verdict' clause" in panel.reason
 
 
 def test_gate_accepts_an_important_finding_the_panel_settled(project):  # noqa: F811
     from review import findings as fmod
 
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     head = git(root, "rev-parse", "HEAD").strip()
     finding = {
         "pass": "compliance",
@@ -703,15 +723,17 @@ def test_gate_accepts_an_important_finding_the_panel_settled(project):  # noqa: 
     }
     data = {"schema_version": 1, "head": head, "findings": [finding], "tally": {}}
     write(change / art.EVIDENCE_DIR / art.REVIEW_FINDINGS, json.dumps(data))
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "findings" in _names(result, False)
     item = {
         "kind": "finding",
         "key": ledger.finding_key(fmod.signature(finding)),
         "item": finding["summary"],
     }
-    _ledger_entry(change, "c", item, "settled: the CLAUDE.md line is proposed in the PR body", head)
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    _ledger_entry(
+        change, "build", item, "settled: the CLAUDE.md line is proposed in the PR body", head
+    )
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "findings" not in _names(result, False), result.reason
     check = next(ch for ch in result.checks if ch.name == "findings")
     assert "settled by the review panel" in check.reason
@@ -721,45 +743,48 @@ def test_gate_accepts_an_important_finding_the_panel_settled(project):  # noqa: 
 def test_gate_at_c_reads_the_closings_of_b_from_the_b_ledger(project):  # noqa: F811
     """The first build under deferred review (sample change 0002, 2026-09-24) parked at gate
     (c) on "closes a concern by the panel with no ledger line": the concern was closed at (b)
-    and its line is in decisions-b.json, which the check did not read at (c)."""
+    and its line is in decisions-design.json, which the check did not read at (c)."""
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     head = git(root, "rev-parse", "HEAD").strip()
     item = {"kind": "concern", "key": ledger.concern_key("Rounding half-even vs half-up"),
             "item": "Rounding half-even vs half-up"}  # fmt: skip
-    _ledger_entry(change, "b", item, "keep half-up", head)
+    _ledger_entry(change, "design", item, "keep half-up", head)
     spec = (change / "spec.md").read_text(encoding="utf-8")
     closed = "- [x] Rounding half-even vs half-up: decided half-up via round() (documented)."
     # the 0.2.14 form (no number): matched on the decision text of the (b) ledger
     write(change / "spec.md", spec.replace(closed, "- decided (by panel): keep half-up — Rounding"))
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.checks if ch.name == "panel")
     assert panel.ok, panel.reason
     # the numbered form: matched by the line number in the (b) ledger, wording free
     write(change / "spec.md", spec.replace(closed, "- decided (by panel #1): keep `half-up`."))
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.checks if ch.name == "panel")
     assert panel.ok, panel.reason
     # a number no ledger of b/c carries still parks
     write(change / "spec.md", spec.replace(closed, "- decided (by panel #5): keep half-up."))
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
-    assert "panel decision 5, which no ledger of phases b/c carries" in panel.reason
-    assert ledger.phases_up_to("e") == ("b", "c", "d", "e") and ledger.phases_up_to("a") == ()
+    assert "panel decision 5, which no ledger of phases design/build carries" in panel.reason
+    assert (
+        ledger.phases_up_to("deploy") == ("design", "build", "test", "deploy")
+        and ledger.phases_up_to("intent") == ()
+    )
 
 
 def test_gate_panel_check_refuses_a_bad_ledger_and_an_unrecorded_closing(project):  # noqa: F811
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     head = git(root, "rev-parse", "HEAD").strip()
     entry = _ledger_entry(
-        change, "c", {"kind": "risk_list", "key": "x", "item": "auth"}, "accept it", head
+        change, "build", {"kind": "risk_list", "key": "x", "item": "auth"}, "accept it", head
     )
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
     assert "never goes to the panel" in panel.reason or "not one of the panel's" in panel.reason
     assert entry["n"] == 1
-    ledger.save_ledger(change, "c", [])
+    ledger.save_ledger(change, "build", [])
     spec = (
         (change / "spec.md")
         .read_text(encoding="utf-8")
@@ -769,26 +794,26 @@ def test_gate_panel_check_refuses_a_bad_ledger_and_an_unrecorded_closing(project
         )
     )
     write(change / "spec.md", spec)
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
     assert "no ledger line" in panel.reason
     spec = spec.replace(
         "- decided (by panel): keep half-up", "- decided (by panel #4): keep half-up"
     )
     write(change / "spec.md", spec)
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
-    assert "panel decision 4, which no ledger of phases b/c carries" in panel.reason
+    assert "panel decision 4, which no ledger of phases design/build carries" in panel.reason
 
 
 def test_gate_panel_check_consumes_each_ledger_line_once(project):  # noqa: F811
     """One ledger line closed several concerns: ``#n`` was matched against a set, never
     consumed (1.0.0 readiness review, group A)."""
     root, change = project
-    verdict(root, "c")
+    verdict(root, "build")
     head = git(root, "rev-parse", "HEAD").strip()
     item = {"kind": "concern", "key": ledger.concern_key("Rounding"), "item": "Rounding"}
-    _ledger_entry(change, "c", item, "keep half-up", head)
+    _ledger_entry(change, "build", item, "keep half-up", head)
     spec = (
         (change / "spec.md")
         .read_text(encoding="utf-8")
@@ -799,7 +824,7 @@ def test_gate_panel_check_consumes_each_ledger_line_once(project):  # noqa: F811
         )
     )
     write(change / "spec.md", spec)
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
     assert "closes a second concern by panel decision 1; one ledger line closes one" in panel.reason
     assert "Overflow on very large inputs" in panel.reason
@@ -808,7 +833,7 @@ def test_gate_panel_check_consumes_each_ledger_line_once(project):  # noqa: F811
         change / "spec.md",
         spec.replace("\n- decided (by panel #1): keep half-up — Overflow on very large inputs", ""),
     )
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "panel" not in _names(result, False), result.reason
 
 
@@ -849,14 +874,56 @@ def test_model_matches_aliases_and_full_ids():
 def test_the_pr_summary_names_the_models_and_the_warning(tmp_path):
     change = tmp_path / "changes" / "0001-x"
     item = {"n": 1, "kind": "escalate", "key": "escalate:x", "item": "escalate"}
-    entry = ledger.new_entry(1, "c", item, DECISION, "abc", None)
-    ledger.save_ledger(change, "c", [entry])
-    assert not any("Models of" in line for line in desc.decisions_block(change, "c"))
+    entry = ledger.new_entry(1, "build", item, DECISION, "abc", None)
+    ledger.save_ledger(change, "build", [entry])
+    assert not any("Models of" in line for line in desc.decisions_block(change, "build"))
     both = {"modelUsage": {"claude-opus-5": OPUS_USE, "claude-sonnet-5": SONNET_USE}}
-    ledger.save_models(change, "c", ledger.check_models(1, both, "opus", "opus"))
-    lines = desc.decisions_block(change, "c")
+    ledger.save_models(change, "build", ledger.check_models(1, both, "opus", "opus"))
+    lines = desc.decisions_block(change, "build")
     assert (
-        "Models of the (c) run: claude-opus-5, claude-sonnet-5 (the advocate's model: opus)."
+        "Models of the (build) run: claude-opus-5, claude-sonnet-5 (the advocate's model: opus)."
         in lines
     )
     assert any(line.startswith("⚠ the session itself runs on opus") for line in lines)
+
+
+# --- R45: the phase names, and the letters an older plugin wrote --------------------------------
+def test_the_ledger_reads_an_older_plugin_s_letter_files_and_writes_the_name(tmp_path):
+    """A change in flight when its project moved to the phase names: ``decisions-b.json`` and
+    ``panel/b-1-reviewer.md`` are read; the next save writes ``decisions-design.json``."""
+    change = tmp_path / "changes" / "0001-x"
+    evidence = change / "evidence"
+    (evidence / "panel").mkdir(parents=True)
+    item = {"kind": "concern", "key": "concern:x", "item": "x", "n": 1}
+    old = ledger.new_entry(1, "b", item, DECISION, "abc123", None)
+    assert old["phase"] == "design"  # a letter is written as its name
+    (evidence / "decisions-b.json").write_text(
+        json.dumps({"schema_version": 1, "phase": "b", "decisions": [{**old, "phase": "b"}]}),
+        encoding="utf-8",
+    )
+    assert ledger.ledger_path(change, "design").name == "decisions-b.json"
+    assert ledger.ledger_path(change, "design", write=True).name == "decisions-design.json"
+    assert [e["n"] for e in ledger.load_ledger(change, "design")] == [1]
+    assert [ph for ph, _e in ledger.load_ledgers(change, "c")] == ["design", "build"]
+    (evidence / "panel" / "b-1-reviewer.md").write_text("## Verdict\nkeep it\n", encoding="utf-8")
+    assert ledger.member_path(change, "design", 1, "reviewer").name == "b-1-reviewer.md"
+    assert ledger.member_path(change, "design", 1, "advocate").name == "design-1-advocate.md"
+    verdicts, missing = ledger.read_member_verdicts(change, "design", 1)
+    assert verdicts == {"reviewer": "keep it"} and len(missing) == 1
+    entries = ledger.load_ledger(change, "design")
+    ledger.save_ledger(change, "b", entries)
+    saved = json.loads((evidence / "decisions-design.json").read_text(encoding="utf-8"))
+    assert saved["phase"] == "design" and len(saved["decisions"]) == 1
+    assert (evidence / "decisions-design.md").is_file()
+    assert ledger.ledger_path(change, "b").name == "decisions-design.json"  # the name wins now
+    assert ledger.phases_up_to("c") == ("design", "build")
+
+
+def test_the_panel_cli_accepts_a_letter_for_one_release(tmp_path):
+    (tmp_path / "sdlc.yaml").write_text("adversarial_model: claude-opus-5-5\n", encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(PANEL_CLI), "models", "--root", str(tmp_path), "--phase", "b"],
+        capture_output=True, text=True, encoding="utf-8",
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout)["phase"] == "design"

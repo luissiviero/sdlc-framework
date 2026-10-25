@@ -1012,7 +1012,7 @@ def test_production_gate_reads_the_recorded_build_pr_of_the_checked_out_change(t
     status.write_status(change_dir, st)
     gh = FakeGitHub(actor="luissiviero", number=9)
     d = _gate(root, env, "twine upload dist/*", github=gh, git=gate_git(branch="sdlc/0002/c"))
-    assert d.block and "#9 (head sdlc/0001/c) is not the build PR sdlc/0002/c" in d.reason
+    assert d.block and "#9 (head sdlc/0001/c) is not the build PR sdlc/0002/build" in d.reason
     assert ("pr_by_number", "o/r", 9) in gh.calls and ("pr_by_number", "o/r", 7) not in gh.calls
     # no record at all: the branch name alone finds nothing
     st.build_pr = None
@@ -1731,15 +1731,17 @@ def test_panel_blind_records_the_model_that_wrote_the_advocate_verdict(
         "transcript_path": str(transcript),
     }
     assert not _blind(root, payload).block  # recording never refuses the verdict
-    record = json.loads((panel / "b-1-advocate.model.json").read_text(encoding="utf-8"))
+    # R45: the record carries the phase's name, beside a verdict an older plugin named by letter
+    record = json.loads((panel / "design-1-advocate.model.json").read_text(encoding="utf-8"))
     assert record["models"] == ["claude-opus-5"] and record["reason"] is None
+    assert record["phase"] == "design"
     assert record["agent_type"] == "sdlc:adversarial-reviewer" and record["n"] == 1
 
 
 def test_panel_blind_says_why_a_model_could_not_be_recorded(panel_project, tmp_path):
     root, panel = panel_project
     target = str(panel / "b-1-advocate.md")
-    path = panel / "b-1-advocate.model.json"
+    path = panel / "design-1-advocate.model.json"
     # the main session wrote the advocate's file itself: no sub-agent, no advocate
     assert not _blind(root, pre("Write", file_path=target, content="x")).block
     record = json.loads(path.read_text(encoding="utf-8"))
@@ -1780,16 +1782,17 @@ def test_panel_blind_records_the_reviewer_s_model_head_and_time(panel_project, t
         "transcript_path": str(transcript),
     }  # fmt: skip
     assert not _blind(root, payload).block  # recording never refuses the verdict
-    record = json.loads((evidence / "adversarial-review-c.model.json").read_text("utf-8"))
+    # R45: a verdict file named by the letter gets the record under the phase's name
+    record = json.loads((evidence / "adversarial-review-build.model.json").read_text("utf-8"))
     assert record["models"] == ["claude-opus-5-5"] and record["reason"] is None
     assert record["head"] == "abc1234def" and record["member"] == "reviewer"
-    assert record["agent_type"] == "sdlc:adversarial-reviewer" and record["phase"] == "c"
+    assert record["agent_type"] == "sdlc:adversarial-reviewer" and record["phase"] == "build"
     assert record["at"].endswith("Z")  # the hook's clock, not the reviewer's
     # the main session writing the verdict itself is recorded as such; a write that is not
     # whole JSON records no head
     assert not _blind(root, pre("Write", file_path=str(evidence / "adversarial-review-c.json"),
                                 content="not json")).block  # fmt: skip
-    record = json.loads((evidence / "adversarial-review-c.model.json").read_text("utf-8"))
+    record = json.loads((evidence / "adversarial-review-build.model.json").read_text("utf-8"))
     assert record["head"] is None and "main session" in record["reason"]
 
 
@@ -2516,3 +2519,43 @@ def test_hooks_json_registers_shell_guard_on_bash_and_powershell():
     assert "if" not in handler
     assert handler["args"][1:] == ["--plugin-root", "${CLAUDE_PLUGIN_ROOT}"]
     assert handler["timeout"] == 30
+
+
+# --- R45: the phase names, and the letters an older plugin wrote --------------------------------
+def test_plan_sync_and_the_test_file_lock_read_the_name_and_the_letter_branch():
+    exempt = list(plan_sync.DEFAULT_EXEMPT)
+    for branch in ("sdlc/0001/build", "sdlc/0001/c"):
+        assert plan_sync.check(branch, ["src/a.py"], exempt).block, branch
+    for branch in ("sdlc/0001/design", "sdlc/0001/intent", "main"):
+        assert not plan_sync.check(branch, ["src/a.py"], exempt).block, branch
+    for branch in ("sdlc/0001/build", "sdlc/0001/test", "sdlc/0001/deploy", "sdlc/0001/c"):
+        assert test_file_lock.locked_change_id(branch) == "0001", branch
+    for branch in ("sdlc/0001/design", "sdlc/0001/b", "sdlc/0001/maintain"):
+        assert test_file_lock.locked_change_id(branch) is None, branch
+
+
+def test_test_file_lock_denies_a_test_edit_on_the_named_build_branch(tmp_path):
+    root, _ = _lock_project(tmp_path, branch="sdlc/0001/build")
+    proc = _run_lock_hook(
+        root,
+        pre("Edit", file_path=str(root / "tests" / "test_calc.py"), old_string="x", new_string="y"),
+    )
+    assert proc.returncode == 2, proc.stderr
+
+
+def test_panel_blind_reads_both_forms_of_the_phase_in_a_file_name(panel_project):
+    """A named verdict in its window is refused as a lettered one is; a counterpart in the
+    other form (the reviewer's ``b-1-reviewer.md`` from an older plugin, the advocate's
+    ``design-1-advocate.md`` from this one) closes the window."""
+    root, panel = panel_project
+    (panel / "b-1-reviewer.md").unlink()
+    (panel / "design-1-reviewer.md").write_text("## Verdict\nkeep half-up\n", encoding="utf-8")
+    decision = _blind(root, pre("Read", file_path=str(panel / "design-1-reviewer.md")))
+    assert decision.block and "item 1 of the design phase" in decision.reason
+    assert [(p, n, m) for _f, p, n, m, _c in panel_blind.one_sided(str(root))] == [
+        ("design", "1", "reviewer")
+    ]
+    (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    assert not _blind(root, pre("Read", file_path=str(panel / "design-1-reviewer.md"))).block
+    assert not _blind(root, pre("Read", file_path=str(panel / "b-1-advocate.md"))).block
+    assert panel_blind.one_sided(str(root)) == []

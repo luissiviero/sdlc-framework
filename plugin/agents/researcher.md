@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Explores the codebase and reports back without flooding the main context. Use proactively whenever a phase needs to know how something works today before changing it — the read-only planning run of phase (b), the start of phase (c), a diagnosis in phase (f).
+description: Explores the codebase and reports back without flooding the main context. Use proactively whenever a phase needs to know how something works today before changing it — the read-only planning run of the design phase, the start of the build phase, a diagnosis in the maintain phase.
 tools: Read, Grep, Glob
 model: inherit
 maxTurns: 40

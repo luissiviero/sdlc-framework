@@ -103,7 +103,7 @@ def test_review_md_structure():
 def test_review_md_skip_marker_rule_present():
     text = (TEMPLATE / "REVIEW.md").read_text(encoding="utf-8")
     assert "ratchets" in text and "details.skip_markers" in text
-    assert "gate (e)" in text
+    assert "the deploy gate" in text and "evidence/gate-deploy.json" in text
     # rules added by the guide (step 26 notes; step 7 (iv); step 25; step 12)
     flat = " ".join(text.split())
     assert ".claude/**" in flat and "must not modify test files" in flat and "plan.md" in flat
@@ -169,7 +169,7 @@ def test_sdlc_yaml_carries_the_drive_keys_and_their_comments():
         "synthetic data, never personal data",
         "process.env.SDLC_PROOF_DIR",
         "%SDLC_PROOF_DIR% by hand under cmd.exe",
-        "at most 600 at (c) and (d)",
+        "at most 600 at build and test",
         "the test job is 190 + 10 <= 200 and the build and fix jobs 250 + 10 <= 260",
         "never below 30",
         "(at most ten a run)",
@@ -205,7 +205,7 @@ def test_sdlc_yaml_carries_decision_32_s_defaults():
             assert minutes == ["260"], name  # 180 + 5 of grace, the commands step and the judge
         elif name in ("sdlc-design.yml", "sdlc-test.yml"):
             assert minutes == ["200"], name
-        elif name == "sdlc-deploy.yml":  # the review pass, (e) and one re-check (R25, R51)
+        elif name == "sdlc-deploy.yml":  # the review pass, deploy and one re-check (R25, R51)
             assert minutes == ["355"], name
 
 
@@ -243,7 +243,9 @@ def test_changes_readme_names_the_conventions():
     text = (TEMPLATE / "changes" / "README.md").read_text(encoding="utf-8")
     for token in [
         "status.yaml",
-        "sdlc/<id>/a",
+        "sdlc/<id>/intent",
+        "sdlc/<id>/design",
+        "sdlc/<id>/build",
         "sdlc:needs-human",
         "intent.md",
         "plan.md",
@@ -275,7 +277,7 @@ RUNBOOK_WORKFLOW = "sdlc-runbook.yml"  # the owner's Go on a runbook (plugin 0.2
 EVALS_WORKFLOW = "sdlc-evals.yml"  # build guide step 35 (plugin 0.2.19)
 SCAN_WORKFLOW = "sdlc-scan.yml"  # build guide step 38, decision 16 (plugin 0.2.19)
 COMMENT_WORKFLOW = "sdlc-comment.yml"  # the owner's @claude comment (decision 34, R17)
-MERGE_WORKFLOW = "sdlc-merge.yml"  # gate (e) is the owner's approval (decision 36, R22)
+MERGE_WORKFLOW = "sdlc-merge.yml"  # the deploy gate is the owner's approval (decision 36, R22)
 ALL_WORKFLOWS = (
     *PHASE_WORKFLOWS,
     "sdlc-digest.yml",
@@ -615,6 +617,27 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
     assert "environment" not in job
 
 
+WORKFLOW_PHASE_NAMES = {
+    "sdlc-design.yml": "design",
+    "sdlc-build.yml": "build",
+    "sdlc-test.yml": "test",
+    "sdlc-deploy.yml": "deploy",
+    "sdlc-detect.yml": "maintain",
+}
+
+
+@pytest.mark.parametrize("name", sorted(WORKFLOW_PHASE_NAMES))
+def test_phase_workflows_pass_the_phase_name_never_its_letter(name):
+    """R45 (decision 39, rows 1-6 and 59): every --phase a workflow passes is the phase's name,
+    and no display name, step name or comment carries a phase letter; the runs that are not
+    phases (the review pass, the R18 triage step) keep their own names."""
+    text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
+    phases = set(re.findall(r"--phase (\S+)", text)) - {"review", "triage"}
+    assert phases == {WORKFLOW_PHASE_NAMES[name]}, phases
+    assert not re.search(r"\((?:a|b|c|d|e|f)\)", text.replace("HANDOFF 4(a)", ""))
+    assert not re.search(r"sdlc:[a-f]-ready", text)
+
+
 @pytest.mark.parametrize("name", ("sdlc-design.yml", "sdlc-build.yml"))
 def test_merge_fired_jobs_find_the_change_instead_of_filtering_the_head(name):
     """HANDOFF 4(a): any merge into the default branch starts the job; the find step names
@@ -814,7 +837,8 @@ def test_abandon_workflow_records_the_end_state_without_a_model():
         assert step["if"] == "steps.find.outputs.change_id != ''"
     assert job["steps"][-1]["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
     text = (WORKFLOW_DIR / ABANDON_WORKFLOW).read_text(encoding="utf-8")
-    for absent in ("claude-code@", "runner_setup.py", "setup-node", "secrets.", "--phase b"):
+    absent_tokens = ("claude-code@", "runner_setup.py", "setup-node", "secrets.", "--phase b")
+    for absent in (*absent_tokens, "--phase design"):
         assert absent not in text, absent
     # its own concurrency group (live run of 2026-09-25): a close also fires the merge-guarded
     # design and build workflows, and on a shared group GitHub displaced the pending abandon run
@@ -860,11 +884,11 @@ def test_detect_workflow_is_scheduled_deterministic_and_runs_the_diagnosis_only_
     )
     log = steps["Keep the detection log"]
     assert log["uses"].startswith("actions/upload-artifact@") and log["if"] == "${{ always() }}"
-    phase = steps["Run phase (f)"]
+    phase = steps["Run the maintain phase"]
     assert phase["if"] == "steps.detect.outputs.change_id != ''"
     # the dispatcher is its own step after the model's (decisions 11 and 14): no model
     # credential there, and the runbook secrets never where the model runs
-    finish = steps["Dispatch the route, run gate (f) and open the intent PR"]
+    finish = steps["Dispatch the route, run gate (maintain) and open the intent PR"]
     assert finish["if"] == "steps.detect.outputs.change_id != ''"
     assert finish["run"] == (
         'python framework/plugin/detect/cli.py finish --root . --id "$CHANGE_ID" --repo "$REPO" '
@@ -876,7 +900,8 @@ def test_detect_workflow_is_scheduled_deterministic_and_runs_the_diagnosis_only_
     for step in (detect, finish):
         assert step["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
     assert '--force-tier "$FORCE_TIER"' in detect["run"]
-    assert "--phase f" in phase["run"] and "HEAD_REF: ${{ steps.detect.outputs.head_ref }}" in (
+    assert "--phase maintain" in phase["run"]
+    assert "HEAD_REF: ${{ steps.detect.outputs.head_ref }}" in (
         (WORKFLOW_DIR / DETECT_WORKFLOW).read_text(encoding="utf-8")
     )
     installs = (
@@ -963,7 +988,8 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
         "${{ github.event.label.name == 'sdlc:go' && "
         "!endsWith(github.event.sender.login, '[bot]') && "
         "startsWith(github.event.pull_request.head.ref, 'sdlc/') && "
-        "endsWith(github.event.pull_request.head.ref, '/a') }}"
+        "(endsWith(github.event.pull_request.head.ref, '/a') || "
+        "endsWith(github.event.pull_request.head.ref, '/intent')) }}"
     )
     # the project checkout follows the App's mint step and its time (R49)
     assert job["steps"][2]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
@@ -1008,7 +1034,8 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
     assert data["concurrency"]["group"] == "sdlc-runbook-${{ github.event.pull_request.head.ref }}"
     assert data["concurrency"]["cancel-in-progress"] is False
     text = (WORKFLOW_DIR / RUNBOOK_WORKFLOW).read_text(encoding="utf-8")
-    for absent in ("claude-code@", "runner_setup.py", "setup-node", "--phase f "):
+    absent_tokens = ("claude-code@", "runner_setup.py", "setup-node", "--phase f ")
+    for absent in (*absent_tokens, "--phase maintain"):
         assert absent not in text, absent
     # no model credential: the one secret is the App's key, read by the mint step (R49)
     assert re.findall(r"secrets\.\w+", text) == ["secrets.SDLC_APP_PRIVATE_KEY"]
@@ -1092,6 +1119,15 @@ def test_the_merge_workflow_rings_posts_and_merges_with_the_merge_app_only():
     assert "!(startsWith(github.event.pull_request.head.ref, 'sdlc/')" in (
         _condition(MERGE_WORKFLOW, "not-a-build-pr")
     )
+    # R45 (decision 39, rows 44, N3, N4): the build branch is sdlc/<id>/build, and for one
+    # release a change in flight on sdlc/<id>/c is still a build PR in both guards
+    both = (
+        "(endsWith(github.event.pull_request.head.ref, '/c') || "
+        "endsWith(github.event.pull_request.head.ref, '/build'))"
+    )
+    assert both in doorbell and both in _condition(MERGE_WORKFLOW, "not-a-build-pr")
+    assert data["name"] == "SDLC merge (deploy)"
+    assert "Check gate (deploy) and merge" in [s.get("name") for s in jobs["merge"]["steps"]]
     merge = jobs["merge"]
     assert merge["environment"] == "sdlc-merge"
     # a dispatch on the default branch only, beside the environment's branch rule (the R22

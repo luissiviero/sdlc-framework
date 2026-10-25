@@ -278,7 +278,7 @@ def test_five_bullets_at_phase_a_describe_the_intent(project):
         change / "intent.md",
         INTENT.replace("## Open questions\nnone", "## Open questions\n- Which rounding mode?\n"),
     )
-    body = desc.build_description(root, "0001", "a")  # no gate file exists at (a)
+    body = desc.build_description(root, "0001", "intent")  # no gate file exists at (a)
     lines = bullets(body)
     assert len(lines) == 5
     heads = [line.split("**")[1] for line in lines]
@@ -296,33 +296,33 @@ def test_five_bullets_at_phase_a_describe_the_intent(project):
     assert lines[1].endswith("idea route, feature change")
     assert lines[2].endswith("sample_pkg users.")
     assert lines[3].endswith("1 open: Which rounding mode?")
-    assert lines[4].endswith("read, correct via review comments, merge = approve (gate (a))")
+    assert lines[4].endswith("read, correct via review comments, merge = approve (gate (intent))")
     # phase (a) links only the artifact that exists, and carries the counters
     assert f"Links: changes/{CHANGE_DIR_NAME}/intent.md" in body
-    assert "spec.md" not in body and "gate-a.json" not in body
+    assert "spec.md" not in body and "gate-intent.json" not in body
     assert "Counters: no fix round so far · fix iterations: 0" in body
 
 
 def test_intent_pr_names_the_fast_lane_unless_opened_as_a_draft(project):
-    """Choice 239 (R54): the sample's #77 read "merge = approve (gate (a))" while its opening
+    """Choice 239 (R54): the sample's #77 read "merge = approve (gate (intent))" while its opening
     had already accepted the intent and started the design (NOTES §50). A PR not opened as a
-    draft names both cases; a draft, which never takes the fast lane, keeps gate (a) alone."""
+    draft names both cases; a draft, which never takes the fast lane, keeps gate (intent) alone."""
     root, _change = project
-    needs = bullets(desc.build_description(root, "0001", "a"))[4]
+    needs = bullets(desc.build_description(root, "0001", "intent"))[4]
     assert (
         "opened from your own account, not as a draft, and changing nothing outside its change "
         "folder, nothing"
     ) in needs
     assert "the fast lane, decision 30" in needs and "`sdlc:superseded`" in needs
-    assert needs.endswith("or changing other files: " + desc.GATE_CHECKLIST["a"])
-    draft = bullets(desc.build_description(root, "0001", "a", draft=True))[4]
-    assert draft == "- **What needs you**: " + desc.GATE_CHECKLIST["a"]
+    assert needs.endswith("or changing other files: " + desc.GATE_CHECKLIST["intent"])
+    draft = bullets(desc.build_description(root, "0001", "intent", draft=True))[4]
+    assert draft == "- **What needs you**: " + desc.GATE_CHECKLIST["intent"]
 
 
 def test_upsert_passes_the_draft_flag_to_the_description(project, capsys):
     root, _change = project
     for flags, fast in (([], True), (["--draft"], False)):
-        argv = ["upsert", "--root", str(root), "--id", "0001", "--phase", "a", "--dry-run"]
+        argv = ["upsert", "--root", str(root), "--id", "0001", "--phase", "intent", "--dry-run"]
         assert pr_cli.main(argv + flags) == 0
         body = json.loads(capsys.readouterr().out)["body"]
         assert ("the fast lane, decision 30" in body) is fast
@@ -334,7 +334,7 @@ def test_the_install_pr_of_change_0000_keeps_gate_a(project):
     root, change = project
     st = status_mod.read_status(change)
     needs = desc._intent_bullets(INTENT, status_mod.Status(**{**st.__dict__, "id": "0000"}))[4]
-    assert needs == "- **What needs you**: " + desc.GATE_CHECKLIST["a"]
+    assert needs == "- **What needs you**: " + desc.GATE_CHECKLIST["intent"]
 
 
 def test_upsert_on_an_open_pr_reads_its_live_draft_state(project, capsys, monkeypatch):
@@ -355,7 +355,9 @@ def test_upsert_on_an_open_pr_reads_its_live_draft_state(project, capsys, monkey
         monkeypatch.setattr(github, "ensure_label", lambda *a, **k: {"ok": True})
         monkeypatch.setattr(github, "set_labels", lambda *a, **k: {"ok": True})
         monkeypatch.setattr(pr_cli, "not_build_check", lambda *a, **k: {"ok": True})
-        assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "a"]) == 0
+        assert (
+            pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "intent"]) == 0
+        )
         capsys.readouterr()
         assert ("the fast lane, decision 30" in bodies[-1]) is fast
 
@@ -393,7 +395,7 @@ ASSUMED = """
 def test_quick_intent_at_a_says_what_is_left_to_the_design(project):
     root, change = project
     write(change / "intent.md", QUICK_INTENT)
-    lines = bullets(desc.build_description(root, "0001", "a"))
+    lines = bullets(desc.build_description(root, "0001", "intent"))
     assert len(lines) == 5
     assert lines[0].endswith("Callers compute percentages by hand and get rounding wrong.")
     assert lines[1].endswith("idea route, feature change, quick intent")
@@ -406,41 +408,41 @@ def test_what_i_assumed_heads_the_design_and_build_prs(project):
     root, change = project
     write(change / "intent.md", QUICK_INTENT)
     write(change / "spec.md", SPEC_HEADER + ASSUMED + SPEC_BODY)
-    gate_json(change, "b", "wait", c.ready_label("b"))
-    gate_json(change, "e", "wait", c.ready_label("e"))
-    for phase in ("b", "e"):
+    gate_json(change, "design", "wait", c.ready_label("design"))
+    gate_json(change, "deploy", "wait", c.ready_label("deploy"))
+    for phase in ("design", "deploy"):
         body = desc.build_description(root, "0001", phase)
         assert len(bullets(body)) == 5
         assert body.startswith("**What I assumed (2)** from your one-paragraph intent (R54)")
         # choice 263: a fix round edits the spec at (b) only; from (c) on it changes the code
         head = body.splitlines()[0]
-        assert ("corrects it (/sdlc-fix)" in head) is (phase == "b")
-        assert ("the line itself stays as the design wrote it" in head) is (phase == "e")
+        assert ("corrects it (/sdlc-fix)" in head) is (phase == "design")
+        assert ("the line itself stays as the design wrote it" in head) is (phase == "deploy")
         assert (
             "1. Proposed outcome: `sample_pkg.percent(part, whole)` returns a rounded "
             "percentage.\n2. Change type: feature.\n"
         ) in body
     # the marker is not a release note: with no notes file, the section is left out
-    assert "## Release note" not in desc.build_description(root, "0001", "e")
+    assert "## Release note" not in desc.build_description(root, "0001", "deploy")
     write(change / "intent.md", INTENT)
     write(change / "spec.md", SPEC)
-    assert "What I assumed" not in desc.build_description(root, "0001", "b")
+    assert "What I assumed" not in desc.build_description(root, "0001", "design")
 
 
 def test_phase_a_open_questions_none_and_default_label(project):
     root, change = project
-    assert bullets(desc.build_description(root, "0001", "a"))[3].endswith("none")
+    assert bullets(desc.build_description(root, "0001", "intent"))[3].endswith("none")
     st = status_mod.read_status(change)
-    assert desc.pr_title(st, "a") == "intent(0001): Percent helper"
-    assert desc.head_branch("0001", "a") == "sdlc/0001/a"
-    assert desc.label_for(None, "a") == "sdlc:a-ready"  # no gate file at (a)
-    assert desc.label_for(None, "c") is None
+    assert desc.pr_title(st, "intent") == "intent(0001): Percent helper"
+    assert desc.head_branch("0001", "intent") == "sdlc/0001/intent"
+    assert desc.label_for(None, "intent") == "sdlc:intent-ready"  # no gate file at (a)
+    assert desc.label_for(None, "build") is None
 
 
 def test_five_bullets_in_order_at_phase_b(project):
     root, change = project
-    gate_json(change, "b", "wait", c.ready_label("b"))
-    body = desc.build_description(root, "0001", "b")
+    gate_json(change, "design", "wait", c.ready_label("design"))
+    body = desc.build_description(root, "0001", "design")
     lines = bullets(body)
     assert len(lines) == 5
     heads = [line.split("**")[1] for line in lines]
@@ -466,8 +468,8 @@ def test_five_bullets_in_order_at_phase_b(project):
 
 def test_phase_c_evidence_missing_and_not_yet_reviewed(project):
     root, change = project
-    gate_json(change, "c", "continue", None)
-    body = desc.build_description(root, "0001", "c")
+    gate_json(change, "build", "continue", None)
+    body = desc.build_description(root, "0001", "build")
     lines = bullets(body)
     assert len(lines) == 5
     assert "test missing, build missing, lint missing" in lines[1]
@@ -483,20 +485,20 @@ def test_phase_d_green_logs_and_nothing_to_do_at_d(project):
     write(change / art.EVIDENCE_DIR / art.EVIDENCE_VERIFIER, "# Verifier\nRan it.\n")
     write(change / art.EVIDENCE_DIR / desc.SCREENSHOT_DIR / "home.png", "png")
     findings(change, important=0, nits=2)
-    gate_json(change, "d", "continue", None)
-    lines = bullets(desc.build_description(root, "0001", "d"))
+    gate_json(change, "test", "continue", None)
+    lines = bullets(desc.build_description(root, "0001", "test"))
     assert "test green, build green, lint green" in lines[1]
     assert "verifier.md present" in lines[1] and "1 screenshot(s)" in lines[1]
     assert "0 Important, 2 nits (nit 0; nit 1)" in lines[2]
-    # decision 37 (1.0.21): gate (d) is the confidence gate's; no approval label is asked for
+    # decision 37 (1.0.21): gate (test) is the confidence gate's; no approval label is asked for
     assert desc.NOTHING_NEEDED in lines[4] and "approved" not in lines[4]
 
 
 def test_red_log_is_red(project):
     root, change = project
     logs(change, exit_code=1)
-    gate_json(change, "d", "park", c.NEEDS_HUMAN_LABEL)
-    lines = bullets(desc.build_description(root, "0001", "d"))
+    gate_json(change, "test", "park", c.NEEDS_HUMAN_LABEL)
+    lines = bullets(desc.build_description(root, "0001", "test"))
     assert "test red, build red, lint red" in lines[1]
 
 
@@ -509,11 +511,11 @@ def _with_drive(root: Path) -> None:
 
 
 def _proof_record(change: Path, details: dict) -> None:
-    record = gate_json(change, "d", "continue", None)
+    record = gate_json(change, "test", "continue", None)
     record["checks"].append(
         {"name": "proof", "ok": True, "reason": "x", "need": "", "details": details}
     )
-    write(change / art.EVIDENCE_DIR / "gate-d.json", json.dumps(record))
+    write(change / art.EVIDENCE_DIR / "gate-test.json", json.dumps(record))
 
 
 def _manifest(change: Path, commit: str) -> None:
@@ -540,7 +542,7 @@ def test_the_evidence_line_shows_the_drive_and_its_proof(project):
     head = git(root, "rev-parse", "HEAD").strip()
     _manifest(change, head)
     _proof_record(change, {"items": STATE_ITEMS})
-    status = desc.evidence_status(change, "d", root)
+    status = desc.evidence_status(change, "test", root)
     assert "test green, build green, lint green, drive missing" in status
     assert "proof 2, state items 1 of 2 matching" in status
     assert "0 screenshot(s)" in status  # the .gitkeep is not a screenshot
@@ -548,19 +550,19 @@ def test_the_evidence_line_shows_the_drive_and_its_proof(project):
     # the runner's record commit moves the change folder only: still the final head
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "run(c): gate record")
-    assert "not the final head" not in desc.evidence_status(change, "d", root)
+    assert "not the final head" not in desc.evidence_status(change, "test", root)
     # a source file changed after the manifest: the proof is of an older tree
     write(root / "sample_pkg" / "later.py", "x = 1\n")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "a later source commit")
-    assert f"proof of {head[:7]}, not the final head" in desc.evidence_status(change, "d", root)
+    assert f"proof of {head[:7]}, not the final head" in desc.evidence_status(change, "test", root)
     # the check run's summary carries the same line
-    summary = pr_cli.check_run_result(root, change, "d")["summary"]
+    summary = pr_cli.check_run_result(root, change, "test")["summary"]
     assert "drive missing" in summary and "proof 2, state items 1 of 2 matching" in summary
     # by hand: not checked; and the bullet passes the root
     _proof_record(change, {"checked": False})
-    assert "proof not checked" in desc.evidence_status(change, "d", root)
-    lines = bullets(desc.build_description(root, "0001", "d"))
+    assert "proof not checked" in desc.evidence_status(change, "test", root)
+    lines = bullets(desc.build_description(root, "0001", "test"))
     assert "drive missing" in lines[1] and "proof not checked" in lines[1]
 
 
@@ -568,7 +570,7 @@ def test_no_drive_keeps_the_evidence_line_of_today(project):
     root, change = project
     logs(change, exit_code=0)
     _proof_record(change, {})
-    status = desc.evidence_status(change, "d", root)
+    status = desc.evidence_status(change, "test", root)
     assert "drive" not in status and "proof" not in status
     assert status.startswith("test green, build green, lint green, verifier.md missing")
 
@@ -585,16 +587,16 @@ def test_phase_e_release_note_and_counters(project):
     logs(change)
     write(change / art.EVIDENCE_DIR / art.EVIDENCE_VERIFIER, "# Verifier\n")
     findings(change, important=0, nits=1)
-    gate_json(change, "e", "wait", c.ready_label("e"))
-    body = desc.build_description(root, "0001", "e")
+    gate_json(change, "deploy", "wait", c.ready_label("deploy"))
+    body = desc.build_description(root, "0001", "deploy")
     assert len(bullets(body)) == 5
-    assert "an approving review = approve (gate (e), decision 36)" in body
+    assert "an approving review = approve (gate (deploy), decision 36)" in body
     assert "## Release note" in body
     assert "returns a rounded percentage" in body.split("## Release note")[1]
     assert "Counters: no fix round so far · fix iterations: 0" in body
     # relative repository paths when the fixture has no GitHub remote
     assert f"changes/{CHANGE_DIR_NAME}/intent.md" in body
-    assert f"changes/{CHANGE_DIR_NAME}/evidence/gate-e.json" in body
+    assert f"changes/{CHANGE_DIR_NAME}/evidence/gate-deploy.json" in body
     # waiting for the owner's approval; the merge App merges, then the release workflow runs
     # (build guide step 32; decision 36)
     assert "Waiting for your approval: the merge App then merges this PR" in body
@@ -620,9 +622,9 @@ def test_phase_e_release_note_quotes_the_release_notes_file(project):
     without its H1 title; the intent's proposed outcome is only the fallback."""
     root, change = project
     logs(change)
-    gate_json(change, "e", "wait", c.ready_label("e"))
+    gate_json(change, "deploy", "wait", c.ready_label("deploy"))
     write(change / art.EVIDENCE_DIR / desc.RELEASE_NOTES, RELEASE_NOTES)
-    body = desc.build_description(root, "0001", "e")
+    body = desc.build_description(root, "0001", "deploy")
     assert len(bullets(body)) == 5
     note = body.split("## Release note\n")[1]
     assert note.startswith("\n### What changed\n\n- `sample_pkg.percent(part, whole)` added.\n")
@@ -635,9 +637,9 @@ def test_phase_e_release_note_quotes_the_release_notes_file(project):
 
 def test_phase_e_release_note_falls_back_to_the_intent_outcome(project):
     root, change = project
-    gate_json(change, "e", "wait", c.ready_label("e"))
+    gate_json(change, "deploy", "wait", c.ready_label("deploy"))
     write(change / art.EVIDENCE_DIR / desc.RELEASE_NOTES, "# Release notes — change 0001\n\n")
-    body = desc.build_description(root, "0001", "e")
+    body = desc.build_description(root, "0001", "deploy")
     assert "returns a rounded percentage" in body.split("## Release note")[1]
 
 
@@ -647,7 +649,7 @@ def test_phase_f_proposed_outcome_keeps_a_sentence_wrapped_over_lines(project):
     root, change = project
     st = status_mod.read_status(change)
     st.entry_route, st.change_type = "incident", "fix"
-    st.set_phase("f")
+    st.set_phase("maintain")
     status_mod.write_status(change, st)
     outcome = (
         "No design-phase code change is required: the commit that caused the breach was already\n"
@@ -661,7 +663,7 @@ def test_phase_f_proposed_outcome_keeps_a_sentence_wrapped_over_lines(project):
             outcome,
         ),
     )
-    lines = bullets(desc.build_description(root, "0001", "f"))
+    lines = bullets(desc.build_description(root, "0001", "maintain"))
     assert lines[1] == (
         "- **Proposed outcome**: Percent helper: No design-phase code change is required: the "
         "commit that caused the breach was already reverted on `main`, before this diagnosis "
@@ -708,10 +710,10 @@ def test_release_approval_line_only_when_production_is_declared(project):
     line sits below the five bullets (not a sixth bullet) and only at phase (e)."""
     root, change = project
     logs(change)
-    gate_json(change, "e", "wait", c.ready_label("e"))
-    gate_json(change, "d", "continue", None)
+    gate_json(change, "deploy", "wait", c.ready_label("deploy"))
+    gate_json(change, "test", "continue", None)
     _declare_production(root, "true")
-    body = desc.build_description(root, "0001", "e")
+    body = desc.build_description(root, "0001", "deploy")
     assert len(bullets(body)) == 5
     line = (
         "Release approval: apply `sdlc:release-approved` on this PR with your approval; the "
@@ -722,9 +724,9 @@ def test_release_approval_line_only_when_production_is_declared(project):
     assert body.index(line) > body.index(bullets(body)[-1]) and body.index(line) < body.index(
         "Links:"
     )
-    assert line not in desc.build_description(root, "0001", "d")
+    assert line not in desc.build_description(root, "0001", "test")
     _declare_production(root, "false")
-    assert line not in desc.build_description(root, "0001", "e")
+    assert line not in desc.build_description(root, "0001", "deploy")
 
 
 def test_counters_after_a_fix_round(project):
@@ -732,19 +734,19 @@ def test_counters_after_a_fix_round(project):
     st = status_mod.read_status(change)
     st.iterations = 3
     status_mod.write_status(change, st)
-    gate_json(change, "c", "continue", None)
-    body = desc.build_description(root, "0001", "c")
+    gate_json(change, "build", "continue", None)
+    body = desc.build_description(root, "0001", "build")
     assert "Counters: first-pass: no · fix iterations: 3" in body
 
 
 def test_claude_md_proposals_block(project):
     root, change = project
-    gate_json(change, "e", "wait", c.ready_label("e"))
+    gate_json(change, "deploy", "wait", c.ready_label("deploy"))
     write(
         change / art.EVIDENCE_DIR / desc.CLAUDE_MD_PROPOSALS,
         "- Always pass encoding='utf-8' to open().\n",
     )
-    body = desc.build_description(root, "0001", "e")
+    body = desc.build_description(root, "0001", "deploy")
     assert "## Proposed CLAUDE.md lines" in body
     assert "> - Always pass encoding='utf-8' to open()." in body
 
@@ -752,11 +754,11 @@ def test_claude_md_proposals_block(project):
 # --- parked --------------------------------------------------------------------------------
 def test_parked_body_carries_what_i_need_from_you(project):
     root, change = project
-    data = gate_json(change, "c", "park", c.NEEDS_HUMAN_LABEL)
-    body = desc.build_description(root, "0001", "c")
+    data = gate_json(change, "build", "park", c.NEEDS_HUMAN_LABEL)
+    body = desc.build_description(root, "0001", "build")
     lines = bullets(body)
     assert len(lines) == 5
-    assert lines[4].endswith('parked at gate (c) - see "What I need from you" below')
+    assert lines[4].endswith('parked at gate (build) - see "What I need from you" below')
     assert data["what_i_need"].strip() in body
     assert "the diff touches the risk-list item 'auth'" in body
     assert "what I need: Accept the risk with state/cli.py accept-risk" in body
@@ -764,18 +766,18 @@ def test_parked_body_carries_what_i_need_from_you(project):
 
 def test_parked_block_rebuilt_when_the_json_does_not_carry_it(project):
     root, change = project
-    gate_json(change, "c", "park", c.NEEDS_HUMAN_LABEL, with_block=False)
-    body = desc.build_description(root, "0001", "c")
+    gate_json(change, "build", "park", c.NEEDS_HUMAN_LABEL, with_block=False)
+    body = desc.build_description(root, "0001", "build")
     assert "## What I need from you" in body
-    assert "Gate (c) parked change 0001 (percent-helper)" in body
+    assert "Gate (build) parked change 0001 (percent-helper)" in body
     assert "- **risk_list**: the diff touches the risk-list item 'auth'" in body
     assert "re-run the gate" in body
 
 
 def test_plan_conformance_reports_the_failed_check(project):
     root, change = project
-    gate_json(change, "c", "park", c.NEEDS_HUMAN_LABEL, plan_sync_ok=False)
-    lines = bullets(desc.build_description(root, "0001", "c"))
+    gate_json(change, "build", "park", c.NEEDS_HUMAN_LABEL, plan_sync_ok=False)
+    lines = bullets(desc.build_description(root, "0001", "build"))
     assert "2 changed file(s) not listed in plan.md" in lines[3]
 
 
@@ -790,7 +792,7 @@ def test_conformance_line_declared_drops_clause_present():
             {"name": "ratchets", "ok": True, "details": {"declared": ["tests/x.py (plan)"]}},
         ]
     }
-    line = desc._conformance_line(gate_json_data, "", "c")
+    line = desc._conformance_line(gate_json_data, "", "build")
     assert line == "diff matches plan.md; declared drops: tests/x.py (plan)"
 
 
@@ -805,14 +807,14 @@ def test_conformance_line_declared_drops_clause_absent():
             {"name": "ratchets", "ok": True, "details": {"declared": []}},
         ]
     }
-    assert desc._conformance_line(gate_json_data, "", "c") == "diff matches plan.md"
+    assert desc._conformance_line(gate_json_data, "", "build") == "diff matches plan.md"
     # unchanged at (a)/(b): no `ratchets` check runs there
-    assert desc._conformance_line(None, "", "b").startswith("open questions from intent")
+    assert desc._conformance_line(None, "", "design").startswith("open questions from intent")
 
 
 def test_no_gate_file_means_nothing_needed(project):
     root, _change = project
-    lines = bullets(desc.build_description(root, "0001", "c"))
+    lines = bullets(desc.build_description(root, "0001", "build"))
     assert "nothing: the run continues to the next phase" in lines[4]
 
 
@@ -820,20 +822,43 @@ def test_no_gate_file_means_nothing_needed(project):
 def test_pr_title_and_label_and_branch(project):
     _root, change = project
     st = status_mod.read_status(change)
-    assert desc.pr_title(st, "b") == "design(0001): Percent helper"
-    for phase in ("c", "d", "e"):
+    assert desc.pr_title(st, "design") == "design(0001): Percent helper"
+    for phase in ("build", "test", "deploy"):
         assert desc.pr_title(st, phase) == "build(0001): Percent helper"
-    assert desc.head_branch("0001", "b") == "sdlc/0001/b"
-    assert all(desc.head_branch("0001", p) == "sdlc/0001/c" for p in ("c", "d", "e"))
-    assert desc.label_for({"label": "sdlc:e-ready"}) == "sdlc:e-ready"
+    assert desc.head_branch("0001", "design") == "sdlc/0001/design"
+    assert all(
+        desc.head_branch("0001", p) == "sdlc/0001/build" for p in ("build", "test", "deploy")
+    )
+    assert desc.label_for({"label": "sdlc:deploy-ready"}) == "sdlc:deploy-ready"
     assert desc.label_for({"label": None}) is None
     assert desc.label_for(None) is None
+
+
+def test_a_change_in_flight_keeps_its_letter_branch_gate_file_and_phase(project, capsys):
+    """R45, for one release: ``--phase c`` is read as build, the gate record an older plugin
+    wrote (``gate-c.json``) is read and linked, and the build PR's head is the letter branch
+    ``sdlc/0001/c`` while only that one exists."""
+    root, change = project
+    gate_json(change, "build", "park", c.NEEDS_HUMAN_LABEL)
+    evidence = change / art.EVIDENCE_DIR
+    (evidence / "gate-build.json").rename(evidence / "gate-c.json")
+    assert desc.load_gate(change, "c")["result"] == "park"
+    assert desc.load_gate(change, "build")["result"] == "park"
+    assert desc.head_branch("0001", "deploy", root) == "sdlc/0001/build"
+    git(root, "branch", "sdlc/0001/c")
+    assert desc.head_branch("0001", "deploy", root) == "sdlc/0001/c"
+    body = desc.build_description(root, "0001", "c")
+    assert "evidence/gate-c.json" in body and "parked at gate (build)" in body
+    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "c",
+                        "--dry-run"]) == 0  # fmt: skip
+    out = json.loads(capsys.readouterr().out)
+    assert out["head"] == "sdlc/0001/c" and out["title"] == "build(0001): Percent helper"
 
 
 # --- the CLI ------------------------------------------------------------------------------
 def test_upsert_dry_run_contacts_nothing(project, capsys, monkeypatch):
     root, change = project
-    gate_json(change, "c", "park", c.NEEDS_HUMAN_LABEL)
+    gate_json(change, "build", "park", c.NEEDS_HUMAN_LABEL)
 
     def boom(*_args, **_kwargs):  # any HTTP call in a dry run is a bug
         raise AssertionError("--dry-run must contact nothing")
@@ -841,12 +866,12 @@ def test_upsert_dry_run_contacts_nothing(project, capsys, monkeypatch):
     monkeypatch.setattr(github, "_request", boom)
     monkeypatch.setattr(github.shutil, "which", lambda *_a, **_k: None)
     code = pr_cli.main(
-        ["upsert", "--root", str(root), "--id", "0001", "--phase", "c", "--draft", "--dry-run"]
+        ["upsert", "--root", str(root), "--id", "0001", "--phase", "build", "--draft", "--dry-run"]
     )
     assert code == 0
     out = json.loads(capsys.readouterr().out)
     assert out["route"] == "dry-run"
-    assert out["head"] == "sdlc/0001/c" and out["base"] == "main"
+    assert out["head"] == "sdlc/0001/build" and out["base"] == "main"
     assert out["label"] == c.NEEDS_HUMAN_LABEL
     assert out["title"] == "build(0001): Percent helper"
     assert out["created"] is False and out["number"] is None
@@ -855,8 +880,10 @@ def test_upsert_dry_run_contacts_nothing(project, capsys, monkeypatch):
 
 def test_description_subcommand_prints_the_body_only(project, capsys):
     root, change = project
-    gate_json(change, "b", "wait", c.ready_label("b"))
-    assert pr_cli.main(["description", "--root", str(root), "--id", "0001", "--phase", "b"]) == 0
+    gate_json(change, "design", "wait", c.ready_label("design"))
+    assert (
+        pr_cli.main(["description", "--root", str(root), "--id", "0001", "--phase", "design"]) == 0
+    )
     out = capsys.readouterr().out
     assert out.startswith("- **What changed and why**:")
     assert len(bullets(out)) == 5
@@ -864,28 +891,30 @@ def test_description_subcommand_prints_the_body_only(project, capsys):
 
 def test_cli_unknown_change_exits_2(project, capsys):
     root, _change = project
-    assert pr_cli.main(["description", "--root", str(root), "--id", "0099", "--phase", "c"]) == 2
+    assert (
+        pr_cli.main(["description", "--root", str(root), "--id", "0099", "--phase", "build"]) == 2
+    )
     assert "no change folder" in capsys.readouterr().err
 
 
 def test_check_run_without_remote_reports_route_none(project, capsys):
     root, change = project
-    gate_json(change, "d", "park", c.NEEDS_HUMAN_LABEL)
+    gate_json(change, "test", "park", c.NEEDS_HUMAN_LABEL)
     logs(change, exit_code=1)
-    assert pr_cli.main(["check-run", "--root", str(root), "--id", "0001", "--phase", "d"]) == 0
+    assert pr_cli.main(["check-run", "--root", str(root), "--id", "0001", "--phase", "test"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["route"] == "none" and out["conclusion"] == "failure"
-    assert out["name"] == "sdlc/d" and "test red" in out["summary"]
+    assert out["name"] == "sdlc/test" and "test red" in out["summary"]
 
 
 def test_upsert_records_the_build_pr_in_status_yaml(project, capsys, recorder):
     """The readiness review's group B (0.2.27): the release approval reads the change's own
     build PR by the number ``status.yaml`` records; ``upsert`` writes it when the PR of the
-    work branch ``sdlc/<id>/c`` is opened or found, and leaves the other phases' PRs alone."""
+    work branch ``sdlc/<id>/build`` is opened or found, and leaves the other phases' PRs alone."""
     root, change = project
     calls, answers = recorder
-    gate_json(change, "b", "pass", c.ready_label("b"))
-    gate_json(change, "c", "park", c.NEEDS_HUMAN_LABEL)
+    gate_json(change, "design", "pass", c.ready_label("design"))
+    gate_json(change, "build", "park", c.NEEDS_HUMAN_LABEL)
     answers[("GET", "/pulls?")] = {"status": 200, "data": [], "error": ""}
     answers[("POST", "/repos/o/r/pulls")] = {
         "status": 201,
@@ -893,12 +922,13 @@ def test_upsert_records_the_build_pr_in_status_yaml(project, capsys, recorder):
         "error": "",
     }
     git(root, "remote", "add", "origin", "https://github.com/o/r.git")
-    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "b"]) == 0
+    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "design"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["number"] == 41 and "build_pr_recorded" not in out
     assert status_mod.read_status(change).build_pr is None  # the spec PR is not the build PR
     assert (
-        pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "c", "--draft"]) == 0
+        pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "build", "--draft"])
+        == 0
     )
     out = json.loads(capsys.readouterr().out)
     assert out["number"] == 41 and out["build_pr_recorded"] == 41
@@ -911,7 +941,7 @@ def test_upsert_records_the_build_pr_in_status_yaml(project, capsys, recorder):
         "error": "",
     }
     answers[("PATCH", "/repos/o/r/pulls/41")] = {"status": 200, "data": {"number": 41}, "error": ""}
-    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "d"]) == 0
+    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "test"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["number"] == 41 and "build_pr_recorded" not in out
 
@@ -922,8 +952,8 @@ def test_upsert_posts_not_a_build_pr_on_every_other_pull_request(project, capsys
     PR" on the head of every pull request that is not the build PR."""
     root, change = project
     calls, answers = recorder
-    gate_json(change, "b", "wait", c.ready_label("b"))
-    gate_json(change, "c", "park", c.NEEDS_HUMAN_LABEL)
+    gate_json(change, "design", "wait", c.ready_label("design"))
+    gate_json(change, "build", "park", c.NEEDS_HUMAN_LABEL)
     answers[("GET", "/pulls?")] = {"status": 200, "data": [], "error": ""}
     answers[("POST", "/repos/o/r/pulls")] = {
         "status": 201,
@@ -932,12 +962,12 @@ def test_upsert_posts_not_a_build_pr_on_every_other_pull_request(project, capsys
     }
     answers[("GET", "/repos/o/r/pulls/41")] = {
         "status": 200,
-        "data": {"number": 41, "head": {"ref": "sdlc/0001/b", "sha": "f" * 40}},
+        "data": {"number": 41, "head": {"ref": "sdlc/0001/design", "sha": "f" * 40}},
         "error": "",
     }
     answers[("POST", "/check-runs")] = {"status": 201, "data": {"id": 3}, "error": ""}
     git(root, "remote", "add", "origin", "https://github.com/o/r.git")
-    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "b"]) == 0
+    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "design"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["review_check"]["ok"] is True
     [posted] = [p for m, u, p in calls if m == "POST" and u.endswith("/check-runs")]
@@ -946,7 +976,8 @@ def test_upsert_posts_not_a_build_pr_on_every_other_pull_request(project, capsys
     # the build PR gets none: its sdlc/review is the review pass's, posted by the (e) run
     calls.clear()
     assert (
-        pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "c", "--draft"]) == 0
+        pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "build", "--draft"])
+        == 0
     )
     out = json.loads(capsys.readouterr().out)
     assert "review_check" not in out
@@ -956,7 +987,7 @@ def test_upsert_posts_not_a_build_pr_on_every_other_pull_request(project, capsys
 def test_upsert_posts_the_phase_check_run_when_asked(project, capsys, monkeypatch):
     """The phase (d) runbook line is one command: upsert --check-run (build guide step 28)."""
     root, change = project
-    gate_json(change, "d", "park", c.NEEDS_HUMAN_LABEL)
+    gate_json(change, "test", "park", c.NEEDS_HUMAN_LABEL)
     logs(change, exit_code=1)
     monkeypatch.setattr(github.shutil, "which", lambda *_a, **_k: None)
     posted: list[tuple] = []
@@ -966,21 +997,21 @@ def test_upsert_posts_the_phase_check_run_when_asked(project, capsys, monkeypatc
         lambda *args: posted.append(args) or {"route": "api", "ok": True, "id": 3},
     )
     code = pr_cli.main(
-        ["upsert", "--root", str(root), "--id", "0001", "--phase", "d", "--check-run"]
+        ["upsert", "--root", str(root), "--id", "0001", "--phase", "test", "--check-run"]
     )
     assert code == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["check_run"]["name"] == "sdlc/d"
+    assert out["check_run"]["name"] == "sdlc/test"
     assert out["check_run"]["conclusion"] == "failure"  # the gate parked
     assert "test red" in out["check_run"]["summary"]  # the evidence summary, as posted
     # without the flag nothing is posted at all
-    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "d"]) == 0
+    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "test"]) == 0
     assert "check_run" not in json.loads(capsys.readouterr().out)
 
 
 def test_label_colours(project):
     assert pr_cli.label_color(c.NEEDS_HUMAN_LABEL) == "D93F0B"
-    assert pr_cli.label_color(c.ready_label("c")) == "0E8A16"
+    assert pr_cli.label_color(c.ready_label("build")) == "0E8A16"
 
 
 # --- the GitHub client ------------------------------------------------------------------------
@@ -1043,25 +1074,29 @@ def recorder(monkeypatch, no_gh):
 
 
 def test_no_route_without_gh_or_token_returns_the_compare_url(no_gh):
-    result = github.create_pr("o/r", "main", "sdlc/0001/c", "t", "b", draft=True)
+    result = github.create_pr("o/r", "main", "sdlc/0001/build", "t", "b", draft=True)
     assert result["route"] == "none"
-    assert result["compare_url"] == "https://github.com/o/r/compare/main...sdlc/0001/c?expand=1"
-    assert github.find_open_pr("o/r", "sdlc/0001/c")["number"] is None
-    assert github.create_check_run("o/r", "abc", "sdlc/d", "success", "t", "s")["route"] == "none"
+    assert result["compare_url"] == "https://github.com/o/r/compare/main...sdlc/0001/build?expand=1"
+    assert github.find_open_pr("o/r", "sdlc/0001/build")["number"] is None
+    assert (
+        github.create_check_run("o/r", "abc", "sdlc/test", "success", "t", "s")["route"] == "none"
+    )
 
 
 def test_find_open_pr_and_create_and_update(recorder):
     calls, answers = recorder
     answers[("GET", "/pulls?")] = {"status": 200, "data": [], "error": ""}
-    assert github.find_open_pr("o/r", "sdlc/0001/c")["number"] is None
-    assert "head=o%3Asdlc%2F0001%2Fc" in calls[0][1]
+    assert github.find_open_pr("o/r", "sdlc/0001/build")["number"] is None
+    assert "head=o%3Asdlc%2F0001%2Fbuild" in calls[0][1]
 
     answers[("POST", "/repos/o/r/pulls")] = {
         "status": 201,
         "data": {"number": 7, "html_url": "https://github.com/o/r/pull/7", "node_id": "PR_7"},
         "error": "",
     }
-    created = github.create_pr("o/r", "main", "sdlc/0001/c", "build(0001): x", "body", draft=True)
+    created = github.create_pr(
+        "o/r", "main", "sdlc/0001/build", "build(0001): x", "body", draft=True
+    )
     assert created["route"] == "api" and created["number"] == 7 and created["created"] is True
     assert calls[-1][2]["draft"] is True and calls[-1][2]["base"] == "main"
 
@@ -1077,12 +1112,14 @@ def test_find_open_pr_and_create_and_update(recorder):
 
 def test_set_labels_removes_then_adds(recorder):
     calls, _answers = recorder
-    result = github.set_labels("o/r", 7, ["sdlc:e-ready"], ["sdlc:d-ready", "sdlc:needs-human"])
+    result = github.set_labels(
+        "o/r", 7, ["sdlc:deploy-ready"], ["sdlc:test-ready", "sdlc:needs-human"]
+    )
     assert result["ok"] is True
     methods = [call[0] for call in calls]
     assert methods == ["DELETE", "DELETE", "POST"]  # remove first, then add
-    assert calls[0][1].endswith("/issues/7/labels/sdlc%3Ad-ready")
-    assert calls[-1][2] == {"labels": ["sdlc:e-ready"]}
+    assert calls[0][1].endswith("/issues/7/labels/sdlc%3Atest-ready")
+    assert calls[-1][2] == {"labels": ["sdlc:deploy-ready"]}
 
 
 def test_set_labels_ignores_404_on_remove(recorder):
@@ -1092,7 +1129,7 @@ def test_set_labels_ignores_404_on_remove(recorder):
         "data": {"message": "Not Found"},
         "error": "Not Found",
     }
-    result = github.set_labels("o/r", 7, [], ["sdlc:c-ready"])
+    result = github.set_labels("o/r", 7, [], ["sdlc:build-ready"])
     assert result["ok"] is True and result["removed"] == []
 
 
@@ -1100,7 +1137,7 @@ def test_ensure_label_never_forces_and_accepts_an_existing_label(monkeypatch, gh
     """--force would rewrite the colour and description of a label the owner edited."""
     calls, answers = gh_only
     answers.append({"ok": False, "code": 1, "out": "", "err": "label already exists; ..."})
-    result = github.ensure_label("o/r", "sdlc:c-ready", "0E8A16", "SDLC gate (c)")
+    result = github.ensure_label("o/r", "sdlc:build-ready", "0E8A16", "SDLC gate (build)")
     assert result["ok"] is True and result["created"] is False
     assert "--force" not in calls[0]["args"]
 
@@ -1112,7 +1149,7 @@ def test_ensure_label_treats_already_exists_as_success(recorder):
         "data": {"message": "Validation Failed", "errors": [{"code": "already_exists"}]},
         "error": "Validation Failed",
     }
-    result = github.ensure_label("o/r", "sdlc:c-ready", "0E8A16", "SDLC gate (c)")
+    result = github.ensure_label("o/r", "sdlc:build-ready", "0E8A16", "SDLC gate (build)")
     assert result["ok"] is True and result["created"] is False
 
 
@@ -1128,7 +1165,7 @@ def test_set_ready_uses_the_graphql_mutation(recorder):
 def test_check_run_and_issue_helpers(recorder):
     calls, answers = recorder
     answers[("POST", "/check-runs")] = {"status": 201, "data": {"id": 3}, "error": ""}
-    assert github.create_check_run("o/r", "sha", "sdlc/d", "success", "t", "s")["id"] == 3
+    assert github.create_check_run("o/r", "sha", "sdlc/test", "success", "t", "s")["id"] == 3
     assert calls[-1][2]["conclusion"] == "success"
 
     answers[("GET", "/issues?")] = {
@@ -1153,7 +1190,7 @@ def test_the_token_route_goes_first_and_gh_is_never_called(recorder, fake_gh):
         "data": {"number": 7, "html_url": "https://github.com/o/r/pull/7"},
         "error": "",
     }
-    created = github.create_pr("o/r", "main", "sdlc/0001/c", "t", "body", cwd="/tmp/project")
+    created = github.create_pr("o/r", "main", "sdlc/0001/build", "t", "body", cwd="/tmp/project")
     assert created["route"] == "api" and created["number"] == 7
     assert gh_calls == [] and calls[-1][0] == "POST"
 
@@ -1167,7 +1204,7 @@ def test_gh_takes_over_when_the_token_route_fails(recorder, fake_gh):
         "error": "Resource not accessible by integration",
     }
     gh_answers.append({"ok": True, "code": 0, "out": "https://github.com/o/r/pull/9\n", "err": ""})
-    created = github.create_pr("o/r", "main", "sdlc/0001/c", "t", "body", cwd="/tmp/project")
+    created = github.create_pr("o/r", "main", "sdlc/0001/build", "t", "body", cwd="/tmp/project")
     assert created["route"] == "gh" and created["number"] == 9 and created["created"] is True
     assert gh_calls[0]["args"][:2] == ["pr", "create"]
     assert gh_calls[0]["cwd"] == "/tmp/project"  # gh reads the repo from its directory
@@ -1194,12 +1231,12 @@ def test_when_both_routes_fail_the_reason_names_both(recorder, fake_gh):
 def test_gh_alone_still_opens_the_pull_request(gh_only):
     calls, answers = gh_only
     answers.append({"ok": True, "code": 0, "out": "https://github.com/o/r/pull/4\n", "err": ""})
-    result = github.create_pr("o/r", "main", "sdlc/0001/b", "t", "body", cwd="/tmp/project")
+    result = github.create_pr("o/r", "main", "sdlc/0001/design", "t", "body", cwd="/tmp/project")
     assert result["route"] == "gh" and result["number"] == 4
     assert calls[0]["cwd"] == "/tmp/project"
 
     answers.append({"ok": True, "code": 0, "out": "[]", "err": ""})
-    assert github.find_open_pr("o/r", "sdlc/0001/b", cwd="/tmp/project")["number"] is None
+    assert github.find_open_pr("o/r", "sdlc/0001/design", cwd="/tmp/project")["number"] is None
     assert calls[-1]["cwd"] == "/tmp/project"
 
 
@@ -1218,7 +1255,7 @@ QUEUE = [
         "title": "design(0001): percent helper",
         "html_url": "https://github.com/o/r/pull/2",
         "updated_at": "2026-09-21T09:00:00Z",
-        "labels": [{"name": "sdlc:b-ready"}],
+        "labels": [{"name": "sdlc:design-ready"}],
         "body": "- **What changed and why**: percent helper (feature, idea route)\n",
     },
     {
@@ -1251,19 +1288,19 @@ def test_render_digest_empty_queue():
 
 
 def test_digest_shows_the_owner_labels_beside_the_gate_label():
-    """D11 (live run of 2026-09-25): the `schedule` label the owner applied at gate (f) was
+    """D11 (live run of 2026-09-25): the `schedule` label the owner applied at gate (maintain) was
     invisible, so a scheduled incident looked like a waiting one."""
-    labels = [{"name": "sdlc:f-ready"}, {"name": "incident"}, {"name": "schedule"}]
+    labels = [{"name": "sdlc:maintain-ready"}, {"name": "incident"}, {"name": "schedule"}]
     intent = {"number": 7, "title": "intent(0009): incident", "html_url": "https://x/7"}
     intent["labels"] = labels
     md = digest_mod.render_digest([intent], "2026-09-25T06:00:00Z")
     section = md[md.index("## Waiting at a human gate") :]
     line = next(ln for ln in section.splitlines() if "#7" in ln)
-    assert "— `sdlc:f-ready`, `incident`, `schedule` —" in line
+    assert "— `sdlc:maintain-ready`, `incident`, `schedule` —" in line
     assert "## Phase (f)" not in md  # it carries its gate label: a queue item
-    reordered = {**intent, "labels": [{"name": "schedule"}, {"name": "sdlc:f-ready"}]}
+    reordered = {**intent, "labels": [{"name": "schedule"}, {"name": "sdlc:maintain-ready"}]}
     line = digest_mod._line(reordered)
-    assert "— `sdlc:f-ready`, `schedule` —" in line
+    assert "— `sdlc:maintain-ready`, `schedule` —" in line
 
 
 def test_digest_main_dry_run_reads_the_input_file(tmp_path, capsys, no_gh):
@@ -1301,7 +1338,7 @@ def test_phase_f_bullets_describe_the_finding_the_route_and_the_triage(project):
     root, change = project
     st = status_mod.read_status(change)
     st.entry_route, st.change_type = "incident", "fix"
-    st.set_phase("f")
+    st.set_phase("maintain")
     status_mod.write_status(change, st)
     write(
         change / "intent.md",
@@ -1351,7 +1388,7 @@ def test_phase_f_bullets_describe_the_finding_the_route_and_the_triage(project):
         change / "evidence" / "runbook-revert-pr.json",
         json.dumps({"runbook": "revert-pr", "status": "go-requested"}),
     )
-    body = desc.build_description(root, "0001", "f")
+    body = desc.build_description(root, "0001", "maintain")
     lines = bullets(body)
     heads = [line.split("**")[1] for line in lines]
     assert heads == ["Finding", "Proposed outcome", "Route", "Entry route", "What needs you"]
@@ -1366,7 +1403,7 @@ def test_phase_f_bullets_describe_the_finding_the_route_and_the_triage(project):
     assert "Counters: no fix round so far" in body
     # a parked gate (Go requested) shows "What I need from you"
     write(
-        change / "evidence" / "gate-f.json",
+        change / "evidence" / "gate-maintain.json",
         json.dumps(
             {
                 "result": "park",
@@ -1384,10 +1421,10 @@ def test_phase_f_bullets_describe_the_finding_the_route_and_the_triage(project):
             }
         ),
     )
-    body = desc.build_description(root, "0001", "f")
+    body = desc.build_description(root, "0001", "maintain")
     assert "What I need from you" in body and "Apply `sdlc:go`" in body
-    assert desc.pr_title(status_mod.read_status(change), "f").startswith("maintain(0001): ")
-    assert desc.head_branch("0001", "f") == "sdlc/0001/a"
+    assert desc.pr_title(status_mod.read_status(change), "maintain").startswith("maintain(0001): ")
+    assert desc.head_branch("0001", "maintain") == "sdlc/0001/intent"
 
 
 def test_phase_f_finding_of_a_rehearsal_on_an_empty_series_says_no_observation(project):
@@ -1398,7 +1435,7 @@ def test_phase_f_finding_of_a_rehearsal_on_an_empty_series_says_no_observation(p
     root, change = project
     st = status_mod.read_status(change)
     st.entry_route, st.change_type = "incident", "fix"
-    st.set_phase("f")
+    st.set_phase("maintain")
     status_mod.write_status(change, st)
     write(change / "intent.md", INTENT.replace("Entry route: idea", "Entry route: incident abc"))
     verdict = {
@@ -1430,7 +1467,7 @@ def test_phase_f_finding_of_a_rehearsal_on_an_empty_series_says_no_observation(p
             at="2026-09-25T05:41:00Z",
         ),
     )
-    lines = bullets(desc.build_description(root, "0001", "f"))
+    lines = bullets(desc.build_description(root, "0001", "maintain"))
     assert lines[0] == (
         "- **Finding**: ci_test_failure_rate at tier 2 (forced): no observation in the window "
         "(run of 2026-09-25), forced by a rehearsal"
@@ -1446,10 +1483,10 @@ def test_counters_over_the_change_folders_and_the_digest_section(project, tmp_pa
     root, change = project
     base = counters.collect(root)  # the fixture's own changes (0000-sdlc-init, 0001)
     st = status_mod.read_status(change)
-    st.set_phase("e")  # shipped, first pass
+    st.set_phase("deploy")  # shipped, first pass
     status_mod.write_status(change, st)
     second, st2 = status_mod.new_change(root, "Second", entry_route="incident", change_type="fix")
-    st2.set_phase("e")
+    st2.set_phase("deploy")
     st2.bump_iteration()
     st2.bump_iteration()
     status_mod.write_status(second, st2)
@@ -1488,21 +1525,21 @@ def test_counters_over_the_change_folders_and_the_digest_section(project, tmp_pa
 def _ship(change_dir, st, classification=None, growth=None):
     """Mark a change shipped (phase e), with the plan's class in an adversarial verdict and
     the plan's growth in the gate-e record when given."""
-    st.set_phase("e")
+    st.set_phase("deploy")
     status_mod.write_status(change_dir, st)
     evidence = change_dir / art.EVIDENCE_DIR
     evidence.mkdir(parents=True, exist_ok=True)
     if classification:
-        verdict = {"schema_version": 1, "phase": "e", "head": "f" * 40, "verdict": "continue",
+        verdict = {"schema_version": 1, "phase": "deploy", "head": "f" * 40, "verdict": "continue",
                    "reasons": [], "classification": classification,
                    "classification_reasons": []}  # fmt: skip
-        (evidence / art.ADVERSARIAL_VERDICT.format(phase="e")).write_text(
+        (evidence / art.ADVERSARIAL_VERDICT.format(phase="deploy")).write_text(
             json.dumps(verdict), encoding="utf-8"
         )
     if growth is not None:
         growth_record = {"plan_growth": {"added": growth, "removed": []}}
         record = {"checks": [{"name": "plan_sync", "ok": True, "details": growth_record}]}
-        (evidence / art.GATE_RESULT.format(phase="e")).write_text(
+        (evidence / art.GATE_RESULT.format(phase="deploy")).write_text(
             json.dumps(record), encoding="utf-8"
         )
 
@@ -1511,7 +1548,7 @@ def test_counters_true_definitions_class_split_and_plan_growth(project):
     """R26 parts 1 and 2 and choice 257's ports: a reset change by any of the three routes is
     never first-pass and is named under the table; an expired dismissal is not in force; the
     first-pass share and the fix iterations are split by the plan's class with their "n of
-    m"; the plan's growth since gate (b) is counted; every row names its play."""
+    m"; the plan's growth since gate (design) is counted; every row names its play."""
     from detect import dismissals
     from pr import counters
 
@@ -1561,7 +1598,8 @@ def test_counters_true_definitions_class_split_and_plan_growth(project):
     assert "| First-pass merge share, non-routine plans | 0% (0 of 2) |" in md
     assert "| Fix iterations per shipped change, non-routine plans | 0.0 (2 of 4 shipped) |" in md
     assert (
-        "| Plan grown since gate (b) (shipped changes with the record) | 1 of 2 (2 files) |" in md
+        "| Plan grown since gate (design) (shipped changes with the record) | 1 of 2 (2 files) |"
+        in md
     )
     assert "2 shipped change(s) have no record of the plan's growth" in md
     assert "| Panel calls, all changes (decision 21) | 0 | — |" in md
@@ -1574,15 +1612,19 @@ def test_counters_true_definitions_class_split_and_plan_growth(project):
 def test_the_build_pr_body_shows_the_plan_s_growth(project):
     """Choice 257 (R60's port): the build PR's banner, from the gate records it covers."""
     root, change = project
-    gate_json(change, "e", "wait", c.ready_label("e"))
-    record = json.loads((change / art.EVIDENCE_DIR / "gate-e.json").read_text(encoding="utf-8"))
+    gate_json(change, "deploy", "wait", c.ready_label("deploy"))
+    record = json.loads(
+        (change / art.EVIDENCE_DIR / "gate-deploy.json").read_text(encoding="utf-8")
+    )
     growth = {"plan_growth": {"added": ["src/x.py", "src/y.py"], "removed": []}}
     for check in record["checks"]:  # the fixture's own plan_sync check gains the record
         if check["name"] == "plan_sync":
             check["details"].update(growth)
-    (change / art.EVIDENCE_DIR / "gate-e.json").write_text(json.dumps(record), encoding="utf-8")
-    body = desc.build_description(root, "0001", "e")
-    assert "- The plan grew by 2 files since gate (b): `src/x.py`, `src/y.py`." in body
+    (change / art.EVIDENCE_DIR / "gate-deploy.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+    body = desc.build_description(root, "0001", "deploy")
+    assert "- The plan grew by 2 files since gate (design): `src/x.py`, `src/y.py`." in body
     assert body.index("**Needs your close look**") < body.index("- **What changed and why**")
 
 
@@ -1602,8 +1644,8 @@ def test_counters_line_of_an_open_pr_after_a_reset(project):
     st.bump_iteration()
     st.record_owner_label(c.RESET_ITERATIONS_LABEL, "owner")
     status_mod.write_status(change, st)
-    gate_json(change, "c", "continue", None)
-    body = desc.build_description(root, "0001", "c")
+    gate_json(change, "build", "continue", None)
+    body = desc.build_description(root, "0001", "build")
     assert (
         f"Counters: first-pass: no (count reset {st.iterations_reset_at}) · fix iterations: 0"
         in body
@@ -1621,12 +1663,34 @@ def test_digest_lists_the_runbook_and_dismissal_prs_under_the_incident_label():
         "labels": [{"name": "incident"}],
     }
     md = digest_mod.render_digest([*QUEUE, revert], "2026-09-25T06:00:00Z")
-    assert "1 runbook or dismissal PR(s) of phase (f)" in md
-    assert "## Phase (f): runbook and dismissal PRs — `incident`" in md and "#31" in md
-    assert md.index("## Waiting at a human gate") < md.index("## Phase (f)")
+    assert "1 runbook or dismissal PR(s) of maintain" in md
+    assert "## Maintain: runbook and dismissal PRs — `incident`" in md and "#31" in md
+    assert md.index("## Waiting at a human gate") < md.index("## Maintain:")
     md = digest_mod.render_digest([revert], "2026-09-25T06:00:00Z")
     assert digest_mod.NOTHING_WAITING not in md and "#31" in md
     assert digest_mod.incident_prs(QUEUE) == []  # an intent PR has its gate label: a queue item
+
+
+def test_digest_and_review_requests_read_the_letter_labels_of_an_older_plugin(monkeypatch):
+    """R45, for one release: a PR an older plugin labelled ``sdlc:c-ready`` waits at a gate in
+    the digest, sorted in phase order beside the names, and still requests the owner's
+    review; an approved build PR at ``sdlc:e-ready`` gets the approval line."""
+    from pr import review_request
+
+    def pr(number, label):
+        return {"number": number, "title": f"t{number}", "labels": [{"name": label}]}
+
+    queue = [pr(1, "sdlc:deploy-ready"), pr(2, "sdlc:c-ready"), pr(3, "sdlc:intent-ready")]
+    md = digest_mod.render_digest(queue, "2026-09-25T06:00:00Z")
+    assert "0 parked, 3 waiting at a gate" in md
+    assert md.index("#3 t3") < md.index("#2 t2") < md.index("#1 t1")  # intent, build, deploy
+    assert review_request.is_waiting_label("sdlc:c-ready")
+    assert review_request.is_waiting_label("sdlc:build-ready")
+    seen = []
+    monkeypatch.setattr(github, "pr_reviews", lambda repo, n: seen.append(n) or {"ok": False})
+    for label in ("sdlc:e-ready", "sdlc:deploy-ready", "sdlc:build-ready"):
+        digest_mod.approval_of("o/r", pr(7, label))
+    assert seen == [7, 7]
 
 
 # --- the default branch's protection (decision 4; plugin 0.2.25) ------------------------------
@@ -1796,14 +1860,14 @@ def test_digest_says_so_while_the_default_branch_is_unprotected():
 
 def test_counters_leave_out_a_change_abandoned_on_its_remote_branches(project, tmp_path):
     """The sample's rehearsal 0005: the incident PR merged (the folder on main at phase f),
-    then its design PR closed; abandon wrote the marker on ``sdlc/0005/b`` only (decision 25),
+    then its design PR closed; abandon wrote the marker on ``sdlc/0005/design`` only (decision 25),
     and the digest counted it as an incident merged until 0.2.26 (1.0.0 readiness review,
     group A; ``detect/cli.py open_incidents`` already read the markers)."""
     from pr import counters
 
     root, _change = project
     second, st2 = status_mod.new_change(root, "Second", entry_route="incident", change_type="fix")
-    st2.set_phase("f")
+    st2.set_phase("maintain")
     status_mod.write_status(second, st2)
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "the incident PR merged")
@@ -1812,12 +1876,12 @@ def test_counters_leave_out_a_change_abandoned_on_its_remote_branches(project, t
     git(root, "remote", "add", "origin", str(bare))
     git(root, "push", "-q", "-u", "origin", "main")
     assert counters.collect(root)["incidents_merged"] == 1
-    git(root, "checkout", "-q", "-b", "sdlc/0002/b")
+    git(root, "checkout", "-q", "-b", "sdlc/0002/design")
     st2 = status_mod.read_status(second)
     st2.abandon("closed: the design PR")
     status_mod.write_status(second, st2)
     git(root, "commit", "-q", "-am", "abandon(0002)")
-    git(root, "push", "-q", "-u", "origin", "sdlc/0002/b")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0002/design")
     git(root, "checkout", "-q", "main")
     assert not status_mod.read_status(second).abandoned  # main never learns of it
     counts = counters.collect(root)
@@ -1849,7 +1913,7 @@ def test_a_linked_evidence_file_is_never_quoted_in_the_body(project, tmp_path):
     ``evidence/claude-md-proposals.md`` to a file it may not read (``.env``); the runner,
     which builds the body outside the sandbox, must not quote the target."""
     root, change = project
-    gate_json(change, "e", "wait", c.ready_label("e"))
+    gate_json(change, "deploy", "wait", c.ready_label("deploy"))
     secret = root / ".env"
     secret.write_text("FAKE_SECRET=marker-r59-i2\n", encoding="utf-8")
     link = change / art.EVIDENCE_DIR / desc.CLAUDE_MD_PROPOSALS
@@ -1858,6 +1922,6 @@ def test_a_linked_evidence_file_is_never_quoted_in_the_body(project, tmp_path):
         os.symlink(secret, link)
     except (OSError, NotImplementedError):
         pytest.skip("symbolic links are not permitted here")
-    body = desc.build_description(root, "0001", "e")
+    body = desc.build_description(root, "0001", "deploy")
     assert "marker-r59-i2" not in body
     assert "## Proposed CLAUDE.md lines" not in body

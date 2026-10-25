@@ -3,7 +3,7 @@
     python framework/plugin/ci/project_setup.py --root . [--ref <git ref>] [--out <file>]
 
 A GitHub-hosted runner carries neither the project nor the tools its targets call: the first
-live design run (2026-09-21) parked at gate (b) because ``python -m pytest`` answered
+live design run (2026-09-21) parked at gate (design) because ``python -m pytest`` answered
 ``/usr/bin/python: No module named pytest``. The phase job therefore runs this step between
 the runner setup and ``run_phase.py``.
 
@@ -28,9 +28,9 @@ fallback to the checkout's copy.
 Pinning the command string is not enough: the approved command (``pip install -e ".[dev]"``,
 ``npm ci``, ...) still runs in the head's tree, so the head's ``pyproject.toml``,
 ``requirements.txt`` or ``package.json`` lifecycle scripts would run before the Go step
-(review of 2026-09-25). The incident PR head ``sdlc/<id>/a`` is created by the framework
+(review of 2026-09-25). The incident PR head ``sdlc/<id>/intent`` is created by the framework
 from the default branch and only the maintain session writes into it, under
-``changes/<id>-<slug>/`` (gate (f)'s ``design_scope`` check refuses a source file there). So
+``changes/<id>-<slug>/`` (gate (maintain)'s ``design_scope`` check refuses a source file there). So
 with ``--ref`` the step first lists ``git diff --name-only <ref>...HEAD`` in ``--root`` and
 refuses, running nothing, when any path lies outside ``changes/``; a ``git diff`` that fails
 is refused too (fail closed). The check compares commits: the working tree's uncommitted

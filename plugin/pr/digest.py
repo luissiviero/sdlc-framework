@@ -74,12 +74,12 @@ KEY_IN_REPOSITORY = "a repository or organization secret SDLC_MERGE_APP_PRIVATE_
 KEY_IN_REPOSITORY_ENV = "SDLC_MERGE_KEY_IN_REPOSITORY"  # sdlc-digest.yml sets it
 READY_SUFFIX = "-ready"
 APPROVED_LINE = " — approved {at}, not merged: {reason}"
-PREDATES_GATE_E = "your approval predates gate (e): approve again on the head (choice 250)"
+PREDATES_GATE_E = "your approval predates gate (deploy): approve again on the head (choice 250)"
 NO_CHECK = "waiting for the sdlc/review check on its head"
 RED_CHECK = "sdlc/review is not green on its head"
 CONFLICT = "a conflict with the default branch"
 NOT_YET = (
-    "not merged yet: read the latest SDLC merge (e) run, or merge it yourself when no merge "
+    "not merged yet: read the latest SDLC merge (deploy) run, or merge it yourself when no merge "
     "App is set up (fallback C1)"
 )
 
@@ -99,7 +99,7 @@ def labels_of(pr: dict[str, Any]) -> list[str]:
 
 def incident_prs(prs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Open PRs carrying ``incident`` and no gate label: the runbook PRs a 3σ route opened
-    (a revert, a quarantine) and the dismissal PRs of gate (f), which decision 20 lets the
+    (a revert, a quarantine) and the dismissal PRs of gate (maintain), which decision 20 lets the
     owner find only here (the incident intent PRs carry a gate label and are queue items)."""
     return [pr for pr in prs if c.INCIDENT_LABEL in labels_of(pr) and not sdlc_labels(pr)]
 
@@ -117,11 +117,14 @@ def first_bullet(body: str | None) -> str:
     return ""
 
 
-def _phase_of(labels: list[str]) -> str:
+def _phase_of(labels: list[str]) -> int:
+    """The queue order of a PR: its waiting label's phase, in phase order (R45: the name's
+    label, or the letter's an older plugin applied); a PR with none sorts last."""
     for label in labels:
-        if label.endswith(READY_SUFFIX):
-            return label[len(c.LABEL_PREFIX) : -len(READY_SUFFIX)]
-    return "z"
+        phase = c.ready_label_phase(label)
+        if phase is not None:
+            return c.PHASES.index(phase)
+    return len(c.PHASES)
 
 
 def _line(pr: dict[str, Any]) -> str:
@@ -193,7 +196,7 @@ def render_digest(
     failed_runs: str = "",
 ) -> str:
     """The digest markdown. The unprotected-branch notice first when it applies
-    (``unprotected_notice``), then parked, then the phase-ready queue by phase letter, then
+    (``unprotected_notice``), then parked, then the phase-ready queue in phase order, then
     the "Failed runs" section (R18, ``pr/failed_runs.py``), then the counters section (build
     guide step 42.2, ``pr/counters.py``) when the caller gives one."""
     queue = [pr for pr in prs if sdlc_labels(pr)]
@@ -214,7 +217,7 @@ def render_digest(
     out.append(
         f"{len(parked)} parked, {len(ready)} waiting at a gate"
         + (f", {len(fixing)} in an automatic fix round" if fixing else "")
-        + (f", {len(incidents)} runbook or dismissal PR(s) of phase (f)" if incidents else "")
+        + (f", {len(incidents)} runbook or dismissal PR(s) of maintain" if incidents else "")
         + ". Nothing here notified you; this issue is rewritten once a day (decision 20)."
     )
     out.append("")
@@ -241,7 +244,7 @@ def render_digest(
         out += [_line(pr) for pr in fixing]
         out.append("")
     if incidents:
-        out += [f"## Phase (f): runbook and dismissal PRs — `{c.INCIDENT_LABEL}`", ""]
+        out += [f"## Maintain: runbook and dismissal PRs — `{c.INCIDENT_LABEL}`", ""]
         out += [_line(pr) for pr in sorted(incidents, key=lambda pr: pr.get("number") or 0)]
         out.append("")
     if failed_runs:  # R18; R20 places it under "Worth knowing"
@@ -269,14 +272,15 @@ def list_queue_prs(repo: str) -> tuple[list[dict[str, Any]], str]:
 def approval_of(
     repo: str, pr: dict[str, Any], config: dict[str, Any] | None = None
 ) -> dict[str, Any] | None:
-    """For a build PR at ``sdlc:e-ready``: {'at', 'reason'} when the owner's latest review
-    that approves, requests changes or was dismissed approves (``unpark.is_owner_actor``,
-    decision 34, with ``config`` the default branch's ``sdlc.yaml`` when the digest has the
-    checkout), and the PR is still open; None otherwise or when a read fails. The R22
-    proposal's line ("approved <date>, not merged: <reason>"), which R20 places."""
+    """For a build PR at ``sdlc:deploy-ready`` (or an older plugin's ``sdlc:e-ready``):
+    {'at', 'reason'} when the owner's latest review that approves, requests changes or was
+    dismissed approves (``unpark.is_owner_actor``, decision 34, with ``config`` the default
+    branch's ``sdlc.yaml`` when the digest has the checkout), and the PR is still open; None
+    otherwise or when a read fails. The R22 proposal's line ("approved <date>, not merged:
+    <reason>"), which R20 places."""
     from state.unpark import is_owner_actor  # noqa: PLC0415
 
-    if c.ready_label("e") not in labels_of(pr) or not pr.get("number"):
+    if not c.ready_labels(c.DEPLOY) & set(labels_of(pr)) or not pr.get("number"):
         return None
     got = github.pr_reviews(repo, int(pr["number"]))
     if not got.get("ok"):
@@ -312,7 +316,7 @@ def approval_of(
 
 
 def _approval_predates_gate_e(repo: str, pr: dict[str, Any], commit: str) -> bool:
-    """True when the owner's approval names a commit at which gate (e) had not offered the PR
+    """True when the owner's approval names a commit at which gate (deploy) had not offered the PR
     (``ci/merge_step.py gate_e_waits_at``), so the merge step waits for a new approval
     (choice 250; the review of the 1.0.22 diff). A read that fails says False: the digest
     says nothing rather than something wrong."""
@@ -325,9 +329,9 @@ def _approval_predates_gate_e(repo: str, pr: dict[str, Any], commit: str) -> boo
     dirs = [n for n in listed.get("names") or [] if n.startswith(f"{change_id}-")]
     if not listed.get("ok") or len(dirs) != 1:
         return False
-    gate_path = f"{c.CHANGES_DIR}/{dirs[0]}/evidence/gate-e.json"
+    gate_paths = merge_step.gate_e_paths(f"{c.CHANGES_DIR}/{dirs[0]}/evidence")
     try:
-        return not merge_step.gate_e_waits_at(github, repo, gate_path, commit)
+        return not merge_step.gate_e_waits_at(github, repo, gate_paths, commit)
     except merge_step.StepError:
         return False
 

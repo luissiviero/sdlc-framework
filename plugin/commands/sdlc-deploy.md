@@ -1,17 +1,17 @@
 ---
-description: Phase (e) deploy — the review passes in a fresh context with REVIEW.md (bugs, security, compliance) into evidence/review-findings.json, a fix loop bounded by the iteration cap while an Important finding stands, the regenerated PR summary, then gate (e): the build PR is marked ready with sdlc:e-ready and waits for the owner's approving review, on which the merge App merges it (decision 36). The release is prepared in the PR per the project's deploy adapter (release notes, nothing executed); the release workflow runs it on that merge. Re-runnable.
+description: The deploy phase — the review passes in a fresh context with REVIEW.md (bugs, security, compliance) into evidence/review-findings.json, a fix loop bounded by the iteration cap while an Important finding stands, the regenerated PR summary, then the deploy gate: the build PR is marked ready with sdlc:deploy-ready and waits for the owner's approving review, on which the merge App merges it (decision 36). The release is prepared in the PR per the project's deploy adapter (release notes, nothing executed); the release workflow runs it on that merge. Re-runnable.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evals/case.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
 ---
 
-# /sdlc-deploy — phase (e)
+# /sdlc-deploy — the deploy phase
 
 Source: build guide step 24 (composition: OPERATING_MODEL §4.1), step 26 (REVIEW.md and
 the review passes, article p.32–35: "Bugs · Security · Compliance", Important vs nit, "at
 most five nits"; decision 12: the review pass runs in a fresh context, writer ≠ judge),
-step 27a (the PR summary), step 32 (release prepared), decision 13 as amended by 36 (gate
-(e) = the owner's approving review, on which the merge App merges; the release label only
+step 27a (the PR summary), step 32 (release prepared), decision 13 as amended by 36 (the
+deploy gate = the owner's approving review, on which the merge App merges; the release label only
 when `sdlc.yaml` declares a real production), decision 19
 (what deploy means for a project that is not a service).
 
@@ -35,14 +35,15 @@ by default) and terminates the run, its work uncommitted and nothing after it do
 docs were killed mid-write and the run ended with no gate; this rule since 0.3.3).
 
 ## 0. Preconditions
-- Change id `$ARGUMENTS` (or the single change whose `status.phase` is `d` with gate
-  `passed`).
-- `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`:
+- Change id `$ARGUMENTS` (or the single change whose `status.phase` is `test` (`d` in an older
+  change) with gate `passed`).
+- `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy`:
   if `allow` is false, stop and report its `reasons` (a `parked: ...` reason is the
   owner's item). Never judge `status.yaml` yourself.
-- `git fetch origin`, `git switch sdlc/<id>/c`, `git pull --ff-only origin sdlc/<id>/c`.
-- `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`
-- `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" set-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`
+- `git fetch origin`, `git switch sdlc/<id>/build`, `git pull --ff-only origin sdlc/<id>/build`
+  (`sdlc/<id>/c` for a change started before the names).
+- `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy`
+- `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" set-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy`
 
 ## 0a. Prepare the release artifact (build guide step 32; decisions 13, 19)
 Article p.32: "The agent does everything up to the production gate and nothing past it."
@@ -61,11 +62,11 @@ schedule entry, a manifest) is a departure from `plan.md` unless the plan lists 
 it under "## Files that change" of `plan.md` in the same commit (the plan-sync rule of
 `commit-phase`). Commit and push (a re-run with the artifact already committed has nothing
 to commit):
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --message "release(<id>): release prepared" --paths <files> --push`
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy --message "release(<id>): release prepared" --paths <files> --push`
 (`--paths` names the artifact files and `plan.md` is in the change folder).
 
 ## 0b. An incident's fix ships with its lesson and its eval case (build guide steps 36, 37; article p.44 step 7, p.49)
-When `status.yaml: entry_route` is `incident` (the change was filed by phase (f)), the fix
+When `status.yaml: entry_route` is `incident` (the change was filed by the maintain phase), the fix
 carries its record — before the review, so the review pass reads them too:
 - `lessons/<yyyy-mm>-<slug>.md` (`<yyyy-mm>` is this month, `<slug>` the change's; the
   naming rule, the frontmatter fields and the body shape are all in `lessons/README.md`):
@@ -104,8 +105,8 @@ Then rebuild the generated index from every lesson's frontmatter (never hand-edi
 All three — the lesson, the eval and the index — are outside the change folder, so list them
 under "## Files that change" of `plan.md` in the same commit, and commit with the release
 artifact of step 0a (or on their own:
-`commit-phase ... --phase e --message "release(<id>): lesson and eval" --paths lessons evals --push`).
-Gate (e)'s `lesson_and_eval` check reads the frontmatter back: every field above except
+`commit-phase ... --phase deploy --message "release(<id>): lesson and eval" --paths lessons evals --push`).
+The deploy gate's `lesson_and_eval` check reads the frontmatter back: every field above except
 `runbook` and `supersedes` must be present, a `supersedes` target must already carry
 `status: retired`, and `plugin/lessons/index.py check` must pass — a park here names each
 field or file still missing.
@@ -128,7 +129,7 @@ and the instruction to write `changes/<id>-<slug>/evidence/review-findings.json`
 recorded shape (`schema_version`, `head` = `git rev-parse HEAD`, `findings[]` with `pass`,
 `severity` `important|nit`, `file`, `line`, `summary`, `signature`; `tally`), and, when the
 prompt ends with "Risk-list items this change touches", the brief per item in
-`evidence/roles/security-policy-e.md` (decision 35: the build PR's banner quotes it). Then
+`evidence/roles/security-policy-deploy.md` (decision 35: the build PR's banner quotes it). Then
 validate it and compute the tally:
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" validate --root "${CLAUDE_PROJECT_DIR}" --id <id>
@@ -147,8 +148,8 @@ While `tally.important` > 0:
    below, which may settle it (`settled: ...`) so the gate passes with the finding
    recorded.
 3. Re-collect the evidence (`evidence/collect.py`; in CI it leaves the deferred mark the
-   runner's step after this session replaces, as at (d) — `/sdlc-test` step 1), commit
-   (`commit-phase ... --phase e --message "review(<id>): fix <finding>" --paths <files>`),
+   runner's step after this session replaces, as in the test phase — `/sdlc-test` step 1), commit
+   (`commit-phase ... --phase deploy --message "review(<id>): fix <finding>" --paths <files>`),
    push, and re-run step 1 for a fresh verdict on the new HEAD.
 Nits are not fixed in this loop; the reviewer lists at most five and the owner reads them.
 
@@ -158,14 +159,14 @@ Nits are not fixed in this loop; the reviewer lists at most five and the owner r
 before, it prints the one-line `CLAUDE.md` entry to propose under "Things Claude gets
 wrong". Put those lines in the PR description's "Proposed CLAUDE.md lines" block; never
 edit `CLAUDE.md` yourself (protected path: the owner applies the line in the PR review).
-The record lives outside the change folder (one file per project); at (d) and (e) every
-`commit-phase` carries it when it changed and the gate's `clean_tree` sets it aside, so
-`validate` may run right before the gate (0.3.5: until then each fix round at gate (e)
-parked on it). A deleted or malformed record is still uncommitted work to the gate.
+The record lives outside the change folder (one file per project); in the test and
+deploy phases every `commit-phase` carries it when it changed and the gate's `clean_tree`
+sets it aside, so `validate` may run right before the gate (0.3.5: until then each fix round
+at the deploy gate parked on it). A deleted or malformed record is still uncommitted work to the gate.
 
 ### Deferred review — the panel settles the judgment items (decision 21; build guide step 16a)
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e
+python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy
 ```
 It prints the items the gate would park on that belong to the panel's fixed list (an open
 flagged concern, a concern naming contradicting policies, the reviewer's `escalate`
@@ -175,30 +176,30 @@ plan"), which of them the ledger already decides, and under `parks` what stays t
 failure; a risk-list hit itself parks nothing, decision 35). When `pending` is empty, go on
 to the gate. Otherwise, for each pending item `n` in
 order, three fresh contexts, each with the brief printed by
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --item <n> --member <reviewer|advocate|conciliator>`:
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy --item <n> --member <reviewer|advocate|conciliator>`:
 1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
-   writes `evidence/panel/e-<n>-reviewer.md`.
+   writes `evidence/panel/deploy-<n>-reviewer.md`.
 2. **devil's advocate** — delegate to `sdlc:adversarial-reviewer` with the `advocate`
-   brief, started with `advocate.alias` from `panel/cli.py models --phase e` (pass it as the
+   brief, started with `advocate.alias` from `panel/cli.py models --phase deploy` (pass it as the
    sub-agent's model: the per-invocation model wins, NOTES §11c; a panel on one model shares
-   its blind spots), blind to the reviewer's file; it writes `evidence/panel/e-<n>-advocate.md`.
+   its blind spots), blind to the reviewer's file; it writes `evidence/panel/deploy-<n>-advocate.md`.
 3. **conciliator** — delegate to a general-purpose sub-agent with the `conciliator` brief;
-   it reads both files and writes `evidence/panel/e-<n>-conciliator.json`.
+   it reads both files and writes `evidence/panel/deploy-<n>-conciliator.json`.
 Then record it:
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" record --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --item <n>`
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" record --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy --item <n>`
 — one panel call counts against `gate.max_panel_calls` (its own count, not a fix
 iteration; exit 3 at the cap: stop the panel, the gate parks); it appends the line to
-`evidence/decisions-e.json` (and the `.md` the owner reads), for a concern closes the item
+`evidence/decisions-deploy.json` (and the `.md` the owner reads), for a concern closes the item
 in `spec.md` as `decided (by panel #<n>): <decision> — <concern>`, and commits the change
 folder itself (`review(<id>): panel decision <n>`), so the decision is in HEAD before anyone
 judges it. Do not reword a closed concern line: the gate matches it to the ledger by
 `#<n>`. Apply what the decision asks beyond that (an `escalate` decided `continue` needs
 nothing more; an `escalate` decided `park`: go straight to the gate, it parks; a fix the decision names is made now, `plan.md` in the same commit, committed
-with `commit-phase ... --phase e --message "review(<id>): panel decision <n> applied"`).
+with `commit-phase ... --phase deploy --message "review(<id>): panel decision <n> applied"`).
 After the last item, run step 1 again for the new HEAD, once — the review prompt, the
 reviewer in a fresh context, then `validate` — because the panel's commits moved HEAD and
 `validate` only re-reads `review-findings.json`, it re-reviews nothing: a findings file for
-the old HEAD is stale and gate (e) refuses it (the 1.0.0 readiness review, 2026-09-26). From
+the old HEAD is stale and the deploy gate refuses it (the 1.0.0 readiness review, 2026-09-26). From
 then on nothing is committed before the gate except the gate evidence, and a findings file
 never travels in a commit with content the reviewer did not see (the first deferred run,
 2026-09-24, committed each verdict beside the content it did not judge, three times, and
@@ -207,13 +208,13 @@ once more. The panel never decides a park item, never raises a limit, never
 touches a guardrail file, and never asks the owner: the owner reads "Decisions taken for
 you" at the gate and overturns any line with a review comment.
 
-## 4. Gate (e)
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`
-— requires the evidence of (d) green, `review-findings.json` for HEAD with no Important
+## 4. The deploy gate
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy`
+— requires the test phase's evidence green, `review-findings.json` for HEAD with no Important
 finding, the plan in sync with the diff, no guardrail file, no escalation on a risk-list
 item (a hit is a line of the PR's "Needs your close look" banner, which the owner's
 approving review accepts: decision 35, choice 242). Exit 3 `wait` is the
-normal outcome (gate (e) is always human); 4 = `park`. Then the release notes
+normal outcome (the deploy gate is always human); 4 = `park`. Then the release notes
 (build guide step 32; deterministic: what changed, the commits since the base, the evidence
 status, the final findings tally, the links):
 ```
@@ -231,32 +232,32 @@ The script adds the model-written label and the mark naming the commit the parag
 describes; when the section is there, leave it: a re-run with no code change keeps it as it
 is. The file rides in the evidence
 commit (evidence is committed after the gate, OPERATING_MODEL §4.1, so no re-review):
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --message "review(<id>): gate (e) evidence" --push`.
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy --message "review(<id>): gate (deploy) evidence" --push`.
 In CI (a token is present), publish the review tally as a check run:
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" check-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" check-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy`
 (route "none" by hand; nothing else changes). The runner posts it again on the PR's final
 head after its own last commit, and dispatches the merge workflow when it is green (decision
 36, points 3 and 4).
 
 ## 5. Mark the PR ready with the final summary (build guide step 27a, decision 20)
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --ready
+python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy --ready
 ```
 The description opens with the ≤5 bullets (what changed and why · evidence status ·
 findings by severity with the nits listed · plan conformance · what needs the owner: an
-approving review = gate (e), review comments = `/sdlc-fix`), the two counters of build guide step 42
+approving review = the deploy gate, review comments = `/sdlc-fix`), the two counters of build guide step 42
 ("no fix round so far" or "first-pass: no", a reset count included; fix iterations), the proposed `CLAUDE.md` lines, and the
-"## Release note" section quoted from `evidence/release-notes.md`. Label: `sdlc:e-ready`,
+"## Release note" section quoted from `evidence/release-notes.md`. Label: `sdlc:deploy-ready`,
 or `sdlc:needs-human` when parked. The PR is waiting for the owner's approving review: the
-approval = gate (e) passed (decision 36); the merge App then merges it (`sdlc-merge.yml`),
+approval = gate (deploy) passed (decision 36); the merge App then merges it (`sdlc-merge.yml`),
 and the release workflow runs `deploy.command`. An approval given before this run committed
-gate (e)'s record does not count: the owner approves again on the head (choice 250). Without
+the deploy gate's record does not count: the owner approves again on the head (choice 250). Without
 a merge App the owner merges after approving (fallback C1). When `sdlc.yaml` says
 `deploy.production: true`, the body also says: the release label `sdlc:release-approved` is
 the second act: apply it on this PR in the same visit; the release workflow waits for it.
 
 ## 6. Hand over
-Report the PR URL and "gate (e): an approving review = approve, and the merge App merges on
+Report the PR URL and "gate (deploy): an approving review = approve, and the merge App merges on
 it; a review comment is the change request (`/sdlc-fix <id>`)". When `sdlc.yaml` says
 `deploy.production: true`, add "the release label `sdlc:release-approved` is the second
 act: apply it on this PR in the same visit; the release workflow waits for it". Nothing

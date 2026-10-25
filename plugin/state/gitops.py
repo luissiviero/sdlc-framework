@@ -318,6 +318,18 @@ def ref_exists(root: Path, ref: str) -> bool:
     )
 
 
+def existing_branch(root: Path, candidates: tuple[str, ...] | list[str]) -> str:
+    """The first of ``candidates`` (``conventions.branch_names``: the phase name's branch,
+    then the letter's) that exists locally or on ``origin``, else the first. R45: a change in
+    flight when its project moved past plugin 1.0.42 finishes on its letter branch, so a run
+    of it checks out ``sdlc/<id>/c`` while a new change gets ``sdlc/<id>/build``."""
+    for name in candidates:
+        for ref in (f"refs/heads/{name}", f"refs/remotes/origin/{name}"):
+            if ref_exists(root, ref):
+                return name
+    return candidates[0]
+
+
 def only_change_folder_moved(root: Path, change_dir: Path, sha: str | None) -> bool:
     """Whether ``sha`` is HEAD, or an ancestor of HEAD from which only ``change_dir`` moved:
     the rule a fix round's head check (``ci/auto_round.head_matches``) and the PR body's
@@ -658,7 +670,7 @@ def remote_change_ids(root: Path, remote: str = "origin") -> list[str]:
 
 
 # --- the id reservation (R51, gap G2; NOTES §59) -------------------------------------------------
-# A new id is reserved on the remote before its folder is written: ``sdlc/<id>/a`` is
+# A new id is reserved on the remote before its folder is written: ``sdlc/<id>/intent`` is
 # created with a commit unique to this allocation (the default branch's tree, the default
 # branch's tip as parent, a message with a random nonce), pushed with an empty lease. NOTES
 # §59 shows why both halves: a push of the object a ref already holds answers "up to date"
@@ -700,7 +712,7 @@ def reserve_change_id(
         ).strip()  # fmt: skip
     except GitError as exc:
         return UNRESERVED, None, str(exc)
-    ref = f"refs/heads/{conventions.branch_name(change_id, 'a')}"
+    ref = f"refs/heads/{conventions.branch_name(change_id, conventions.INTENT)}"
     try:
         proc = run_proc(root, "push", f"--force-with-lease={ref}:", remote, f"{sha}:{ref}")
     except (GitError, FileNotFoundError) as exc:

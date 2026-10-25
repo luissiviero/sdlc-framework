@@ -243,7 +243,7 @@ def test_a_gitops_push_sends_the_header_from_its_environment_only(
 # --- who gets it: the session, and nobody running project code -----------------------------
 def test_the_session_holds_the_workflow_token_never_the_app_s(app_run, tmp_path, monkeypatch):
     monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
-    session = run_phase.session_env(dict(os.environ), tmp_path, "c")
+    session = run_phase.session_env(dict(os.environ), tmp_path, "build")
     assert session["GITHUB_TOKEN"] == WORKFLOW and session["GH_TOKEN"] == WORKFLOW
     assert (KEY, _basic(WORKFLOW)) in _pairs(session)
     assert app_token.WORKFLOW_TOKEN_ENV not in session
@@ -314,10 +314,10 @@ def _stop(*args, **kwargs):
 @pytest.mark.parametrize(
     "call",
     [
-        lambda root: run_phase.dispatch("o/r", "sdlc-test.yml", "main", "0001", "sdlc/0001/c"),
-        lambda root: run_phase.commit_run_record(root, root, "0001", "c"),
-        lambda root: run_phase.park_and_publish(root, root, root, None, "c", "why"),
-        lambda root: run_phase.ensure_pr(root, root, "0001", "c", "o/r", {}),
+        lambda root: run_phase.dispatch("o/r", "sdlc-test.yml", "main", "0001", "sdlc/0001/build"),
+        lambda root: run_phase.commit_run_record(root, root, "0001", "build"),
+        lambda root: run_phase.park_and_publish(root, root, root, None, "build", "why"),
+        lambda root: run_phase.ensure_pr(root, root, "0001", "build", "o/r", {}),
         lambda root: run_phase.supersede_pr("o/r", 7, 8),
     ],
     ids=["dispatch", "commit_run_record", "park_and_publish", "ensure_pr", "supersede_pr"],

@@ -1,7 +1,7 @@
-# Phase (f) maintain: the weekly security review and the deterministic scanners (build guide
+# The maintain phase: the weekly security review and the deterministic scanners (build guide
 # step 38; decision 16).
 #
-# Contract: docs/OPERATING_MODEL.md sections 4 (gate (f)) and 4.2, article p.46-48 ("run the
+# Contract: docs/OPERATING_MODEL.md sections 4 (the triage gate) and 4.2, article p.46-48 ("run the
 # scan on a schedule, without a human in the invocation path, and send what it finds through
 # the same gates as any other change"; "The deterministic checks stay in CI, and the
 # model-driven scan covers the context-dependent vulnerabilities those checks are not built to
@@ -12,10 +12,10 @@
 # at the commit checked out (Read, Grep, Glob and git; one Write, of scan-findings.json),
 # applying the security-baseline skill and REVIEW.md's "What Important means here". Then
 # scan/cli.py route files every Important finding that you have not dismissed - at most three
-# a week, the rest return next week - as an incident intent change on sdlc/<id>/a with the
+# a week, the rest return next week - as an incident intent change on sdlc/<id>/intent with the
 # intent PR labelled incident: a bounded finding (one file, one patch) as a fix whose
 # Proposed outcome is the patch, a wider one as a feature intent that describes the class.
-# Gate (f) is your triage of that PR (decision 25): merge to fix it through the pipeline,
+# The triage gate is your triage of that PR (decision 25): merge to fix it through the pipeline,
 # label `schedule` to keep it, or close it with a comment to dismiss it (the finding does not
 # return, article p.47 step 4). Last, scan/cli.py scanners runs pip-audit and bandit (Python)
 # or npm audit (Node): reports in the job summary and the artifacts, never a failed job.
@@ -35,7 +35,7 @@
 #
 # /sdlc-init filled in the framework repository. The Claude Code version is read from
 # sdlc.yaml at run time.
-name: SDLC scan (f)
+name: SDLC scan (maintain)
 
 on:
   schedule:
@@ -158,7 +158,7 @@ jobs:
         run: python framework/plugin/ci/checkout_check.py --root . --framework framework --pin-ref "$PIN_REF" --origin "$ORIGIN_URL" --framework-origin "$FRAMEWORK_URL"
 
       # Every Important finding enters the framework as an incident intent change: no route
-      # skips gates (a) and (b). Dismissed findings (changes/.dismissed.json) never return.
+      # skips the intent and design gates. Dismissed findings (changes/.dismissed.json) never return.
       - name: File the findings as incident intents
         id: route
         env:

@@ -1,4 +1,4 @@
-"""The deterministic half of phase (f) maintain (build guide steps 37 and 39; decisions 14,
+"""The deterministic half of phase maintain (build guide steps 37 and 39; decisions 14,
 15, 25, 26; article p.42-45).
 
     python plugin/detect/cli.py run --root . --repo owner/name [--cache <file>] [--log <file>]
@@ -16,7 +16,7 @@ the source (``detect/source.py``), the rolling statistics and the Western Electr
 (``detect/stats.py``), one log line per run (``--log``: the p.45 leading indicator, "the
 detection script's log has the breach timestamp and tier"), and at tier 2 or 3 the filing
 of one incident change (``--file``: ``new-change --route incident --type fix``, the record
-``evidence/detection.json``, a commit on ``sdlc/<id>/a``), unless an incident of the same
+``evidence/detection.json``, a commit on ``sdlc/<id>/intent``), unless an incident of the same
 metric is already open or the finding is dismissed. No model is involved (p.43: "detection
 stays entirely deterministic"). ``--force-tier`` rehearses the loop on demand
 (``workflow_dispatch``) and is recorded as ``forced`` in the detection record.
@@ -188,7 +188,7 @@ def _default_branch(root: Path) -> str:
     """``gitops.default_branch`` (``SDLC_DEFAULT_BRANCH`` first, then the git guess), "main"
     outside a git checkout. The workflows set the variable from
     ``github.event.repository.default_branch``: the runbook and abandon workflows check out
-    the PR head ``sdlc/<id>/a``, and the guess alone could name that head (decision 14)."""
+    the PR head ``sdlc/<id>/intent``, and the guess alone could name that head (decision 14)."""
     try:
         return gitops.default_branch(root)
     except (gitops.GitError, FileNotFoundError):
@@ -233,19 +233,23 @@ def _commits_between(root: Path, since: str | None, until: str | None) -> list[d
 
 
 def _remote_incident_dirs(root: Path) -> list[tuple[str, str]]:
-    """``(change id, ref)`` for every ``origin/sdlc/<id>/a`` the checkout knows."""
+    """``(change id, ref)`` for every ``origin/sdlc/<id>/intent`` the checkout knows, and for
+    good every ``origin/sdlc/<id>/a`` an older plugin cut (R45, choice 273: remote branches are
+    never renamed). One entry per change, the name's branch first."""
     try:
         out = gitops.run(
             root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/sdlc/"
         )
     except (gitops.GitError, FileNotFoundError):
         return []
-    found = []
+    found: dict[str, str] = {}
     for ref in out.split():
         parsed = c.parse_branch(ref.removeprefix("origin/"))
-        if parsed and parsed[1] == "a":
-            found.append((parsed[0], ref))
-    return found
+        if not parsed or parsed[1] != c.INTENT:
+            continue
+        if parsed[0] not in found or ref.endswith(f"/{c.INTENT}"):
+            found[parsed[0]] = ref
+    return list(found.items())
 
 
 def _show(root: Path, ref: str, path: str) -> str | None:
@@ -290,8 +294,9 @@ def _remote_abandoned_ids(root: Path) -> set[str]:
 
 def open_incidents(root: Path, metric: str) -> list[dict[str, Any]]:
     """Incident changes of ``metric`` that are still in flight: filed (a remote
-    ``sdlc/<id>/a`` carries a detection record for the metric), not abandoned, and not yet
-    shipped (the default branch's copy of the change is not at phase e). One finding per
+    ``sdlc/<id>/intent``, or the letter's ``sdlc/<id>/a``, carries a detection record for the
+    metric), not abandoned, and not yet shipped (the default branch's copy of the change is
+    not at phase deploy, which a letter ``e`` reads as). One finding per
     metric at a time keeps the queue quiet (p.44 step 6)."""
     default = _approved_ref(_default_branch(root))
     found = []
@@ -323,18 +328,19 @@ def open_incidents(root: Path, metric: str) -> list[dict[str, Any]]:
         if shipped_raw:
             try:
                 shipped = status_mod.Status.from_dict(status_mod.yamlish.loads(shipped_raw))
-                if shipped.phase == "e" or shipped.abandoned:
+                if shipped.phase == c.DEPLOY or shipped.abandoned:
                     continue
             except Exception:  # noqa: BLE001
                 pass
         found.append({"change_id": change_id, "ref": ref, "signature": record.get("signature")})
     seen = {item["change_id"] for item in found}
     # the incident changes the owner merged (fix now) are folders on the default branch,
-    # whatever became of their sdlc/<id>/a branch (GitHub may delete merged heads).
+    # whatever became of their sdlc/<id>/intent (or sdlc/<id>/a) branch (GitHub may delete
+    # merged heads).
     # A merged incident can still be abandoned later: in the live run of 2026-09-25 the owner
     # merged the incident PR, then closed its design PR on sdlc/<id>/b; abandon wrote
     # ``phase: abandoned`` on the change's branches only (never the default branch, decision
-    # 4), so the default branch's folder stayed at phase f and blocked the metric forever.
+    # 4), so the default branch's folder stayed at phase maintain and blocked the metric forever.
     abandoned = _remote_abandoned_ids(root)
     for change_dir in c.list_change_dirs(root):
         if change_dir.name[:4] in seen or change_dir.name[:4] in abandoned:
@@ -346,7 +352,7 @@ def open_incidents(root: Path, metric: str) -> list[dict[str, Any]]:
             st = status_mod.read_status(change_dir)
         except (OSError, ValueError):
             continue
-        if st.abandoned or st.phase == "e" or st.entry_route != "incident":
+        if st.abandoned or st.phase == c.DEPLOY or st.entry_route != "incident":
             continue
         found.append({"change_id": st.id, "ref": "the checkout", "signature": record["signature"]})
     return found
@@ -459,8 +465,8 @@ def _last_line(err: str | None, code: int) -> str:
 
 def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool) -> dict[str, Any]:
     """Allocate the incident change, write the detection record and commit it on
-    ``sdlc/<id>/a`` from the default branch (the maintain run works there; the owner's merge
-    of that branch's PR is gate (a), decision 25)."""
+    ``sdlc/<id>/intent`` from the default branch (the maintain run works there; the owner's
+    merge of that branch's PR is gate (intent), decision 25)."""
     metric = record["metric"]
     latest = record.get("latest") or {}
     day = str(latest.get("at") or record["at"])[:10]
@@ -484,7 +490,7 @@ def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool
     finding.write(change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE, record)
     default = _default_branch(root)
     start = _approved_ref(default) if gitops.has_remote(root) else default
-    argv = ["commit-phase", "--root", str(root), "--id", change_id, "--phase", "f",
+    argv = ["commit-phase", "--root", str(root), "--id", change_id, "--phase", c.MAINTAIN,
             "--message", f"maintain({change_id}): detection {metric} tier {record['tier']}",
             "--start-point", start]  # fmt: skip
     if push:
@@ -681,7 +687,9 @@ def cmd_run(args) -> int:
             "action": action or "",
             "outcome": outcome,
             "change_id": filed.get("change_id") or "",
-            "head_ref": c.branch_name(filed["change_id"], "a") if filed.get("change_id") else "",
+            "head_ref": c.branch_name(filed["change_id"], c.INTENT)
+            if filed.get("change_id")
+            else "",
             "detection_sha256": snapshot,
         }
     )
@@ -789,15 +797,20 @@ def cmd_routes(args) -> int:
 def _incident_pr_url(root: Path, change_id: str, repo: str | None) -> str | None:
     if not repo:
         return None
-    try:
-        found = _github().find_open_pr(repo, c.branch_name(change_id, "a"), cwd=root)
-    except Exception:  # noqa: BLE001
-        return None
-    return found.get("url") if isinstance(found, dict) else None
+    # R45: the intent PR of a change in flight has the letter head ``sdlc/<id>/a``
+    for head in c.branch_names(change_id, c.INTENT):
+        try:
+            found = _github().find_open_pr(repo, head, cwd=root)
+        except Exception:  # noqa: BLE001
+            return None
+        url = found.get("url") if isinstance(found, dict) else None
+        if url:
+            return url
+    return None
 
 
 def _commit_change(root: Path, change_id: str, message: str, push: bool) -> dict[str, Any]:
-    argv = ["commit-phase", "--root", str(root), "--id", change_id, "--phase", "f",
+    argv = ["commit-phase", "--root", str(root), "--id", change_id, "--phase", c.MAINTAIN,
             "--message", message]  # fmt: skip
     if push:
         argv.append("--push")
@@ -1058,18 +1071,21 @@ def cmd_dispatch(args) -> int:
 def _upsert_argv(root: Path, change_id: str) -> list[str]:
     """The intent PR's upsert: the automation's publication, so ``--request-review`` requests
     the owner's review when the PR waits and withdraws it when it does not (decision 31)."""
-    return ["upsert", "--root", str(root), "--id", change_id, "--phase", "f", "--request-review"]
+    return [
+        "upsert", "--root", str(root), "--id", change_id, "--phase", c.MAINTAIN,
+        "--request-review",
+    ]  # fmt: skip
 
 
 def _gate_and_pr(root: Path, change_id: str, push: bool, out: dict[str, Any]) -> dict[str, Any]:
-    """Gate (f) on the branch, the evidence commit, the intent PR (what the maintain command
+    """Gate (maintain) on the branch, the evidence commit, the intent PR (what the maintain command
     does by hand in its steps 7 and 8)."""
     gate, code, err = _cli(
-        GATE_CLI, ["check", "--root", str(root), "--id", change_id, "--phase", "f"], root
+        GATE_CLI, ["check", "--root", str(root), "--id", change_id, "--phase", c.MAINTAIN], root
     )
     out["gate"] = gate or {"error": err, "exit": code}
     out["evidence_commit"] = _commit_change(
-        root, change_id, f"maintain({change_id}): gate (f) evidence", push=push
+        root, change_id, f"maintain({change_id}): gate (maintain) evidence", push=push
     )
     pr, code, err = _cli(PR_CLI, _upsert_argv(root, change_id), root)
     out["pr"] = pr or {"error": err, "exit": code}
@@ -1080,14 +1096,14 @@ def cmd_finish(args) -> int:
     """The deterministic tail of a CI maintain run (``sdlc-detect.yml``): the model's session
     wrote the intent and the proposal (``/sdlc-maintain <id> --diagnosis-only``); this step,
     with the project's runbook secrets in its environment and none in the model's, dispatches
-    the route, runs gate (f), commits the evidence and opens the intent PR."""
+    the route, runs gate (maintain), commits the evidence and opens the intent PR."""
     root = Path(args.root).resolve()
     change_dir, st = _change(root, args.id)
     if (st.parked_reason or "").startswith(c.OWNER_FIELDS_PARK_PREFIX):
         # the runner parked the change after the session wrote an owner-only field (choice
-        # 103): the route is not judged and gate (f) is not run — it would overwrite the park;
-        # the pull request the runner opened carries the reason (the review of the 0.2.26
-        # diff, M5)
+        # 103): the route is not judged and gate (maintain) is not run — it would overwrite
+        # the park; the pull request the runner opened carries the reason (the review of the
+        # 0.2.26 diff, M5)
         why = "parked by the runner: owner-only fields written by the session"
         dispatch = {"acted": False, "reason": why}
         _emit({"change_id": args.id, "parked": st.parked_reason, "dispatch": dispatch})
@@ -1278,9 +1294,9 @@ def run_url(env: dict[str, str] | None = None) -> str | None:
 def write_park_result(
     change_dir: Path, st: status_mod.Status, check: str, reason: str, need: str, head: str | None
 ) -> Path:
-    """``evidence/gate-f.json`` in the gate's own shape with one failed check, so the PR
+    """``evidence/gate-maintain.json`` in the gate's own shape with one failed check, so the PR
     description shows the park and its "What I need from you" block (the same shape
-    ``ci/run_phase.py`` writes for a park before a phase run; gate (f) overwrites it on the
+    ``ci/run_phase.py`` writes for a park before a phase run; gate (maintain) overwrites it on the
     next Go)."""
     from gate.checks import CheckResult  # noqa: PLC0415
     from gate.gate import GateResult  # noqa: PLC0415
@@ -1288,14 +1304,14 @@ def write_park_result(
     result = GateResult(
         change_id=st.id,
         slug=st.slug,
-        phase="f",
+        phase=c.MAINTAIN,
         human_gate=True,
         result="park",
         checks=[CheckResult(name=check, ok=False, reason=reason, need=need)],
         label=c.NEEDS_HUMAN_LABEL,
         head=head,
     )
-    path = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase="f")
+    path = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=c.MAINTAIN)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(result.as_dict(), indent=2, sort_keys=True) + "\n",
@@ -1309,7 +1325,7 @@ def cmd_park(args) -> int:
     """The runbook job's setup step failed (an unreadable default-branch ref, a head that
     changed files outside ``changes/``, an install that exited non-zero): park the incident
     where the owner looks instead of leaving a red run - ``status.yaml: parked_reason``,
-    ``evidence/gate-f.json`` with "What I need from you", the change folder committed and
+    ``evidence/gate-maintain.json`` with "What I need from you", the change folder committed and
     pushed on the incident branch, the Go label removed (one application is one act, as
     after a performed Go) and the intent PR refreshed with ``sdlc:needs-human``. No runbook
     runs here and no model."""
@@ -1318,9 +1334,9 @@ def cmd_park(args) -> int:
     root = Path(args.root).resolve()
     change_dir, st = _change(root, args.id)
     record, _why = finding.read(change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE)
-    if st.phase != "f" or record is None:
-        # the label can land on any PR (a build PR's head sdlc/<id>/c always fails the
-        # setup check): only an incident at phase (f) with its detection record is parked
+    if st.phase != c.MAINTAIN or record is None:
+        # the label can land on any PR (a build PR's head sdlc/<id>/build always fails the
+        # setup check): only an incident at phase maintain with its detection record is parked
         _emit(
             {
                 "change_id": args.id,
@@ -1338,7 +1354,7 @@ def cmd_park(args) -> int:
     # because GateResult.reason and the "What I need from you" block prefix the check's
     # name themselves (0.2.29: the live park of 2026-09-30 read "setup: setup: ...")
     reason = f"{args.check}: {detail}"
-    st.park(reason, phase="f")
+    st.park(reason, phase=c.MAINTAIN)
     status_mod.write_status(change_dir, st)
     head = None
     try:
@@ -1528,7 +1544,7 @@ def cmd_dismiss(args) -> int:
                         args.repo,
                         c.INCIDENT_LABEL,
                         "B60205",
-                        "SDLC phase (f): an incident intent",
+                        "SDLC maintain: an incident intent",
                         cwd=root,
                     )
                     out["label"] = github.set_labels(

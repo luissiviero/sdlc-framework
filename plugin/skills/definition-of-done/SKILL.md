@@ -21,23 +21,24 @@ description: What "done" means for a change in the SDLC framework. Use before re
 - Project override: `.claude/skills/definition-of-done/SKILL.md`.
 
 ## Done, per phase
-- **(a) plan**: `intent.md` with its five sections, status `proposed`, on `sdlc/<id>/a`, PR
-  open with `sdlc:a-ready`.
-- **(b) design**: `spec.md` (requirements, design, open questions from the intent answered or
+- **intent**: `intent.md` with its five sections, status `proposed`, on `sdlc/<id>/intent`,
+  PR open with `sdlc:intent-ready`.
+- **design**: `spec.md` (requirements, design, open questions from the intent answered or
   carried forward, flagged concerns each closed with a decision, acceptance target) and
   `plan.md` (files that change, order of work, risks, options not taken, proof) written by
-  the read-only run; adversarial verdict written; gate (b) passed or parked.
-- **(c) build**: the diff stays inside `plan.md`; every commit that changes source updates
+  the planning run; adversarial verdict written; the design gate passed or parked.
+- **build**: the diff stays inside `plan.md`; every commit that changes source updates
   `plan.md` in the same commit; build, test and lint targets green with their literal output
-  pasted; verifier report in `evidence/verifier.md`; adversarial verdict; gate (c).
-- **(d) test**: fresh-context full run; `evidence/test.log`, `build.log`, `lint.log`,
-  screenshots for UI changes, `verifier.md`; gate (d).
-- **(e) deploy**: review passes published as `evidence/review-findings.json` with no
+  pasted; verifier report in `evidence/verifier.md`; adversarial verdict; the build gate.
+- **test**: fresh-context full run; `evidence/test.log`, `build.log`, `lint.log`,
+  screenshots for UI changes, `verifier.md`; the test gate.
+- **deploy**: review passes published as `evidence/review-findings.json` with no
   Important finding open; PR summary ≤5 bullets (what changed and why, evidence status,
   findings by severity, plan conformance, what needs the owner); merge is the owner's.
 - **Always**: no guardrail file touched unless the intent says `Framework change: yes`; no
   risk-list item touched without its line in the "Needs your close look" banner, which the
-  owner's merge accepts (decision 35; at (e), the owner's approving review, decision 36); no
+  owner's merge accepts (decision 35; at the deploy gate, the owner's approving review,
+  decision 36); no
   test skipped, weakened or
   deleted; nobody notified — a run that cannot finish parks with "What I need from you".
 
@@ -50,20 +51,20 @@ It runs the confidence gate in dry-run (nothing recorded) and prints each check.
 output:
 ```
 ## definition-of-done check (gate dry run)
-- change 0001 (percent-helper), gate (c), automated gate
+- change 0001 (percent-helper), gate (build), automated gate
 - [x] limits: within the run limits
 - [x] artifacts: every required artifact exists and has its template sections
-- [ ] adversarial_review: evidence/adversarial-review-c.json missing
+- [ ] adversarial_review: evidence/adversarial-review-build.json missing
 - verdict if run now: **park**
   - adversarial_review needs: Run the adversarial-reviewer agent in a fresh context for this phase; it writes the verdict JSON.
 ```
-Deterministic backing, item by item (R27): (a) to (d), the gate itself (`plugin/gate/cli.py
+Deterministic backing, item by item (R27): intent to test, the gate itself (`plugin/gate/cli.py
 check`: artifacts, commands, evidence, plan sync, the adversarial verdict); the screenshots
-for UI changes at (d) only in part: when `sdlc.yaml: commands.drive` is set, the screenshots
+for UI changes at test only in part: when `sdlc.yaml: commands.drive` is set, the screenshots
 named as `screenshot:` items of the approved plan are checked under `evidence/proof/` by the
 gate's `proof` entry (change 0004), and by-hand screenshots under `evidence/screenshots/` are
 still required by no check (`REQUIRED_EVIDENCE` names the verifier report and the toolchain
-logs); (e), the gate's
+logs); deploy, the gate's
 findings check on `evidence/review-findings.json`; "Always", the protected-paths hook, the
 shell guard and the gate's `guardrails` check for the guardrail files, the gate's
 `risk_list` check for the banner, the test ratchet and, on a fix-type change, the test-file

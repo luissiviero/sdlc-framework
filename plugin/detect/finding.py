@@ -1,4 +1,4 @@
-"""The finding of phase (f): its signature and the ``evidence/detection.json`` record
+"""The finding of phase maintain: its signature and the ``evidence/detection.json`` record
 (build guide steps 37 and 39; article p.44 step 6 "Dismissals tune the bands", p.47 step 4
 "Dismiss with a reason, so the dismissal is recorded and the same finding does not return as
 new on the next run").

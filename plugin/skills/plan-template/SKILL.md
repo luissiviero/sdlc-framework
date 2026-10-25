@@ -1,14 +1,14 @@
 ---
 name: plan-template
-description: The plan.md template and the interrogation prompt for the read-only planning run at the end of phase (b) design. Use whenever asked to write, review or update a plan.md or an implementation plan for a change in the SDLC framework ("write the plan", "plan.md", "implementation plan for change 0001", "interrogate the plan").
+description: The plan.md template and the interrogation prompt for the planning run at the end of the design phase. Use whenever asked to write, review or update a plan.md or an implementation plan for a change in the SDLC framework ("write the plan", "plan.md", "implementation plan for change 0001", "interrogate the plan").
 ---
 
 # plan.md template and interrogation prompt
 
 Source: article p.16–17 (plan mode steps 2–5 and the plan.md example), build guide step 12,
-decision 2: plan.md is produced at the **end of phase (b)** by a run with read-only tools
-(Read/Grep/Glob) and approved together with spec.md at gate (b). The first run with edit
-tools is phase (c). `/sdlc-design` (B3) is the command that uses this skill.
+decision 2: plan.md is produced at the **end of the design phase** by a run with read-only
+tools (Read/Grep/Glob) and approved together with spec.md at the design gate. The first run
+with edit tools is the build phase. `/sdlc-design` (B3) is the command that uses this skill.
 
 ## The plan (article p.16–17, four sections + one added)
 
@@ -58,10 +58,11 @@ How a `state` item is compared (one definition, used by the gate and by `collect
   the comparison; on a `differs` the value seen is the file's first line. An empty file, a file
   over 1 MiB, an unreadable or invalid JSON file, or a missing key is `not produced`.
 
-A `state` or `screenshot` item needs `sdlc.yaml: commands.drive` (the gate (b) check
+A `state` or `screenshot` item needs `sdlc.yaml: commands.drive` (the design gate's check
 `proof_items` refuses the plan without one, and refuses a malformed item by its line). The
-runner's step runs the drive after the session at (c), (d) and (e) and compares the items of
-the plan approved at gate (b); an item added during (c) is reported, never the bar.
+runner's step runs the drive after the session in the build, test and deploy phases and
+compares the items of the plan approved at the design gate; an item added during the build is
+reported, never the bar.
 
 ## Interrogation prompt (article p.16 step 3; answers land in Risks and Options not taken)
 
@@ -77,7 +78,7 @@ After drafting, answer these in writing before finishing:
 ## Rules
 - Read-only: this run never edits source files (decision 2). If something must change before
   the plan can be written, say so in Risks.
-- In phase (c) the plan-sync hook denies a commit that touches a source file "## Files
+- In the build phase the plan-sync hook denies a commit that touches a source file "## Files
   that change" does not list unless plan.md changes in the same commit (p.16 step 7): when
   implementation departs from the plan, update plan.md in the same commit. The list is the
   contract, so name every file, or a directory with a trailing `/`.

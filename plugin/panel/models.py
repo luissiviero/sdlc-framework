@@ -5,14 +5,15 @@ Three keys of ``sdlc.yaml`` name the models, each a full model id (``claude-opus
 family alias (``opus``):
 
 - ``session_model``: the CI session's model, which the runner passes as ``--model``. Either
-  one model, or a mapping of ``default`` and per-phase entries (``a`` to ``f``)::
+  one model, or a mapping of ``default`` and per-phase entries (``intent`` to ``maintain``;
+  the letters ``a`` to ``f`` an older ``sdlc.yaml`` names are read as those, R45)::
 
       session_model:
         default: claude-opus-5-5
-        b: claude-fable-5-1
+        design: claude-fable-5-1
 
-  A fix round runs on its change's phase's entry (a round on a design PR is a (b) run), the
-  (e) review pass on ``e``'s. An absent key keeps the CLI's default. ``SDLC_MODEL`` in the
+  A fix round runs on its change's phase's entry (a round on a design PR is a design run), the
+  deploy review pass on ``deploy``'s. An absent key keeps the CLI's default. ``SDLC_MODEL`` in the
   workflow's environment still wins.
 - ``adversarial_model``: the adversarial reviewer's model. When it is set, the gate's
   ``reviewer_model`` check requires the verdict's own record (written by the
@@ -22,7 +23,7 @@ family alias (``opus``):
   ``adversarial_model`` instead.
 
 Every CI session the runner composes takes ``session_model``: the phases, a fix round, the
-triage of phase (f) and the weekly scan (their own run kinds read the ``default`` entry).
+triage of the maintain phase and the weekly scan (their own run kinds read the ``default`` entry).
 
 The Agent tool's per-invocation model takes a family alias, not a full id (Claude Code
 2.1.304's Agent tool, docs/notes/51.md), and an alias the CLI resolves on its own may
@@ -43,6 +44,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from state import conventions as c
+
 FAMILIES = ("opus", "sonnet", "haiku", "fable")
 ALIAS_ENV = "ANTHROPIC_DEFAULT_{family}_MODEL"
 SESSION_KEY = "session_model"
@@ -50,7 +53,7 @@ REVIEWER_KEY = "adversarial_model"
 ADVOCATE_KEY = "panel_advocate_model"
 DEFAULT_ENTRY = "default"
 # the run kinds whose session belongs to a phase other than their own name
-SESSION_PHASE = {"review": "e"}
+SESSION_PHASE = {"review": c.DEPLOY}
 FULL_ID_RE = re.compile(r"^claude-(opus|sonnet|haiku|fable)-")
 # R63: the line a CLI prints for a sub-agent model it does not know, before it runs that
 # sub-agent on the session's model (NOTES §54: 2.1.278 for the reviewer's claude-opus-5-5)
@@ -69,8 +72,11 @@ def session_model(config: dict[str, Any] | None, phase: str | None) -> str | Non
     """The model ``sdlc.yaml: session_model`` names for a run of ``phase``, or None."""
     value = (config or {}).get(SESSION_KEY)
     if isinstance(value, dict):
-        key = SESSION_PHASE.get(str(phase), str(phase))
-        return _text(value.get(key)) or _text(value.get(DEFAULT_ENTRY))
+        key = SESSION_PHASE.get(str(phase), c.phase_name(str(phase)))
+        # R45: the name's entry, else the letter's an older sdlc.yaml names (``c:``)
+        letter = c.PHASE_LETTERS.get(key)
+        named = _text(value.get(key)) or (_text(value.get(letter)) if letter else None)
+        return named or _text(value.get(DEFAULT_ENTRY))
     return _text(value)
 
 

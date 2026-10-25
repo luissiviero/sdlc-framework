@@ -1,4 +1,4 @@
-"""The weekly security review of phase (f) maintain (build guide step 38; decision 16;
+"""The weekly security review of phase maintain (build guide step 38; decision 16;
 article p.45-48).
 
 A scheduled, read-only ``claude -p`` run applies the ``security-baseline`` skill to the whole

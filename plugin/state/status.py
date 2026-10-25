@@ -34,18 +34,23 @@ class Gate:
     reason: str | None = None
     at: str | None = None
 
+    def __post_init__(self) -> None:
+        self.phase = c.phase_name(self.phase)  # R45: a letter an older plugin wrote
+
 
 @dataclass
 class Status:
     id: str
     slug: str
     title: str
-    # The phase the change is in. On the default branch a change at phase e was merged at
-    # gate (e) - by the merge App on the owner's approving review (decision 36), or by the
-    # owner - so the merge means gate (e) passed (decision 13): ``read_status(...,
-    # on_default_branch=True)`` derives gate e/passed from it (``merged_at_gate_e``) without
-    # rewriting the file, because the automation identity never writes to the default branch.
-    phase: str = "a"
+    # The phase the change is in. On the default branch a change at phase deploy was merged at
+    # gate (deploy) - by the merge App on the owner's approving review (decision 36), or by
+    # the owner - so the merge means gate (deploy) passed (decision 13): ``read_status(...,
+    # on_default_branch=True)`` derives gate deploy/passed from it (``merged_at_gate_e``)
+    # without rewriting the file, because the automation identity never writes to the default
+    # branch. R45: a letter (``e``), as every file an older plugin wrote has it, is read as its
+    # name; the file is rewritten with the name the next time the plugin writes it.
+    phase: str = c.INTENT
     entry_route: str = "idea"
     change_type: str = "feature"
     gate: Gate = field(default_factory=Gate)
@@ -99,8 +104,9 @@ class Status:
     released_sha: str | None = None
     released_pr: int | None = None
     # Decision 30 (the fast lane, ROADMAP R46): the runner's record of the commits the change's
-    # later phases were cut from without a merge. ``a``: ``{sha, pr}``, the head of the owner's
-    # intent PR the design branch was cut from; ``b``: ``{sha, classification}`` (and ``pr``,
+    # later phases were cut from without a merge. ``intent``: ``{sha, pr}``, the head of the
+    # owner's intent PR the design branch was cut from; ``design``: ``{sha, classification}``
+    # (and ``pr``,
     # the design PR, when known), the design commit whose gate passed on a routine plan, which
     # the build branch was cut from. Each sha is the "approved copy" of the phases after it
     # (``gate/diff.py approved_base``). Written by ``ci/run_phase.py`` only: a session that
@@ -120,6 +126,16 @@ class Status:
     updated_at: str = field(default_factory=_now)
     schema_version: int = SCHEMA_VERSION
 
+    def __post_init__(self) -> None:
+        # R45: the letters an older plugin wrote are read as the names (``phase_name``)
+        self.phase = c.phase_name(self.phase)
+        if isinstance(self.fast_lane, dict):
+            self.fast_lane = {c.phase_name(k): v for k, v in self.fast_lane.items()}
+        for line in self.risk_acceptances if isinstance(self.risk_acceptances, list) else []:
+            details = line.get("details") if isinstance(line, dict) else None
+            if isinstance(details, dict) and "phase" in details:
+                details["phase"] = c.phase_name(details["phase"])
+
     # -- validation ---------------------------------------------------------------------
     def validate(self) -> None:
         c.change_dir_name(self.id, self.slug)
@@ -134,7 +150,7 @@ class Status:
         if self.gate.result is not None and self.gate.result not in c.GATE_RESULTS:
             raise ValueError(f"gate.result must be one of {c.GATE_RESULTS} or null")
         if self.gate.phase is not None and self.gate.phase not in c.PHASES:
-            raise ValueError("gate.phase must be a phase letter or null")
+            raise ValueError("gate.phase must be a phase name or null")
         if (
             isinstance(self.iterations, bool)
             or not isinstance(self.iterations, int)
@@ -217,6 +233,7 @@ class Status:
         self.updated_at = _now()
 
     def set_phase(self, phase: str) -> None:
+        phase = c.phase_name(phase)
         if phase not in c.PHASES:
             raise ValueError(f"phase must be one of {c.PHASES}, got {phase!r}")
         if self.phase == c.ABANDONED:
@@ -269,7 +286,7 @@ class Status:
         a park lifts it (the first fix round of change 0001 on the sample repository,
         2026-09-22, left the old reason behind a ``passed`` result, and the next phase's CI
         guard would have skipped the change as parked)."""
-        self.gate = Gate(phase=phase, result=result, reason=reason, at=_now())
+        self.gate = Gate(phase=c.phase_name(phase), result=result, reason=reason, at=_now())
         self.parked_reason = reason if result == "parked" else None
         self.touch()
         self.validate()
@@ -339,20 +356,20 @@ class Status:
 
 
 # Decision 30: the entries of ``status.yaml: fast_lane`` and the keys each one carries.
-FAST_LANE_KEYS = {"a": ("sha", "pr"), "b": ("sha", "classification", "pr")}
-FAST_LANE_REQUIRED = {"a": ("sha", "pr"), "b": ("sha", "classification")}
+FAST_LANE_KEYS = {c.INTENT: ("sha", "pr"), c.DESIGN: ("sha", "classification", "pr")}
+FAST_LANE_REQUIRED = {c.INTENT: ("sha", "pr"), c.DESIGN: ("sha", "classification")}
 FAST_LANE_CLASSIFICATION = "routine"
 _SHA_CHARS = frozenset("0123456789abcdef")
 
 
 def _validate_fast_lane(value: Any) -> None:
-    """``fast_lane`` is null or a mapping of ``a`` and/or ``b``: each entry a full commit sha
-    and its pull request number (``a``), or the sha and the classification ``routine`` and,
-    optionally, the design PR's number (``b``)."""
+    """``fast_lane`` is null or a mapping of ``intent`` and/or ``design``: each entry a full
+    commit sha and its pull request number (``intent``), or the sha and the classification
+    ``routine`` and, optionally, the design PR's number (``design``)."""
     if value is None:
         return
     if not isinstance(value, dict) or not value or not set(value) <= set(FAST_LANE_KEYS):
-        raise ValueError("fast_lane must be null or a mapping of 'a' and/or 'b'")
+        raise ValueError("fast_lane must be null or a mapping of 'intent' and/or 'design'")
     for key, entry in value.items():
         if not isinstance(entry, dict) or not set(entry) <= set(FAST_LANE_KEYS[key]):
             raise ValueError(f"fast_lane.{key} must be a mapping of {FAST_LANE_KEYS[key]}")
@@ -365,8 +382,10 @@ def _validate_fast_lane(value: Any) -> None:
         pr = entry.get("pr")
         if pr is not None and (isinstance(pr, bool) or not isinstance(pr, int) or pr < 1):
             raise ValueError(f"fast_lane.{key}.pr must be a pull request number")
-        if key == "b" and entry["classification"] != FAST_LANE_CLASSIFICATION:
-            raise ValueError(f"fast_lane.b.classification must be {FAST_LANE_CLASSIFICATION!r}")
+        if key == c.DESIGN and entry["classification"] != FAST_LANE_CLASSIFICATION:
+            raise ValueError(
+                f"fast_lane.design.classification must be {FAST_LANE_CLASSIFICATION!r}"
+            )
 
 
 def stale_park(st: Status) -> str | None:
@@ -395,7 +414,7 @@ def _load(change_dir: Path) -> dict[str, Any]:
 
 
 MERGED_AT_GATE_E_REASON = (
-    "merged at gate (e): the owner's approval, or the owner's merge (decision 13, as amended "
+    "merged at gate (deploy): the owner's approval, or the owner's merge (decision 13, as amended "
     "by decision 36)"
 )
 # With ``sdlc.yaml: deploy.production`` true the phase gate is still passed by the merge (the
@@ -404,9 +423,11 @@ MERGED_AT_GATE_E_PRODUCTION_REASON = (
     MERGED_AT_GATE_E_REASON + "; the release approval sdlc:release-approved is the release "
     "workflow's second act on this declared production"
 )
-# What gate (e) records when it passes on the build branch (``gate/gate.py``): true until the
-# owner's merge, so on the default branch it is read as the merge reason.
-WAITING_AT_GATE_E_REASON = "waiting for the owner at gate (e)"
+# What gate (deploy) records when it passes on the build branch (``gate/gate.py``): true until
+# the owner's merge, so on the default branch it is read as the merge reason. R45: the reason
+# an older plugin wrote (``gate (e)``) is read the same way, for good: merged changes keep it.
+WAITING_AT_GATE_E_REASON = "waiting for the owner at gate (deploy)"
+WAITING_AT_GATE_E_REASONS = (WAITING_AT_GATE_E_REASON, "waiting for the owner at gate (e)")
 
 
 def merged_at_gate_e(st: Status, production: bool = False) -> Status:
@@ -428,29 +449,29 @@ def merged_at_gate_e(st: Status, production: bool = False) -> Status:
     release workflow's to check, not this function's.
     """
     derived = Status.from_dict(st.to_dict())
-    if st.phase != "e":
-        # an abandoned change (decision 25) never reads as merged: its phase is not e
+    if st.phase != c.DEPLOY:
+        # an abandoned change (decision 25) never reads as merged: its phase is not deploy
         return derived
     reason = MERGED_AT_GATE_E_PRODUCTION_REASON if production else MERGED_AT_GATE_E_REASON
-    if st.gate.phase == "e" and st.gate.result == "passed":
-        if st.gate.reason == WAITING_AT_GATE_E_REASON:
-            derived.gate = Gate(phase="e", result="passed", reason=reason, at=st.gate.at)
+    if st.gate.phase == c.DEPLOY and st.gate.result == "passed":
+        if st.gate.reason in WAITING_AT_GATE_E_REASONS:
+            derived.gate = Gate(phase=c.DEPLOY, result="passed", reason=reason, at=st.gate.at)
         return derived
-    derived.gate = Gate(phase="e", result="passed", reason=reason, at=st.updated_at)
+    derived.gate = Gate(phase=c.DEPLOY, result="passed", reason=reason, at=st.updated_at)
     derived.parked_reason = None
     return derived
 
 
 MERGED_AT_GATE_A_REASON = (
-    "merged by the owner: the incident intent PR's merge is gate (a) (decision 25)"
+    "merged by the owner: the incident intent PR's merge is gate (intent) (decision 25)"
 )
 
 
 def merged_at_gate_a(st: Status) -> Status:
-    """An incident change at phase f on the default branch was merged by the owner (the
-    maintain run leaves it at f on its branch): gate (a) reads passed and any park is
-    lifted, without a write to the file - the same derivation as ``merged_at_gate_e``."""
-    st.gate = Gate(phase="a", result="passed", reason=MERGED_AT_GATE_A_REASON, at=st.gate.at)
+    """An incident change at phase maintain on the default branch was merged by the owner (the
+    maintain run leaves it at maintain on its branch): gate (intent) reads passed and any park
+    is lifted, without a write to the file - the same derivation as ``merged_at_gate_e``."""
+    st.gate = Gate(phase=c.INTENT, result="passed", reason=MERGED_AT_GATE_A_REASON, at=st.gate.at)
     st.parked_reason = None
     return st
 
@@ -468,7 +489,7 @@ def read_status(
     st = Status.from_dict(_load(change_dir))
     if not on_default_branch:
         return st
-    if st.phase == "f":
+    if st.phase == c.MAINTAIN:
         return merged_at_gate_a(st)
     return merged_at_gate_e(st, production=production)
 

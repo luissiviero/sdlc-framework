@@ -18,10 +18,15 @@ COMMANDS = PLUGIN / "commands"
 REVIEW_PROMPT = PLUGIN / "review" / "REVIEW_PROMPT.md"
 # Every command file, so a command added later is covered without editing this list.
 COMMAND_FILES = sorted(path.name for path in COMMANDS.glob("*.md"))
-# /sdlc-plan and /sdlc-init are the two attended commands: they talk to the owner. Every
+# R45 (decision 39, row 8; choice 273): a renamed command stays one release as a short command
+# that only points to its new name; it runs no phase, so the phase checks below skip it and
+# ``test_a_renamed_command_stays_one_release_and_points_to_its_new_name`` covers it.
+RENAMED = {"sdlc-plan.md": "/sdlc-intent"}
+PHASE_COMMAND_FILES = [name for name in COMMAND_FILES if name not in RENAMED]
+# /sdlc-intent and /sdlc-init are the two attended commands: they talk to the owner. Every
 # other command runs unattended and parks instead of asking (OPERATING_MODEL: escalate = park).
-ATTENDED = ("sdlc-plan.md", "sdlc-init.md")
-UNATTENDED = tuple(name for name in COMMAND_FILES if name not in ATTENDED)
+ATTENDED = ("sdlc-intent.md", "sdlc-init.md")
+UNATTENDED = tuple(name for name in PHASE_COMMAND_FILES if name not in ATTENDED)
 POLICY_SKILLS = (
     "coding-standards",
     "security-baseline",
@@ -51,7 +56,7 @@ def frontmatter(path: Path) -> dict[str, str]:
     return fm
 
 
-@pytest.mark.parametrize("name", ["sdlc-plan", "sdlc-init"])
+@pytest.mark.parametrize("name", ["sdlc-intent", "sdlc-init"])
 def test_command_frontmatter_and_script_references(name):
     path = PLUGIN / "commands" / f"{name}.md"
     fm = frontmatter(path)
@@ -69,20 +74,40 @@ def test_command_frontmatter_and_script_references(name):
     assert "bypass" in body.lower() or "Never edit" in body  # guardrail reminder present
 
 
-def test_sdlc_plan_flow_matches_step_11():
-    body = (PLUGIN / "commands" / "sdlc-plan.md").read_text(encoding="utf-8")
+def test_sdlc_intent_flow_matches_step_11():
+    body = (PLUGIN / "commands" / "sdlc-intent.md").read_text(encoding="utf-8")
     for step in [
         "Brainstorm",
         "new-change",
         "intent-template",
         "owner corrects",
         "commit-phase",
-        "sdlc:a-ready",
+        "sdlc:intent-ready",
+        "--phase intent",
+        "sdlc/<id>/intent",
         "compare/",
     ]:
         assert step in body, step
     assert "$ARGUMENTS" in body
-    assert "Do not start phase (b)" in " ".join(body.split())
+    assert "Do not start the design phase" in " ".join(body.split())
+
+
+@pytest.mark.parametrize("name", sorted(RENAMED))
+def test_a_renamed_command_stays_one_release_and_points_to_its_new_name(name):
+    """R45 (decision 39, row 8; choice 273): `/sdlc-plan` stays one release as a command that
+    points to `/sdlc-intent`, and does nothing else: no script, no write, no PR."""
+    path = COMMANDS / name
+    new = RENAMED[name]
+    assert (COMMANDS / f"{new.lstrip('/')}.md").is_file(), new
+    fm = frontmatter(path)
+    assert fm["disable-model-invocation"] == "true"
+    assert new in fm["description"] and "one release" in fm["description"]
+    assert fm["allowed-tools"] == "Read"
+    text = flat(path)
+    assert f"run `{new} $ARGUMENTS` instead" in text
+    assert "decision 39, row 8" in text
+    assert "${CLAUDE_PLUGIN_ROOT}" not in text and "upsert" not in text
+    assert "Never use bypass-permissions mode" in text and "Never notify" in text
 
 
 def test_sdlc_init_flow_matches_step_21():
@@ -95,7 +120,8 @@ def test_sdlc_init_flow_matches_step_21():
         "/init",
         "sdlc_init.py",
         "--id 0000",
-        "sdlc:a-ready",
+        "--phase intent",
+        "sdlc:intent-ready",
         "Re-running is safe",
         "evals",
         "bands.yaml",
@@ -185,18 +211,18 @@ def test_every_pr_opening_command_uses_the_description_builder():
         body = path.read_text(encoding="utf-8")
         if not any(mention in body for mention in PR_MENTIONS):
             continue
-        if path.name in PR_BUILDER_EXEMPT:
+        if path.name in PR_BUILDER_EXEMPT or path.name in RENAMED:
             continue
         assert PR_BUILDER_CALL in body, f"{path.name} opens a PR without {PR_BUILDER_CALL}"
         checked.append(path.name)
-    assert set(checked) == {p.name for p in sorted((PLUGIN / "commands").glob("*.md"))}, checked
+    assert set(checked) == set(PHASE_COMMAND_FILES), checked
 
 
 # --- task 22.4: the session-3 process content (design/build/test/deploy/fix, spec-template,
 # --- the review prompt) under the same static contract as the session-2 commands ----------
 
 
-@pytest.mark.parametrize("name", COMMAND_FILES)
+@pytest.mark.parametrize("name", PHASE_COMMAND_FILES)
 def test_every_command_frontmatter_and_guardrails(name):
     """Frontmatter, every referenced script on disk, allow rules quoted identically in the
     body, and the two guardrail reminders every command carries."""
@@ -218,7 +244,7 @@ def test_every_command_frontmatter_and_guardrails(name):
 
 @pytest.mark.parametrize("name", UNATTENDED)
 def test_unattended_commands_never_ask_the_owner(name):
-    """Only /sdlc-plan and /sdlc-init talk to the owner; the other five park instead."""
+    """Only /sdlc-intent and /sdlc-init talk to the owner; the other five park instead."""
     text = flat(COMMANDS / name)
     assert "Never ask the owner" in text or "never ask the owner" in text, name
 
@@ -232,27 +258,37 @@ def test_sdlc_design_flow_matches_steps_22_23():
         "spec-header",
         "start-run",
         "commit-phase",
-        "--phase b",
+        "--phase design",
+        "sdlc/<id>/design",
         "adversarial-reviewer",
         "check --root",
-        "sdlc:b-ready",
+        "sdlc:design-ready",
         "sdlc:needs-human",
         'pr/cli.py" upsert',
         "Read, Grep and Glob only",
         "prompt v1",
-        "Do not start phase (c)",
+        "Do not start the build phase",
+        "the planning run",
     ]:
         assert token in text, token
     positions = [text.index(section.removeprefix("## ")) for section in SPEC_SECTIONS]
     assert positions == sorted(positions), "the spec sections are not named in order"
+    assert "read-only planning run" not in text  # row 86: the tool list says read-only
 
 
-def test_sdlc_design_accepts_a_merged_incident_change_at_phase_f():
-    """The design run of 2026-09-25 (change 0005) read ``phase: f`` on a merged incident
-    intent and stopped with nothing to do: the preconditions say that change is at gate (a)."""
+def test_sdlc_design_accepts_a_merged_incident_change_at_phase_maintain():
+    """The design run of 2026-09-25 (change 0005) read ``phase: f`` (now ``maintain``) on a
+    merged incident intent and stopped with nothing to do: the preconditions say that change
+    is at the intent gate."""
     text = flat(COMMANDS / "sdlc-design.md")
     preconditions = text[text.index("## 0. Preconditions") : text.index("## 1. Branch")]
-    for token in ("entry_route: incident", "phase: f", "gate (a)", "decision 25", "Proceed"):
+    for token in (
+        "entry_route: incident",
+        "phase: maintain",
+        "the intent gate",
+        "decision 25",
+        "Proceed",
+    ):
         assert token in preconditions, token
 
 
@@ -314,10 +350,11 @@ def test_sdlc_build_flow_matches_step_24():
         "verifier",
         "evidence/verifier.md",
         "adversarial-reviewer",
-        "--phase c",
+        "--phase build",
+        "sdlc/<id>/build",
         "bump-iteration",
         "--draft",
-        "Do not run (d) here",
+        "Do not run the test phase here",
     ]:
         assert token in text, token
 
@@ -326,11 +363,11 @@ def test_sdlc_test_flow_matches_step_28():
     text = flat(COMMANDS / "sdlc-test.md")
     for token in [
         "preflight.py",
-        "--phase d",
+        "--phase test",
         "evidence/collect.py",
         "bump-iteration",
         "screenshots",
-        "--phase d",
+        "sdlc/<id>/build",
         "fresh context",
         "Never weaken, skip or delete a test",
     ]:
@@ -343,9 +380,9 @@ def test_sdlc_deploy_flow_matches_step_26():
         "preflight.py",
         'review/cli.py" prompt',
         'review/cli.py" validate',
-        "--phase e",
+        "--phase deploy",
         "--ready",
-        "sdlc:e-ready",
+        "sdlc:deploy-ready",
         "Never merge",
     ]:
         assert token in text, token
@@ -411,7 +448,7 @@ def test_sdlc_fix_flow_matches_the_change_request_loop():
     text = flat(COMMANDS / "sdlc-fix.md")
     for token in ["bump-iteration", "park", "decided", "upsert", "Never merge"]:
         assert token in text, token
-    for phase in ["(a)", "(b)", "(c)", "(d)", "(e)"]:
+    for phase in ["intent", "design", "build", "test", "deploy", "maintain"]:
         assert f"Phase {phase}" in text, phase
 
 
@@ -422,16 +459,19 @@ def test_sdlc_fix_covers_gate_a_and_the_owner_labels():
     path = COMMANDS / "sdlc-fix.md"
     text = flat(path)
     assert frontmatter(path)["disable-model-invocation"] == "true"
-    assert "the phase is `a`, `b`, `c`, `d`, `e` or `f`" in text  # (f) since 0.2.19
-    assert "phase `a` → the intent PR's head" in text and "`claude/...`" in text
+    assert (
+        "the phase is `intent`, `design`, `build`, `test`, `deploy` or `maintain` (an older "
+        "change may say `a` to `f`" in text
+    )  # maintain since 0.2.19; the names since R45
+    assert "phase `intent` → the intent PR's head" in text and "`claude/...`" in text
     assert "without re-running the brainstorm" in text
     assert "This is the one place a run edits `intent.md`" in text
-    assert "Never edit `intent.md` at (b) or later" in text
+    assert "Never edit `intent.md` at design or later" in text
     # decision 35: sdlc:accept-risk retired; the two labels' actors land in status.yaml
     assert "apply-labels" in text and "`iterations_reset_by`" in text
     assert "`sdlc:accept-risk` retired with decision 35" in text
     assert "--branch <head>" in text and "--head <head>" in text
-    assert "At phase (a) or (f) skip the verdict" in text  # (f) since 0.2.19
+    assert "At phase intent or maintain skip the verdict" in text  # maintain since 0.2.19
     assert "`sdlc-fix.yml`" in text and "Request changes" in text
     assert "`abandoned` change has no fix round" in text
     # D9: only a member's review or comment reaches the round (the second security review)
@@ -551,9 +591,9 @@ def test_review_prompt_renders_with_str_format():
 
 # --- 0.2.12: the reviewer has no shell (deliverable 6(e)); gate (e) finished (step 32) -------
 REVIEWER_BRIEFS = {
-    "sdlc-design.md": "b",
-    "sdlc-build.md": "c",
-    "sdlc-test.md": "d",
+    "sdlc-design.md": "design",
+    "sdlc-build.md": "build",
+    "sdlc-test.md": "test",
     "sdlc-fix.md": "<phase>",
 }
 
@@ -591,11 +631,11 @@ def test_sdlc_deploy_prepares_the_release_around_the_review_and_the_gate():
     assert "notes.py" not in prep
     assert "is a departure from `plan.md` unless the plan lists it" in prep
     assert '"## Files that change" of `plan.md` in the same commit' in prep
-    assert '--phase e --message "release(<id>): release prepared"' in prep
+    assert '--phase deploy --message "release(<id>): release prepared"' in prep
     assert "## 3a." not in text and "fresh review of the new HEAD" not in text
     # 0.2.26: after the panel's commits the review pass runs again; ``validate`` alone re-reads
     # the stale findings file and gate (e) refuses it; phase (e) has no diff or verdict file
-    panel = text[text.index("### Deferred review") : text.index("## 4. Gate (e)")]
+    panel = text[text.index("### Deferred review") : text.index("## 4. The deploy gate")]
     assert "run step 1 again for the new HEAD, once" in panel
     assert "`validate` only re-reads `review-findings.json`, it re-reviews nothing" in panel
     assert "re-run step 1's `validate`" not in panel
@@ -604,10 +644,10 @@ def test_sdlc_deploy_prepares_the_release_around_the_review_and_the_gate():
         'python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" --root "${CLAUDE_PROJECT_DIR}" '
         "--id <id> --write"
     )
-    gate = text[text.index("## 4. Gate (e)") : text.index("## 5. Mark the PR ready")]
+    gate = text[text.index("## 4. The deploy gate") : text.index("## 5. Mark the PR ready")]
     evidence_commit = (
-        'commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e '
-        '--message "review(<id>): gate (e) evidence" --push'
+        'commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy '
+        '--message "review(<id>): gate (deploy) evidence" --push'
     )
     assert gate.index(GATE_CHECK) < gate.index(notes_call) < gate.index(evidence_commit)
     assert "evidence/release-notes.md" in gate
@@ -631,10 +671,10 @@ def test_sdlc_deploy_prepares_the_release_around_the_review_and_the_gate():
         "nothing deployed",
     ):
         assert nothing in prep, nothing
-    assert "--ready" in step5 and "sdlc:e-ready" in step5
+    assert "--ready" in step5 and "sdlc:deploy-ready" in step5
     assert "The agent does everything up to the production gate and nothing past it" in text
     # R22 (decision 36): the approval is gate (e), and the merge App merges on it
-    assert "the approval = gate (e) passed (decision 36); the merge App then merges it" in (
+    assert "the approval = gate (deploy) passed (decision 36); the merge App then merges it" in (
         " ".join(step5.split())
     )
     two_acts = (
@@ -665,7 +705,7 @@ def test_no_command_or_agent_defers_to_a_finished_build_stage():
 def test_pr_route_order_matches_the_github_client():
     """pr/github.py tries the REST API with the token first, then `gh`, then the compare URL
     (since 0.2.3); the commands describe the same order."""
-    plan = flat(COMMANDS / "sdlc-plan.md")
+    plan = flat(COMMANDS / "sdlc-intent.md")
     assert (
         "the GitHub REST API with the token (`GITHUB_TOKEN`/`GH_TOKEN`) first, then the `gh` CLI"
         in plan
@@ -693,14 +733,15 @@ def test_sdlc_maintain_flow_matches_step_37():
         "proposal.json",
         'detect/cli.py" routes',
         'detect/cli.py" dispatch',
-        "--phase f",
-        "sdlc:f-ready",
+        "--phase maintain",
+        "sdlc/<id>/intent",
+        "sdlc:maintain-ready",
         "incident",
         "sdlc:go",
         "decision 25",
         "decision 26",
         "Never edit source",
-        "Do not start phase (b)",
+        "Do not start the design phase",
     ]:
         assert token in text, token
     assert text.index('detect/cli.py" routes') < text.index("proposal.json")
@@ -840,7 +881,7 @@ def test_intent_template_has_examples_after_the_article_sections():
 def test_the_mock_question_and_the_mock_line():
     """R29 part 1: the interview asks for a mock on a screen change; spec.md's Acceptance gets
     a fixed Mock: line; the build matches the mock, never the referenced screens."""
-    plan = flat(COMMANDS / "sdlc-plan.md")
+    plan = flat(COMMANDS / "sdlc-intent.md")
     assert '"Do you have a mock or example screens?"' in plan and "never blocks" in plan
     spec = flat(PLUGIN / "skills" / "spec-template" / "SKILL.md")
     assert "`Mock: mock/<file>`" in spec
@@ -855,7 +896,7 @@ def test_the_quick_intent_route():
     in the section the gate requires and the reviewer judges."""
     from gate import artifacts as art
 
-    plan = flat(COMMANDS / "sdlc-plan.md")
+    plan = flat(COMMANDS / "sdlc-intent.md")
     assert "**The quick intent**" in plan and "`quick:`" in plan
     assert "skip step 4's correction loop" in plan
     heading = art.SPEC_ASSUMED_SECTION
@@ -882,7 +923,7 @@ def test_the_plan_skill_states_the_proof_item_grammar():
         "a bool never equals a number, `1` never equals `1.0`, `[true]` is not `[1]`",
         "**The any-line rule**: with `line`, the item holds when any line of the text file",
         "the value seen is the file's first line",
-        "the gate (b) check `proof_items` refuses the plan without one",
+        "the design gate's check `proof_items` refuses the plan without one",
     ):
         assert words in text, words
     example = (
@@ -905,8 +946,8 @@ def test_the_phase_commands_follow_the_drive():
     assert "the gate treats it as evidence missing" not in test
     build = flat(COMMANDS / "sdlc-build.md")
     assert (
-        "`- screenshot: evidence/proof/<file>.png vs mock/<file>`, added to the plan during (c),"
-        in (build)
+        "`- screenshot: evidence/proof/<file>.png vs mock/<file>`, added to the plan during "
+        "the build," in (build)
     )
     assert "reported and never the bar" in build
     assert (

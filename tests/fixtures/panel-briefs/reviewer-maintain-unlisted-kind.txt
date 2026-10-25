@@ -1,7 +1,7 @@
-# Review panel — reviewer brief (item 2 of phase (f), change 0001)
+# Review panel — reviewer brief (item 2 of the maintain phase, change 0001)
 
 You are one of three fresh contexts settling one judgment item of change 0001
-(Sample change) inside phase (f), under deferred review (decision 21). You did not write the
+(Sample change) inside the maintain phase, under deferred review (decision 21). You did not write the
 artifact. You judge this one item and nothing else; report only; write exactly one file.
 
 ## The item
@@ -25,7 +25,7 @@ rule, not by taste — and say which rule or fact settles it. If nothing settles
 the safest reading is and why. At most fifteen lines.
 
 ## Output — the one file you write
-`<ROOT>/changes/0001-sample-change/evidence/panel/f-2-reviewer.md` (markdown):
+`<ROOT>/changes/0001-sample-change/evidence/panel/maintain-2-reviewer.md` (markdown):
 
 ```
 ## Verdict

@@ -1,5 +1,5 @@
 """Layer-1 tests of the change-id reservation (R51, gap G2; the race analysis's checks 1 to 5;
-NOTES §59): ``new-change`` reserves ``sdlc/<id>/a`` on the remote with a commit of its own
+NOTES §59): ``new-change`` reserves ``sdlc/<id>/intent`` on the remote with a commit of its own
 under an empty lease before it writes the folder, takes the next id when git refuses the
 ref update, keeps today's best-effort id on any other failure, and leaves a local branch at
 the reservation so the id's first ``commit-phase`` pushes a fast-forward."""
@@ -68,12 +68,12 @@ def test_new_change_reserves_the_id_with_a_commit_of_its_own(remote, tmp_path, c
     assert code == 0 and out["id"] == "0001"
     res = out["reservation"]
     assert res["outcome"] == gitops.RESERVED
-    assert remote_sha(remote, "sdlc/0001/a") == res["sha"]
+    assert remote_sha(remote, "sdlc/0001/intent") == res["sha"]
     # the default branch's tree and tip as parent: an empty commit unique to the allocation
     assert git(work, "rev-parse", f"{res['sha']}^") == main
     assert git(work, "rev-parse", f"{res['sha']}^{{tree}}") == git(work, "rev-parse", "main^{tree}")
-    assert res["local_branch"] == "sdlc/0001/a"
-    assert git(work, "rev-parse", "sdlc/0001/a") == res["sha"]
+    assert res["local_branch"] == "sdlc/0001/intent"
+    assert git(work, "rev-parse", "sdlc/0001/intent") == res["sha"]
     assert (work / out["dir"]).is_dir()
 
 
@@ -142,7 +142,7 @@ def test_an_explicit_id_reserves_nothing(remote, tmp_path, capsys):
     code = state_cli.main(["new-change", "--root", str(work), "--title", "t", "--id", "0042"])
     out = json.loads(capsys.readouterr().out)
     assert code == 0 and out["id"] == "0042" and "reservation" not in out
-    assert not remote_sha(remote, "sdlc/0042/a")
+    assert not remote_sha(remote, "sdlc/0042/intent")
 
 
 def test_the_first_commit_phase_starts_from_the_reservation(remote, tmp_path, capsys):
@@ -160,12 +160,12 @@ def test_the_first_commit_phase_starts_from_the_reservation(remote, tmp_path, ca
     reserved = out["reservation"]["sha"]
     (work / out["dir"] / "intent.md").write_text("# intent\n", encoding="utf-8")
     code = state_cli.main(
-        ["commit-phase", "--root", str(work), "--id", out["id"], "--phase", "a",
+        ["commit-phase", "--root", str(work), "--id", out["id"], "--phase", "intent",
          "--message", "intent", "--start-point", "main", "--push"]
     )  # fmt: skip
     capsys.readouterr()
     assert code == 0
-    pushed = remote_sha(remote, "sdlc/0001/a")
+    pushed = remote_sha(remote, "sdlc/0001/intent")
     assert git(work, "rev-parse", f"{pushed}^") == reserved
 
 

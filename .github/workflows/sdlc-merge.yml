@@ -1,17 +1,17 @@
-# Gate (e) is the owner's approving review; the merge App merges on it (decision 36; ROADMAP
+# The deploy gate is the owner's approving review; the merge App merges on it (decision 36; ROADMAP
 # R22). Three jobs, no model:
 #
 # - doorbell, on the owner's approving review of a build PR: it dispatches this workflow on
 #   the default branch with the pull request's number. It holds no key: a review-triggered
 #   run may use the pull request's copy of this file, so it only rings.
-# - not-a-build-pr, on every pull request whose head is not sdlc/<id>/c: it posts a passing
-#   sdlc/review check ("not a build PR") on the head, so ruleset 2, which requires that
+# - not-a-build-pr, on every pull request whose head is not sdlc/<id>/build (or /c): it
+#   posts a passing sdlc/review check ("not a build PR") on the head, so ruleset 2, which requires that
 #   check, holds only build PRs (decision 36, point 5). pr/cli.py upsert posts the same check
 #   on the pull requests the workflow token opens or updates, whose events start no run.
-# - merge, on the dispatch (the doorbell's, or the (e) run's when the review turned green
+# - merge, on the dispatch (the doorbell's, or the deploy run's when the review turned green
 #   after an early approval): in the sdlc-merge environment, which only the default branch
 #   may use, it mints the merge App's token and runs plugin/ci/merge_step.py, which re-checks
-#   everything from the API (the owner's approval, the build PR at sdlc:e-ready, gate (e)'s
+#   everything from the API (the owner's approval, the build PR at sdlc:deploy-ready, the deploy gate's
 #   record, the review findings and every commit after them, sdlc/review green on the head)
 #   and merges at exactly that head. A check that does not hold is a green run that says
 #   why; a merge GitHub refuses (a conflict, a rule) is red, for R18's "Failed runs". Either
@@ -27,7 +27,7 @@
 # ("Approval comes from a human through branch protection, informed by the findings").
 # Installed into this project by /sdlc-init from the framework's template/.github/workflows/;
 # edit it here, not in the framework. /sdlc-init filled in the framework repository.
-name: SDLC merge (e)
+name: SDLC merge (deploy)
 
 on:
   pull_request_review:
@@ -41,7 +41,7 @@ on:
         required: true
         type: string
       head_ref:
-        description: "The build PR's head, e.g. sdlc/0001/c"
+        description: "The build PR's head, e.g. sdlc/0001/build"
         required: false
         type: string
       pr:
@@ -63,7 +63,8 @@ jobs:
       github.event.review.state == 'approved' &&
       !endsWith(github.event.review.user.login, '[bot]') &&
       startsWith(github.event.pull_request.head.ref, 'sdlc/') &&
-      endsWith(github.event.pull_request.head.ref, '/c') }}
+      (endsWith(github.event.pull_request.head.ref, '/c') ||
+      endsWith(github.event.pull_request.head.ref, '/build')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -101,7 +102,8 @@ jobs:
     if: >-
       ${{ github.event_name == 'pull_request' &&
       !(startsWith(github.event.pull_request.head.ref, 'sdlc/') &&
-      endsWith(github.event.pull_request.head.ref, '/c')) }}
+      (endsWith(github.event.pull_request.head.ref, '/c') ||
+      endsWith(github.event.pull_request.head.ref, '/build'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -191,7 +193,7 @@ jobs:
           path: framework
 
       # The workflow token reads; the merge App's token is used for the merge call only.
-      - name: Check gate (e) and merge
+      - name: Check gate (deploy) and merge
         if: ${{ vars.SDLC_MERGE_APP_ID != '' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}

@@ -10,7 +10,7 @@ regression-test the code (p.30 step 3).
 
 **This suite starts empty on purpose** (decision 17): the article builds it from "20 to 50
 real tasks from recent work" (p.30 step 1), which do not exist on day one. It fills from:
-- every incident handled in phase (f): "Each production incident gets an eval ... and stays
+- every incident handled in the maintain phase: "Each production incident gets an eval ... and stays
   in the suite as a regression test" (p.30 step 5, p.44 step 7);
   `python framework/plugin/evals/case.py new --root . --id <id>` writes the skeleton from the
   change's `intent.md` and `evidence/detection.json`;

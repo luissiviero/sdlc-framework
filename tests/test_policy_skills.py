@@ -191,9 +191,9 @@ def test_data_check_flags_migrations_and_pii_in_logs(project):
 
 
 def test_definition_of_done_check_is_the_gate_dry_run(project):
-    proc = run_check("definition-of-done", project, "--id", "0000", "--phase", "a")
+    proc = run_check("definition-of-done", project, "--id", "0000", "--phase", "intent")
     assert "## definition-of-done check (gate dry run)" in proc.stdout
     assert "- [x] artifacts" in proc.stdout and "verdict if run now" in proc.stdout
-    assert not (project / "changes" / "0000-sdlc-init" / "evidence" / "gate-a.json").exists()
-    proc = run_check("definition-of-done", project, "--id", "0042", "--phase", "a")
+    assert not (project / "changes" / "0000-sdlc-init" / "evidence" / "gate-intent.json").exists()
+    proc = run_check("definition-of-done", project, "--id", "0042", "--phase", "intent")
     assert proc.returncode == 1 and "gate could not run" in proc.stdout

@@ -13,17 +13,17 @@ PLUGIN = Path(__file__).resolve().parents[1] / "plugin"
 
 
 def test_branch_names_and_parse():
-    assert c.branch_name("0001", "a") == "sdlc/0001/a"
-    assert c.parse_branch("sdlc/0042/c") == ("0042", "c")
+    assert c.branch_name("0001", "intent") == "sdlc/0001/intent"
+    assert c.parse_branch("sdlc/0042/build") == ("0042", "build")
     assert c.parse_branch("main") is None
     with pytest.raises(ValueError):
-        c.branch_name("1", "a")
+        c.branch_name("1", "intent")
     with pytest.raises(ValueError):
         c.branch_name("0001", "z")
 
 
 def test_labels():
-    assert c.ready_label("a") == "sdlc:a-ready"
+    assert c.ready_label("intent") == "sdlc:intent-ready"
     assert c.NEEDS_HUMAN_LABEL == "sdlc:needs-human"
     labels = c.all_labels()
     assert "sdlc:needs-human" in labels
@@ -41,9 +41,10 @@ def test_labels():
 
 
 def test_human_gates():
-    # decision 37 (1.0.21): one set of human gates; gate (f) is the owner's triage (decision 25)
-    assert c.HUMAN_GATES == {"a", "b", "e", "f"}
-    assert c.is_human_gate("c") is False and c.is_human_gate("e") is True
+    # decision 37 (1.0.21): one set of human gates; gate (maintain) is the owner's triage
+    # (decision 25)
+    assert c.HUMAN_GATES == {"intent", "design", "deploy", "maintain"}
+    assert c.is_human_gate("build") is False and c.is_human_gate("deploy") is True
 
 
 def test_a_retired_setting_is_named_never_refused():
@@ -114,8 +115,8 @@ def test_status_round_trip_and_schema(tmp_path):
     change_dir, st = status.new_change(
         tmp_path, "Fix the thing", entry_route="incident", change_type="fix", external_ref="#12"
     )
-    st.record_gate("a", "passed")
-    st.set_phase("b")
+    st.record_gate("intent", "passed")
+    st.set_phase("design")
     st.bump_iteration()
     status.write_status(change_dir, st)
     raw = yamlish.load_file(change_dir / "status.yaml")
@@ -148,7 +149,7 @@ def test_status_round_trip_and_schema(tmp_path):
         "schema_version",
     }
     back = status.read_status(change_dir)
-    assert back.phase == "b" and back.iterations == 1 and back.gate.result == "passed"
+    assert back.phase == "design" and back.iterations == 1 and back.gate.result == "passed"
     assert back.entry_route == "incident" and back.change_type == "fix"
     assert back.tests_locked is False
     assert back.id == "0001"  # stays a string, never the int 1
@@ -156,24 +157,24 @@ def test_status_round_trip_and_schema(tmp_path):
 
 def test_park_records_reason(tmp_path):
     change_dir, st = status.new_change(tmp_path, "Risky change")
-    st.set_phase("c")
+    st.set_phase("build")
     st.park("touches auth (risk list)")
     status.write_status(change_dir, st)
     back = status.read_status(change_dir)
     assert back.parked_reason == "touches auth (risk list)"
-    assert back.gate.result == "parked" and back.gate.phase == "c"
+    assert back.gate.result == "parked" and back.gate.phase == "build"
 
 
 def test_a_park_that_a_later_gate_result_lifted_is_dropped_on_read(tmp_path):
     """status.yaml as plugins before 0.2.6 wrote it (change 0001 on the sample repository,
-    2026-09-22): gate (b) passed, and the reason of the park it lifted still beside it. The
+    2026-09-22): gate (design) passed, and the reason of the park it lifted still beside it. The
     file on main outlives every plugin release, so the reader is where it is normalised: a
     park is a gate result, and a parked_reason without one is a leftover."""
     change_dir, st = status.new_change(tmp_path, "Percent helper")
-    st.set_phase("b")
+    st.set_phase("design")
     st.park("open_concerns: 1 open")
     st.gate.result = "passed"  # what record_gate did before 0.2.6, the reason kept
-    st.gate.reason = "waiting for the owner at gate (b)"
+    st.gate.reason = "waiting for the owner at gate (design)"
     status.write_status(change_dir, st)
     text = status.status_path(change_dir).read_text(encoding="utf-8")
     assert 'parked_reason: "open_concerns: 1 open"' in text
@@ -221,7 +222,7 @@ def test_cli_new_change_and_show(tmp_path, capsys):
     rc = cli.main(["new-change", "--root", str(tmp_path), "--title", "CLI change", "--type", "fix"])
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["id"] == "0001" and out["branch"] == "sdlc/0001/a"
+    assert out["id"] == "0001" and out["branch"] == "sdlc/0001/intent"
     assert out["dir"] == "changes/0001-cli-change"
     rc = cli.main(["show", "--root", str(tmp_path), "--id", "0001"])
     assert rc == 0
@@ -294,16 +295,18 @@ def test_cli_lock_and_unlock_tests_round_trip(tmp_path, capsys):
 def test_work_branch_keeps_the_build_branch_through_d_and_e():
     """OPERATING_MODEL section 8: (c) carries "the build PR that stays open through (d) and
     (e)"; an incident (f) produces a new intent, which is (a) work."""
-    assert c.work_branch("0001", "a") == "sdlc/0001/a"
-    assert c.work_branch("0001", "b") == "sdlc/0001/b"
-    assert [c.work_branch("0001", p) for p in "cde"] == ["sdlc/0001/c"] * 3
-    assert c.work_branch("0001", "f") == "sdlc/0001/a"
-    assert c.branch_name("0001", "d") == "sdlc/0001/d"  # the literal name is still available
-    assert c.parse_branch(c.work_branch("0042", "e")) == ("0042", "c")
+    assert c.work_branch("0001", "intent") == "sdlc/0001/intent"
+    assert c.work_branch("0001", "design") == "sdlc/0001/design"
+    assert [c.work_branch("0001", p) for p in ("build", "test", "deploy")] == [
+        "sdlc/0001/build"
+    ] * 3
+    assert c.work_branch("0001", "maintain") == "sdlc/0001/intent"
+    assert c.branch_name("0001", "test") == "sdlc/0001/test"  # the literal name is still available
+    assert c.parse_branch(c.work_branch("0042", "deploy")) == ("0042", "build")
     with pytest.raises(ValueError):
         c.work_branch("0001", "z")
     with pytest.raises(ValueError):
-        c.work_branch("1", "c")
+        c.work_branch("1", "build")
 
 
 def _git(root: Path, *args: str) -> str:
@@ -347,38 +350,42 @@ def _commit_phase(
 
 
 def test_commit_phase_d_lands_on_the_build_branch(repo, capsys):
-    """Phases (d) and (e) commit on sdlc/<id>/c — the build PR stays open through them — and
+    """Phases (d) and (e) commit on sdlc/<id>/build — the build PR stays open through them — and
     never create a branch of their own (build guide step 24.3)."""
     root = repo
     assert cli.main(["new-change", "--root", str(root), "--title", "Percent helper"]) == 0
     capsys.readouterr()
     change = c.find_change_dir(root, "0001")
     (change / "intent.md").write_text("# Intent: percent helper\n", encoding="utf-8")
-    rc, out, _ = _commit_phase(root, "a", "intent(0001): percent helper", capsys)
-    assert rc == 0 and out["branch"] == "sdlc/0001/a" and out["work_branch"] == "sdlc/0001/a"
+    rc, out, _ = _commit_phase(root, "intent", "intent(0001): percent helper", capsys)
+    assert (
+        rc == 0 and out["branch"] == "sdlc/0001/intent" and out["work_branch"] == "sdlc/0001/intent"
+    )
 
     # (d) before /sdlc-build ever ran: the build branch is missing, which is an error
-    rc, _out, err = _commit_phase(root, "d", "test(0001): evidence", capsys)
-    assert rc == 2 and "sdlc/0001/c" in err
-    assert _git(root, "branch", "--list", "sdlc/0001/c").strip() == ""
+    rc, _out, err = _commit_phase(root, "test", "test(0001): evidence", capsys)
+    assert rc == 2 and "sdlc/0001/build" in err
+    assert _git(root, "branch", "--list", "sdlc/0001/build").strip() == ""
 
     (change / "plan.md").write_text("# Plan\n", encoding="utf-8")
-    rc, out, _ = _commit_phase(root, "c", "build(0001): percent helper", capsys)
-    assert rc == 0 and out["branch"] == "sdlc/0001/c"
+    rc, out, _ = _commit_phase(root, "build", "build(0001): percent helper", capsys)
+    assert rc == 0 and out["branch"] == "sdlc/0001/build"
 
     (change / "evidence" / "test.log").write_text("# python -m pytest\nok\n", encoding="utf-8")
-    rc, out, _ = _commit_phase(root, "d", "test(0001): evidence", capsys)
-    assert rc == 0 and out["branch"] == "sdlc/0001/c" and out["work_branch"] == "sdlc/0001/c"
-    assert _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
-    assert _git(root, "branch", "--list", "sdlc/0001/d").strip() == ""
-    assert status.read_status(change).phase == "d"
+    rc, out, _ = _commit_phase(root, "test", "test(0001): evidence", capsys)
+    assert (
+        rc == 0 and out["branch"] == "sdlc/0001/build" and out["work_branch"] == "sdlc/0001/build"
+    )
+    assert _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/build"
+    assert _git(root, "branch", "--list", "sdlc/0001/test").strip() == ""
+    assert status.read_status(change).phase == "test"
 
     (change / "evidence" / "review-findings.json").write_text("{}", encoding="utf-8")
-    rc, out, _ = _commit_phase(root, "e", "review(0001): findings", capsys)
-    assert rc == 0 and out["branch"] == "sdlc/0001/c"
+    rc, out, _ = _commit_phase(root, "deploy", "review(0001): findings", capsys)
+    assert rc == 0 and out["branch"] == "sdlc/0001/build"
     branches = set(_git(root, "branch", "--format=%(refname:short)").split())
-    assert branches == {"main", "sdlc/0001/a", "sdlc/0001/c"}
-    tracked = _git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/c").split()
+    assert branches == {"main", "sdlc/0001/intent", "sdlc/0001/build"}
+    tracked = _git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/build").split()
     assert "changes/0001-percent-helper/evidence/test.log" in tracked
 
 
@@ -399,15 +406,15 @@ def test_commit_phase_refuses_a_departure_from_the_plan_without_plan_md(repo, ca
     (root / "src").mkdir()
     (root / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
     (root / "src" / "b.py").write_text("y = 1\n", encoding="utf-8")
-    # phases before (c) are not checked: the plan is written on sdlc/<id>/b
-    rc, out, _ = _commit_phase(root, "b", "design(0001): plan", capsys)
-    assert rc == 0 and out["branch"] == "sdlc/0001/b"
+    # phases before (c) are not checked: the plan is written on sdlc/<id>/design
+    rc, out, _ = _commit_phase(root, "design", "design(0001): plan", capsys)
+    assert rc == 0 and out["branch"] == "sdlc/0001/design"
     # inside the plan: commits, no plan.md needed
-    rc, out, _ = _commit_phase(root, "c", "build(0001): step 1", capsys, ["src/a.py"])
-    assert rc == 0 and out["branch"] == "sdlc/0001/c"
+    rc, out, _ = _commit_phase(root, "build", "build(0001): step 1", capsys, ["src/a.py"])
+    assert rc == 0 and out["branch"] == "sdlc/0001/build"
     # a departure without plan.md in the commit: refused, nothing committed
     head = _git(root, "rev-parse", "HEAD").strip()
-    rc, out, err = _commit_phase(root, "c", "build(0001): departure", capsys, ["src/b.py"])
+    rc, out, err = _commit_phase(root, "build", "build(0001): departure", capsys, ["src/b.py"])
     assert rc == 2 and out == {}
     assert "plan.md is out of sync" in err and "src/b.py" in err and "src/a.py" not in err
     assert _git(root, "rev-parse", "HEAD").strip() == head
@@ -421,29 +428,31 @@ def test_commit_phase_refuses_a_departure_from_the_plan_without_plan_md(repo, ca
         ),
         encoding="utf-8",
     )
-    rc, out, _ = _commit_phase(root, "c", "build(0001): departure, planned", capsys, ["src/b.py"])
+    rc, out, _ = _commit_phase(
+        root, "build", "build(0001): departure, planned", capsys, ["src/b.py"]
+    )
     assert rc == 0 and out["commit"]
     assert "src/b.py" in _git(root, "ls-tree", "-r", "--name-only", "HEAD")
 
 
 def test_a_passing_gate_lifts_the_park(tmp_path):
-    """The first fix round of change 0001 (2026-09-22) re-ran gate (b) to `passed` and left
+    """The first fix round of change 0001 (2026-09-22) re-ran gate (design) to `passed` and left
     the old parked_reason behind; the next phase's CI guard would have skipped the change."""
     change_dir, st = status.new_change(tmp_path, "Percent helper")
     st.park("open_concerns: 1 flagged concern(s) still open in spec.md")
     assert st.parked_reason and st.gate.result == "parked"
-    st.record_gate("b", "passed", "waiting for the owner at gate (b)")
+    st.record_gate("design", "passed", "waiting for the owner at gate (design)")
     assert st.parked_reason is None and st.gate.result == "passed"
     status.write_status(change_dir, st)
     assert status.read_status(change_dir).parked_reason is None
 
 
-# --- deliverable 32.0: the owner's merge is gate (e) (decision 13) -----------------------------
+# --- deliverable 32.0: the owner's merge is gate (deploy) (decision 13) ------------------------
 def _parked_at_e(tmp_path: Path) -> tuple[Path, status.Status]:
     """Change 0001 on the sample repository after the owner merged PR #7 (2026-09-23): phase
     e, the thirteenth run's park on the iteration cap still recorded, iterations 3."""
     change_dir, st = status.new_change(tmp_path, "Percent helper")
-    st.set_phase("e")
+    st.set_phase("deploy")
     st.iterations = 3
     st.park("limits: iteration cap reached (3 of 3)")
     status.write_status(change_dir, st)
@@ -457,15 +466,15 @@ def test_merged_at_gate_e_derives_passed_and_is_pure(tmp_path):
     assert st.to_dict() == before  # the argument is never touched
     assert derived is not st
     assert derived.gate == status.Gate(
-        phase="e", result="passed", reason=status.MERGED_AT_GATE_E_REASON, at=st.updated_at
+        phase="deploy", result="passed", reason=status.MERGED_AT_GATE_E_REASON, at=st.updated_at
     )
     assert "decision 13" in derived.gate.reason
-    assert derived.parked_reason is None and derived.phase == "e" and derived.iterations == 3
+    assert derived.parked_reason is None and derived.phase == "deploy" and derived.iterations == 3
     # already passed at (e): an unchanged copy
     again = status.merged_at_gate_e(derived)
     assert again is not derived and again.to_dict() == derived.to_dict()
     # any other phase: an unchanged copy, park included
-    st.phase = "c"
+    st.phase = "build"
     other = status.merged_at_gate_e(st)
     assert other.to_dict() == st.to_dict() and other.parked_reason
 
@@ -477,11 +486,11 @@ def test_read_status_on_the_default_branch_derives_gate_e_without_a_write(tmp_pa
     plain = status.read_status(change_dir)
     assert plain.gate.result == "parked" and plain.parked_reason
     merged = status.read_status(change_dir, on_default_branch=True)
-    assert merged.gate.phase == "e" and merged.gate.result == "passed"
+    assert merged.gate.phase == "deploy" and merged.gate.result == "passed"
     assert merged.parked_reason is None
     assert path.read_text(encoding="utf-8") == text  # main is read-only for automation
     # phases c and d are left as they are, even on the default branch
-    for phase in ("c", "d"):
+    for phase in ("build", "test"):
         st = status.read_status(change_dir)
         st.phase = phase
         status.write_status(change_dir, st)
@@ -491,30 +500,30 @@ def test_read_status_on_the_default_branch_derives_gate_e_without_a_write(tmp_pa
     # an e that already passed its gate keeps its result and time; the build run's "waiting
     # for the owner" is true only until the merge, so on main it reads as the merge reason
     st = status.read_status(change_dir)
-    st.phase = "e"
-    st.record_gate("e", "passed", "waiting for the owner at gate (e)")
+    st.phase = "deploy"
+    st.record_gate("deploy", "passed", "waiting for the owner at gate (deploy)")
     status.write_status(change_dir, st)
     raw = status.read_status(change_dir)
     kept = status.read_status(change_dir, on_default_branch=True)
     assert kept.gate == status.Gate(
-        phase="e", result="passed", reason=status.MERGED_AT_GATE_E_REASON, at=raw.gate.at
+        phase="deploy", result="passed", reason=status.MERGED_AT_GATE_E_REASON, at=raw.gate.at
     )
     assert {**kept.to_dict(), "gate": None} == {**raw.to_dict(), "gate": None}
     # another reason on a passed gate is the record's own, and is kept as written
-    st.record_gate("e", "passed", "passed by hand")
+    st.record_gate("deploy", "passed", "passed by hand")
     status.write_status(change_dir, st)
     own = status.read_status(change_dir, on_default_branch=True)
     assert own.to_dict() == status.read_status(change_dir).to_dict()
 
 
 def test_the_waiting_reason_is_the_one_gate_e_records():
-    """``WAITING_AT_GATE_E_REASON`` is what ``gate/gate.py`` writes when gate (e) passes on the
+    """``WAITING_AT_GATE_E_REASON`` is what ``gate/gate.py`` writes when gate (deploy) passes on the
     build branch; were the two to drift, merged changes would read "waiting" on main again."""
     source = (Path(__file__).resolve().parents[1] / "plugin" / "gate" / "gate.py").read_text(
         encoding="utf-8"
     )
     assert '"passed", f"waiting for the owner at gate ({ctx.phase})"' in source
-    assert status.WAITING_AT_GATE_E_REASON == "waiting for the owner at gate (e)"
+    assert status.WAITING_AT_GATE_E_REASON == "waiting for the owner at gate (deploy)"
 
 
 def test_show_and_list_on_the_default_branch_print_the_derived_gate(repo, capsys):
@@ -526,18 +535,20 @@ def test_show_and_list_on_the_default_branch_print_the_derived_gate(repo, capsys
 
     assert cli.main(["show", "--root", str(root), "--id", "0001"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["status"]["gate"]["phase"] == "e" and out["status"]["gate"]["result"] == "passed"
+    assert (
+        out["status"]["gate"]["phase"] == "deploy" and out["status"]["gate"]["result"] == "passed"
+    )
     assert out["status"]["parked_reason"] is None
-    assert out["derived"] == "gate: e/passed (derived: merged on main)"
+    assert out["derived"] == "gate: deploy/passed (derived: merged on main)"
     assert cli.main(["list", "--root", str(root)]) == 0
     (row,) = json.loads(capsys.readouterr().out)
     assert row["id"] == "0001" and row["parked_reason"] is None
-    assert row["derived"] == "gate: e/passed (derived: merged on main)"
+    assert row["derived"] == "gate: deploy/passed (derived: merged on main)"
     assert status.status_path(change_dir).read_text(encoding="utf-8") == text
     assert _git(root, "status", "--porcelain") == ""
 
     # on the build branch the park is the change's real state, and nothing is derived
-    _git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    _git(root, "checkout", "-q", "-b", "sdlc/0001/build")
     assert cli.main(["show", "--root", str(root), "--id", "0001"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["status"]["gate"]["result"] == "parked" and "derived" not in out
@@ -554,7 +565,7 @@ def test_show_outside_a_repository_derives_nothing(tmp_path, capsys):
 
 
 def test_merged_at_gate_e_reason_names_the_release_act_on_a_declared_production(tmp_path):
-    """Review finding I4 (0.2.12): the merge passes gate (e) either way, but on a declared
+    """Review finding I4 (0.2.12): the merge passes gate (deploy) either way, but on a declared
     production the derived reason says the release label is the release workflow's second
     act (decision 13)."""
     change_dir, st = _parked_at_e(tmp_path)
@@ -562,7 +573,7 @@ def test_merged_at_gate_e_reason_names_the_release_act_on_a_declared_production(
     assert plain.gate.result == "passed"
     assert plain.gate.reason == status.MERGED_AT_GATE_E_REASON
     prod = status.merged_at_gate_e(st, production=True)
-    assert prod.gate.phase == "e" and prod.gate.result == "passed"
+    assert prod.gate.phase == "deploy" and prod.gate.result == "passed"
     assert prod.parked_reason is None
     assert prod.gate.reason == (
         f"{status.MERGED_AT_GATE_E_REASON}; the release approval "
@@ -600,10 +611,10 @@ def test_show_and_list_word_the_derived_reason_from_deploy_production(repo, caps
         out = json.loads(capsys.readouterr().out)
         assert out["status"]["gate"]["result"] == "passed"
         assert out["status"]["gate"]["reason"] == reason
-        assert out["derived"] == "gate: e/passed (derived: merged on main)"
+        assert out["derived"] == "gate: deploy/passed (derived: merged on main)"
         assert cli.main(["list", "--root", str(root)]) == 0
         (row,) = json.loads(capsys.readouterr().out)
-        assert row["derived"] == "gate: e/passed (derived: merged on main)"
+        assert row["derived"] == "gate: deploy/passed (derived: merged on main)"
 
 
 # --- deliverable 4(b): commit-phase commits only what changed under its paths ------------------
@@ -626,7 +637,7 @@ def test_commit_phase_commits_only_the_changed_paths(repo, capsys):
     (root / "unrelated.txt").write_text("staged by someone else\n", encoding="utf-8")
     _git(root, "add", "unrelated.txt")
 
-    rc, out, _ = _commit_phase(root, "a", "intent(0001): percent helper", capsys)
+    rc, out, _ = _commit_phase(root, "intent", "intent(0001): percent helper", capsys)
     assert rc == 0 and out["commit"]
     committed = _committed(root)
     assert f"A {rel}/intent.md" in committed and f"A {rel}/notes.md" in committed
@@ -651,12 +662,14 @@ def test_commit_phase_commits_only_the_changed_paths(repo, capsys):
 
     # a deleted --paths entry outside the folder is recorded too (no exists() filter any more)
     (root / "src" / "helper.py").unlink()
-    rc, out, _ = _commit_phase(root, "a", "intent(0001): drop helper", capsys, ["src/helper.py"])
+    rc, out, _ = _commit_phase(
+        root, "intent", "intent(0001): drop helper", capsys, ["src/helper.py"]
+    )
     assert rc == 0 and _committed(root) == ["D src/helper.py"]
 
     # nothing changed under the paths: no commit, the staged file untouched
     head = _git(root, "rev-parse", "HEAD").strip()
-    rc, out, _ = _commit_phase(root, "a", "intent(0001): again", capsys)
+    rc, out, _ = _commit_phase(root, "intent", "intent(0001): again", capsys)
     assert rc == 0 and out["commit"] is None and out["base"] is None
     assert _git(root, "rev-parse", "HEAD").strip() == head
     assert _git(root, "diff", "--cached", "--name-only").split() == ["unrelated.txt"]
@@ -758,7 +771,7 @@ def test_default_branch_on_a_runner_shaped_checkout_reads_the_remote_tracking_ma
     work = repo.parent / "work"
     _git(repo.parent, "clone", "-q", str(bare), str(work))
     _git(work, "remote", "set-head", "origin", "-d")
-    _git(work, "checkout", "-q", "-b", "sdlc/0001/a")
+    _git(work, "checkout", "-q", "-b", "sdlc/0001/intent")
     _git(work, "branch", "-q", "-D", "main")
     assert _git(work, "branch", "--list", "main").strip() == ""
     assert gitops.default_branch(work) == "main"
@@ -768,7 +781,7 @@ def test_default_branch_on_a_runner_shaped_checkout_reads_the_remote_tracking_ma
     assert gitops.default_branch(work) == "master"
     # none of them: the current branch
     _git(work, "branch", "-q", "-D", "master")
-    assert gitops.default_branch(work) == "sdlc/0001/a"
+    assert gitops.default_branch(work) == "sdlc/0001/intent"
 
 
 def test_default_branch_prefers_the_environment_value_unless_it_names_a_framework_branch(
@@ -780,10 +793,10 @@ def test_default_branch_prefers_the_environment_value_unless_it_names_a_framewor
     from state import gitops
 
     assert gitops.DEFAULT_BRANCH_ENV == "SDLC_DEFAULT_BRANCH"
-    _git(repo, "checkout", "-q", "-b", "sdlc/0001/a")
+    _git(repo, "checkout", "-q", "-b", "sdlc/0001/intent")
     monkeypatch.setenv(gitops.DEFAULT_BRANCH_ENV, "trunk")
     assert gitops.default_branch(repo) == "trunk"
-    for refused in ("sdlc/0001/a", "sdlc/0001/revert-abc1234", "sdlc/x", "  ", ""):
+    for refused in ("sdlc/0001/intent", "sdlc/0001/revert-abc1234", "sdlc/x", "  ", ""):
         monkeypatch.setenv(gitops.DEFAULT_BRANCH_ENV, refused)
         assert gitops.default_branch(repo) == "main", refused
 
@@ -820,7 +833,7 @@ def test_unpark_perform_honours_a_person_and_rejects_the_automation_identity(tmp
     from state import unpark
 
     change_dir, st = status.new_change(tmp_path, "Labels")
-    st.phase = "c"
+    st.phase = "build"
     st.iterations = 4
     st.lock_tests()
     present = {
@@ -927,7 +940,7 @@ def test_apply_from_pr_records_the_actor_and_removes_the_performed_label(tmp_pat
     assert back.iterations == 0 and back.iterations_reset_by == "luissiviero"
     assert back.tests_unlocked_by is None
     # no owner label at all: nothing read, nothing written
-    quiet = _FakeGitHub(["sdlc:b-ready"], {})
+    quiet = _FakeGitHub(["sdlc:design-ready"], {})
     out = unpark.apply_from_pr(
         tmp_path, change_dir, {}, "owner/name", 7, github=quiet, env=OWNER_ENV
     )
@@ -961,16 +974,16 @@ def test_cli_apply_labels_uses_the_github_client(tmp_path, capsys, monkeypatch):
 # --- decision 25: abandon ------------------------------------------------------------------
 def test_abandon_is_an_end_state(tmp_path):
     change_dir, st = status.new_change(tmp_path, "Abandoned")
-    st.set_phase("b")
+    st.set_phase("design")
     st.park("open_concerns: 2 open")
     st.abandon("pull request 9 closed without a merge")
     status.write_status(change_dir, st)
     back = status.read_status(change_dir)
     assert back.phase == c.ABANDONED and back.abandoned
     assert back.abandoned_reason == "pull request 9 closed without a merge"
-    assert back.parked_reason is None and back.gate.phase == "b"  # the record is kept
+    assert back.parked_reason is None and back.gate.phase == "design"  # the record is kept
     with pytest.raises(ValueError):
-        back.set_phase("c")
+        back.set_phase("build")
     assert status.merged_at_gate_e(back).phase == c.ABANDONED  # never reads as merged
     assert c.ABANDONED not in c.PHASES
     with pytest.raises(ValueError):
@@ -989,10 +1002,10 @@ def test_cli_abandon_marks_every_branch_of_the_change_on_the_remote(
     _git(repo, "push", "-q", "-u", "origin", "main")
     change_dir, _st = status.new_change(repo, "Abandoned")
     (change_dir / "intent.md").write_text("# Intent\n", encoding="utf-8")
-    assert _commit_phase(repo, "a", "intent(0001): abandoned", capsys)[0] == 0
-    _git(repo, "push", "-q", "-u", "origin", "sdlc/0001/a")
-    assert _commit_phase(repo, "b", "design(0001): spec", capsys)[0] == 0
-    _git(repo, "push", "-q", "-u", "origin", "sdlc/0001/b")
+    assert _commit_phase(repo, "intent", "intent(0001): abandoned", capsys)[0] == 0
+    _git(repo, "push", "-q", "-u", "origin", "sdlc/0001/intent")
+    assert _commit_phase(repo, "design", "design(0001): spec", capsys)[0] == 0
+    _git(repo, "push", "-q", "-u", "origin", "sdlc/0001/design")
     _git(repo, "config", "--unset", "user.name")  # a runner has no identity of its own
     _git(repo, "config", "--unset", "user.email")
     (tmp_path / "gitconfig").write_text("", encoding="utf-8")  # nor a global one
@@ -1004,14 +1017,14 @@ def test_cli_abandon_marks_every_branch_of_the_change_on_the_remote(
     )  # fmt: skip
     out = json.loads(capsys.readouterr().out)
     assert rc == 0 and out["phase"] == "abandoned"
-    assert [b["branch"] for b in out["branches"]] == ["sdlc/0001/b", "sdlc/0001/a"]
+    assert [b["branch"] for b in out["branches"]] == ["sdlc/0001/design", "sdlc/0001/intent"]
     assert all(b["pushed"] and b["commit"] for b in out["branches"])
-    for branch in ("sdlc/0001/a", "sdlc/0001/b"):
+    for branch in ("sdlc/0001/intent", "sdlc/0001/design"):
         text = _git(bare, "show", f"refs/heads/{branch}:changes/0001-abandoned/status.yaml")
         assert "phase: abandoned" in text and "pull request 9 closed" in text
         author = _git(bare, "log", "-1", "--format=%an", f"refs/heads/{branch}")
         assert author.strip() == "github-actions[bot]"
-    assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
+    assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/design"
     # idempotent: a second close changes nothing
     rc = cli.main(
         ["abandon", "--root", str(repo), "--id", "0001", "--reason", "pull request 9 closed "
@@ -1020,14 +1033,14 @@ def test_cli_abandon_marks_every_branch_of_the_change_on_the_remote(
     out = json.loads(capsys.readouterr().out)
     assert rc == 0 and out["branches"][0]["commit"] is None and out["branches"][0]["already"]
     # commit-phase refuses to run a phase on it
-    rc, _out, err = _commit_phase(repo, "c", "build(0001): nothing", capsys)
+    rc, _out, err = _commit_phase(repo, "build", "build(0001): nothing", capsys)
     assert rc == 2 and "abandoned" in err
-    assert "sdlc/0001/c" not in _git(repo, "branch", "--list")  # nothing was created for it
+    assert "sdlc/0001/build" not in _git(repo, "branch", "--list")  # nothing was created for it
 
 
 def test_commit_phase_on_a_named_branch(repo, capsys):
     """Decision 22: a fix round on an intent PR a web session pushed from claude/... commits
-    on that head, never on sdlc/<id>/a."""
+    on that head, never on sdlc/<id>/intent."""
     change_dir, _st = status.new_change(repo, "Web intent")
     (change_dir / "intent.md").write_text("# Intent\n", encoding="utf-8")
     _git(repo, "checkout", "-q", "-b", "claude/relaxed-x")
@@ -1035,15 +1048,15 @@ def test_commit_phase_on_a_named_branch(repo, capsys):
     _git(repo, "commit", "-q", "-m", "intent(0001): web intent")
     (change_dir / "intent.md").write_text("# Intent\nCorrected.\n", encoding="utf-8")
     rc = cli.main(
-        ["commit-phase", "--root", str(repo), "--id", "0001", "--phase", "a", "--message",
+        ["commit-phase", "--root", str(repo), "--id", "0001", "--phase", "intent", "--message",
          "fix(0001): corrected", "--branch", "claude/relaxed-x"]
     )  # fmt: skip
     out = json.loads(capsys.readouterr().out)
     assert rc == 0 and out["branch"] == "claude/relaxed-x" and out["commit"]
     assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() == "claude/relaxed-x"
-    assert "sdlc/0001/a" not in _git(repo, "branch", "--list")
+    assert "sdlc/0001/intent" not in _git(repo, "branch", "--list")
     rc = cli.main(
-        ["commit-phase", "--root", str(repo), "--id", "0001", "--phase", "a", "--message",
+        ["commit-phase", "--root", str(repo), "--id", "0001", "--phase", "intent", "--message",
          "x", "--branch", "claude/missing"]
     )  # fmt: skip
     assert rc == 2 and "does not exist" in capsys.readouterr().err
@@ -1051,18 +1064,18 @@ def test_commit_phase_on_a_named_branch(repo, capsys):
 
 def test_read_status_on_the_default_branch_reads_a_merged_incident_as_gate_a(tmp_path):
     """Decision 25 (plugin 0.2.19): an incident change stays at phase f on its branch and the
-    owner's merge of its intent PR is gate (a); on the default branch the file reads as gate
-    (a) passed with any park lifted, without a write (like gate (e), decision 13)."""
+    owner's merge of its intent PR is gate (intent); on the default branch the file reads as gate
+    (a) passed with any park lifted, without a write (like gate (deploy), decision 13)."""
     change_dir, st = status.new_change(
         tmp_path, "CI breach", entry_route="incident", change_type="fix"
     )
-    st.set_phase("f")
-    st.park("route: Go requested", phase="f")
+    st.set_phase("maintain")
+    st.park("route: Go requested", phase="maintain")
     status.write_status(change_dir, st)
     before = (change_dir / "status.yaml").read_text(encoding="utf-8")
     merged = status.read_status(change_dir, on_default_branch=True)
-    assert merged.phase == "f" and merged.parked_reason is None
-    assert (merged.gate.phase, merged.gate.result) == ("a", "passed")
+    assert merged.phase == "maintain" and merged.parked_reason is None
+    assert (merged.gate.phase, merged.gate.result) == ("intent", "passed")
     assert "decision 25" in merged.gate.reason
     assert (change_dir / "status.yaml").read_text(encoding="utf-8") == before
     raw = status.read_status(change_dir)
@@ -1073,7 +1086,7 @@ def test_commit_phase_carries_the_review_pass_s_record(repo, capsys):
     """``changes/.review-seen.json`` (the review pass's record, one file per project, outside
     the change folder) goes into every commit-phase commit at (d) and (e) in which it
     changed, with no --paths needed: until 0.3.5 a round that re-ran ``review/cli.py
-    validate`` after its last commit left it uncommitted, and gate (e)'s clean_tree parked on
+    validate`` after its last commit left it uncommitted, and gate (deploy)'s clean_tree parked on
     it (change 0001's fix rounds 3 and 4, 2026-10-03). Its siblings under changes/ still need
     --paths; at (a) and (b) it is not carried (a committed file outside the folder fails
     design_scope); a deleted record or a directory of that name is not it (the review of the
@@ -1084,37 +1097,37 @@ def test_commit_phase_carries_the_review_pass_s_record(repo, capsys):
     change = c.find_change_dir(root, "0001")
     rel = "changes/0001-percent-helper"
     (change / "intent.md").write_text("# Intent\n", encoding="utf-8")
-    rc, out, _ = _commit_phase(root, "a", "intent(0001): percent helper", capsys)
+    rc, out, _ = _commit_phase(root, "intent", "intent(0001): percent helper", capsys)
     assert rc == 0 and out["commit"]
-    _git(root, "checkout", "-q", "-b", "sdlc/0001/c")  # the build branch (d) and (e) commit on
+    _git(root, "checkout", "-q", "-b", "sdlc/0001/build")  # the build branch (d) and (e) commit on
 
     seen = root / c.review_seen_rel()
     seen.write_text('{"27da52344010278e": {"count": 1}}\n', encoding="utf-8")  # untracked
     (change / "intent.md").write_text("# Intent v2\n", encoding="utf-8")
-    rc, out, _ = _commit_phase(root, "a", "fix(0001): intent", capsys)  # (a): not carried
+    rc, out, _ = _commit_phase(root, "intent", "fix(0001): intent", capsys)  # (a): not carried
     assert rc == 0 and _committed(root) == [f"M {rel}/intent.md"]
     assert _git(root, "status", "--porcelain", "--", "changes/.review-seen.json").startswith("??")
 
     (root / "changes" / "scratch.json").write_text("{}\n", encoding="utf-8")
     (change / "spec.md").write_text("# Spec\n", encoding="utf-8")
-    rc, out, _ = _commit_phase(root, "e", "review(0001): findings", capsys)
-    assert rc == 0 and out["commit"] and out["branch"] == "sdlc/0001/c"
+    rc, out, _ = _commit_phase(root, "deploy", "review(0001): findings", capsys)
+    assert rc == 0 and out["commit"] and out["branch"] == "sdlc/0001/build"
     assert _committed(root) == sorted(  # status.yaml: the phase moved to (e)
         ["A changes/.review-seen.json", f"A {rel}/spec.md", f"M {rel}/status.yaml"]
     )
     assert _git(root, "status", "--porcelain", "--", "changes/scratch.json").startswith("??")
 
     seen.write_text('{"27da52344010278e": {"count": 2}}\n', encoding="utf-8")  # modified
-    rc, out, _ = _commit_phase(root, "e", "review(0001): second pass", capsys)
+    rc, out, _ = _commit_phase(root, "deploy", "review(0001): second pass", capsys)
     assert rc == 0 and out["commit"]
     assert _committed(root) == ["M changes/.review-seen.json"]
 
-    rc, out, _ = _commit_phase(root, "e", "review(0001): again", capsys)  # unchanged
+    rc, out, _ = _commit_phase(root, "deploy", "review(0001): again", capsys)  # unchanged
     assert rc == 0 and out["commit"] is None
 
     seen.unlink()  # a deleted record is left for the gate to report
     (change / "spec.md").write_text("# Spec v2\n", encoding="utf-8")
-    rc, out, _ = _commit_phase(root, "e", "review(0001): deletion stays out", capsys)
+    rc, out, _ = _commit_phase(root, "deploy", "review(0001): deletion stays out", capsys)
     assert rc == 0 and _committed(root) == [f"M {rel}/spec.md"]
     assert _git(root, "status", "--porcelain", "--", "changes/.review-seen.json").startswith(" D")
 
@@ -1123,5 +1136,153 @@ def test_commit_phase_carries_the_review_pass_s_record(repo, capsys):
     seen.mkdir()  # a directory of that name is not the record
     (seen / "payload.py").write_text("x = 1\n", encoding="utf-8")
     (change / "spec.md").write_text("# Spec v3\n", encoding="utf-8")
-    rc, out, _ = _commit_phase(root, "e", "review(0001): a directory is not it", capsys)
+    rc, out, _ = _commit_phase(root, "deploy", "review(0001): a directory is not it", capsys)
     assert rc == 0 and _committed(root) == [f"M {rel}/spec.md"]
+
+
+# --- R45 (decision 39, row 1): the phase names, and the letters read for one release ---------
+def test_phase_name_reads_a_letter_as_its_name_and_leaves_the_rest():
+    assert c.PHASES == ("intent", "design", "build", "test", "deploy", "maintain")
+    assert (c.INTENT, c.DESIGN, c.BUILD, c.TEST, c.DEPLOY, c.MAINTAIN) == c.PHASES
+    for letter, name in zip("abcdef", c.PHASES, strict=True):
+        assert c.phase_name(letter) == name
+        assert c.phase_name(name) == name
+        assert c.LEGACY_PHASES[letter] == name and c.PHASE_LETTERS[name] == letter
+    assert c.phase_name(" c ") == "build"
+    # not a phase: the run names and the end state come back unchanged
+    for other in ("review", "fix", "triage", c.ABANDONED, "z", None, 3):
+        assert c.phase_name(other) == other
+
+
+def test_branches_are_written_with_the_name_and_read_in_both_forms():
+    assert c.branch_name("0001", "build") == "sdlc/0001/build"
+    assert c.branch_name("0001", "c") == "sdlc/0001/build"  # a letter in, the name out
+    assert c.legacy_branch_name("0001", "build") == "sdlc/0001/c"
+    assert c.branch_names("0001", "design") == ("sdlc/0001/design", "sdlc/0001/b")
+    assert c.work_branches("0001", "deploy") == ("sdlc/0001/build", "sdlc/0001/c")
+    assert c.work_branches("0001", "f") == ("sdlc/0001/intent", "sdlc/0001/a")
+    for branch in ("sdlc/0042/c", "sdlc/0042/build"):
+        assert c.parse_branch(branch) == ("0042", "build")
+    assert c.parse_branch("sdlc/0042/a") == c.parse_branch("sdlc/0042/intent") == ("0042", "intent")
+    for other in ("sdlc/0042/g", "sdlc/0042/builds", "sdlc/0042/dismiss", "sdlc/42/c"):
+        assert c.parse_branch(other) is None
+
+
+def test_ready_labels_are_written_with_the_name_and_read_in_both_forms():
+    assert c.ready_label("e") == c.ready_label("deploy") == "sdlc:deploy-ready"
+    assert c.legacy_ready_label("deploy") == "sdlc:e-ready"
+    assert c.ready_labels("deploy") == {"sdlc:deploy-ready", "sdlc:e-ready"}
+    assert c.ready_label_phase("sdlc:build-ready") == "build"
+    assert c.ready_label_phase("sdlc:c-ready") == "build"
+    for other in ("sdlc:needs-human", "sdlc:z-ready", "incident", "sdlc:release-approved"):
+        assert c.ready_label_phase(other) is None
+    assert "sdlc:intent-ready" in c.all_labels() and "sdlc:a-ready" not in c.all_labels()
+    assert c.is_human_gate("e") and c.is_human_gate("deploy") and not c.is_human_gate("c")
+
+
+def test_phase_file_reads_the_letter_s_file_only_when_the_name_s_is_missing(tmp_path):
+    pattern = "gate-{phase}.json"
+    assert c.phase_file(tmp_path, pattern, "build") == tmp_path / "gate-build.json"
+    (tmp_path / "gate-c.json").write_text("{}", encoding="utf-8")
+    assert c.phase_file(tmp_path, pattern, "build") == tmp_path / "gate-c.json"
+    assert c.phase_file(tmp_path, pattern, "c") == tmp_path / "gate-c.json"
+    (tmp_path / "gate-build.json").write_text("{}", encoding="utf-8")
+    assert c.phase_file(tmp_path, pattern, "build") == tmp_path / "gate-build.json"
+    assert c.phase_file(tmp_path, "{phase}-{n}-reviewer.md", "b", n=2) == (
+        tmp_path / "design-2-reviewer.md"
+    )
+    # a run that is not a phase has one name: its file comes back as it is
+    assert c.phase_file(tmp_path, pattern, "review") == tmp_path / "gate-review.json"
+
+
+def test_existing_branch_keeps_a_change_in_flight_on_its_letter_branch(repo):
+    from state import gitops
+
+    names = c.work_branches("0001", "test")
+    assert gitops.existing_branch(repo, names) == "sdlc/0001/build"  # neither: the name
+    _git(repo, "branch", "sdlc/0001/c")
+    assert gitops.existing_branch(repo, names) == "sdlc/0001/c"  # in flight before R45
+    _git(repo, "branch", "sdlc/0001/build")
+    assert gitops.existing_branch(repo, names) == "sdlc/0001/build"  # the name first
+
+
+def test_commit_phase_reads_a_letter_and_keeps_the_letter_branch_of_a_change_in_flight(
+    repo, capsys
+):
+    """R45: ``--phase c`` is read as build, and a change whose build branch an older plugin
+    cut (``sdlc/0001/c``) keeps committing there; status.yaml is written with the name."""
+    assert cli.main(["new-change", "--root", str(repo), "--title", "Percent helper"]) == 0
+    capsys.readouterr()
+    change = c.find_change_dir(repo, "0001")
+    _git(repo, "checkout", "-q", "-b", "sdlc/0001/c")
+    (change / "plan.md").write_text("# Plan\n", encoding="utf-8")
+    rc, out, _ = _commit_phase(repo, "c", "build(0001): on the letter branch", capsys)
+    assert rc == 0 and out["branch"] == "sdlc/0001/c"
+    assert status.read_status(change).phase == "build"
+    (change / "evidence").mkdir(exist_ok=True)
+    (change / "evidence" / "test.log").write_text("# pytest\nok\n", encoding="utf-8")
+    rc, out, _ = _commit_phase(repo, "test", "test(0001): evidence", capsys)
+    assert rc == 0 and out["branch"] == "sdlc/0001/c"
+    assert _git(repo, "branch", "--list", "sdlc/0001/build").strip() == ""
+    assert "phase: test" in status.status_path(change).read_text(encoding="utf-8")
+
+
+def test_status_reads_the_letters_an_older_plugin_wrote(tmp_path):
+    change_dir, st = status.new_change(tmp_path, "Percent helper")
+    path = status.status_path(change_dir)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace("phase: intent", "phase: e", 1)
+    path.write_text(text, encoding="utf-8")
+    raw = yamlish.load_file(path)
+    raw["gate"] = {"phase": "e", "result": "passed", "reason": None, "at": None}
+    from gate import risk as risk_mod
+
+    raw["fast_lane"] = {
+        "a": {"pr": 3, "sha": "a" * 40},
+        "b": {"pr": 4, "sha": "b" * 40, "classification": "routine"},
+    }
+    raw["risk_acceptances"] = [
+        {
+            "act": risk_mod.ACCEPT_ACT,
+            "by": "owner",
+            "at": "2026-09-23T10:00:00Z",
+            "via": risk_mod.ACCEPT_VIA_APPROVAL,
+            "pr": 7,
+            "head": None,
+            "details": {"phase": "e", "items": ["auth"], "banner_shown": True},
+        }
+    ]
+    back = status.Status.from_dict(raw)
+    assert back.phase == "deploy" and back.gate.phase == "deploy"
+    assert set(back.fast_lane) == {"intent", "design"}
+    assert back.risk_acceptances[0]["details"]["phase"] == "deploy"
+    # writing it again writes the names
+    assert back.to_dict()["phase"] == "deploy"
+    assert set(back.to_dict()["fast_lane"]) == {"intent", "design"}
+
+
+def test_merged_at_gate_e_reads_the_letter_and_the_old_waiting_reason(tmp_path):
+    """A change merged before R45 keeps ``phase: e`` and gate (e)'s old "waiting" reason on
+    the default branch for good: it still reads as merged at gate (deploy)."""
+    st = status.Status.from_dict(
+        {
+            "id": "0001",
+            "slug": "percent-helper",
+            "title": "Percent helper",
+            "phase": "e",
+            "gate": {
+                "phase": "e",
+                "result": "passed",
+                "reason": "waiting for the owner at gate (e)",
+                "at": "2026-09-23T10:00:00Z",
+            },
+        }
+    )
+    assert "waiting for the owner at gate (e)" in status.WAITING_AT_GATE_E_REASONS
+    derived = status.merged_at_gate_e(st)
+    assert derived.gate == status.Gate(
+        phase="deploy",
+        result="passed",
+        reason=status.MERGED_AT_GATE_E_REASON,
+        at="2026-09-23T10:00:00Z",
+    )

@@ -10,7 +10,7 @@ writes ``evals/cases/<id>-<slug>/prompt.md`` and ``checks.yaml`` from the change
 
 - ``intent.md``: the title (``# Intent: ...``), the first sentence of ``## Problem`` and the
   ``## Proposed outcome``;
-- ``evidence/detection.json`` when present (the phase (f) detection record): the metric, the
+- ``evidence/detection.json`` when present (the maintain phase detection record): the metric, the
   rule and the failed run URLs;
 - ``sdlc.yaml: commands.test``: the project's test command, the case's first check.
 

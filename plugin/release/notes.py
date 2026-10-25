@@ -20,7 +20,7 @@ unless the code itself changed:
 
 ``--write`` stores it as ``changes/<id>-<slug>/evidence/release-notes.md`` (UTF-8, LF) and
 prints the path; without it the notes go to stdout. With ``--plain-words "<text>"`` (and
-``--write``) the (e) session's paragraph is stored under "## In plain words", with the label
+``--write``) the deploy session's paragraph is stored under "## In plain words", with the label
 and the mark naming the commit it describes; a later ``--write`` keeps the section while that
 commit is still the last of the list and drops it otherwise, so a re-run with no code change
 leaves the file byte-identical and a code change asks for a fresh paragraph. Every other
@@ -153,7 +153,7 @@ def _evidence_line(change_dir: Path, root: Path) -> str:
     try:
         from pr import description
 
-        return description.evidence_status(change_dir, "e", root)
+        return description.evidence_status(change_dir, c.DEPLOY, root)
     except Exception as exc:  # noqa: BLE001 - the notes still render
         return f"evidence status unavailable: {exc!r}"
 
@@ -277,7 +277,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--plain-words",
         default=None,
-        help='with --write: the (e) session\'s paragraph for "## In plain words" (R18)',
+        help='with --write: the deploy session\'s paragraph for "## In plain words" (R18)',
     )
     return p
 

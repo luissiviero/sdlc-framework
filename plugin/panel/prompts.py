@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from state import conventions as c
+
 BRIEFS_DIR = Path(__file__).resolve().parent / "briefs"
 
 
@@ -62,8 +64,8 @@ APPLY_HINT = {
 }
 
 EVIDENCE_HINT = {
-    "b": "the diff file `diff-b.patch`, the adversarial verdict; no toolchain output yet.",
-    "c": "`verifier.md`, the diff file `diff-c.patch`, the adversarial verdict.",
-    "d": "`test.log`, `build.log`, `lint.log`, `verifier.md`, the diff file `diff-d.patch`.",
-    "e": "the toolchain logs, `verifier.md`, `review-findings.json`, the diff file.",
+    c.DESIGN: "the diff file `diff-design.patch`, the adversarial verdict; no toolchain output.",
+    c.BUILD: "`verifier.md`, the diff file `diff-build.patch`, the adversarial verdict.",
+    c.TEST: "`test.log`, `build.log`, `lint.log`, `verifier.md`, the diff file `diff-test.patch`.",
+    c.DEPLOY: "the toolchain logs, `verifier.md`, `review-findings.json`, the diff file.",
 }

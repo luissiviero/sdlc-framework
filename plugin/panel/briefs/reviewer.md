@@ -1,7 +1,7 @@
-# Review panel — reviewer brief (item {n} of phase ({phase}), change {change_id})
+# Review panel — reviewer brief (item {n} of the {phase} phase, change {change_id})
 
 You are one of three fresh contexts settling one judgment item of change {change_id}
-({title}) inside phase ({phase}), under deferred review (decision 21). You did not write the
+({title}) inside the {phase} phase, under deferred review (decision 21). You did not write the
 artifact. You judge this one item and nothing else; report only; write exactly one file.
 
 ## The item

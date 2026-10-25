@@ -11,23 +11,24 @@ re-runnable after every review comment.
 Layout of the body, in order:
   00. "Needs your close look" (decision 35, ROADMAP R24): when a gate the PR covers reported a
      risk-list hit, one line per item with where it hit and the reviewer's brief on it
-     (``gate/risk.py banner_lines``): the design PR (b), the build PR from (c) to (e), and the
-     install PR of change 0000 at (a). The PR's merge accepts the items no earlier act
-     accepted; at (c) and (d) only gate (e) does, by the owner's approving review since R22
+     (``gate/risk.py banner_lines``): the design PR, the build PR from build to deploy, and
+     the install PR of change 0000 at intent. The PR's merge accepts the items no earlier act
+     accepted; at build and test only gate (deploy) does, by the owner's approving review since R22
      (choice 242, point 2), or by the owner's merge when the owner merges;
   0a. "What I assumed (N)" (ROADMAP R54): when the change started from a quick intent, the
      list under spec.md's "## Assumed from the quick intent", on the design PR and the build
-     PR; a review comment on a line corrects it at (b), and changes the code from (c) on;
+     PR; a review comment on a line corrects it at design, and changes the code from build on;
   0. "Decisions taken for you (N)" above the bullets (decision 21):
-     one line per standing panel decision of the phases this PR covers ((b) for the design
-     PR; (c), (d), (e) for the build PR), from ``evidence/decisions-<phase>.json``; a review
-     comment on any of them overturns it (/sdlc-fix);
+     one line per standing panel decision of the phases this PR covers (design for the
+     design PR; build, test, deploy for the build PR), from
+     ``evidence/decisions-<phase>.json``; a review comment on any of them overturns it
+     (/sdlc-fix);
   1. the five bullets, one line each (a fixed order, so the owner reads the same shape every
      time); when the gate parked, the fifth bullet points at the "What I need from you" block
      and the block itself follows the list verbatim (it is multi-line, a bullet is not) -
      unless the record carries ``sdlc:fixing`` (decision 29): then the runner's automatic
      fix round k of the cap is running, the fifth bullet says so and nothing is asked. At
-     phase (a) the intent PR has no spec, no diff and no gate file, so the middle bullets
+     phase intent the intent PR has no spec, no diff and no gate file, so the middle bullets
      describe the intent instead: entry route, affected users and systems, open questions;
   2. ``Links:`` intent, spec, plan and the gate result, as blob links on the head branch when
      the GitHub remote lets us build the URL, else as plain repository paths;
@@ -37,14 +38,14 @@ Layout of the body, in order:
      (a reset count included, R26) and fix iterations;
   4. the proposed ``CLAUDE.md`` lines when the review pass left them (never applied here:
      ``CLAUDE.md`` is a protected path, the owner applies the line in the PR review);
-  5. at phase (e), the release note: ``evidence/release-notes.md`` (written by
+  5. at phase deploy, the release note: ``evidence/release-notes.md`` (written by
      ``plugin/release/notes.py``, build guide step 32) quoted without its H1 title and with
      its headings demoted one level so they nest, else the intent's proposed outcome, in the
      owner's words.
 
-At phase (e), when ``sdlc.yaml: deploy.production`` is true, one more line follows the
+At phase deploy, when ``sdlc.yaml: deploy.production`` is true, one more line follows the
 bullets (like the counters line, not a sixth bullet): the release approval, the second act
-of gate (e) (decision 13). On the fast lane (decision 30) a line of the same kind says what
+of gate (deploy) (decision 13). On the fast lane (decision 30) a line of the same kind says what
 this PR carries and which earlier PR it superseded: the design PR carries the owner's
 intent (the intent PR is closed), the build PR the intent, spec and plan with the code.
 """
@@ -91,19 +92,19 @@ LIST_ITEM_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(?P<text>.+)$")
 CARRIED_FORWARD_RE = re.compile(r"(?i)carried forward")
 HEADING_RE = re.compile(r"^#{2,5} ")  # an H2-H5 heading of release-notes.md, demoted once
 
-# The PR the phase opens: (b) has its own spec+plan PR; (c), (d) and (e) share the one build
-# PR the article keeps open from build to merge (p.34; OPERATING_MODEL section 4.1).
-PR_BRANCH_PHASE = {"a": "a", "b": "b", "c": "c", "d": "c", "e": "c", "f": "a"}
+# The PR the phase opens: design has its own spec+plan PR; build, test and deploy share the
+# one build PR the article keeps open from build to merge (p.34; OPERATING_MODEL section 4.1).
+PR_BRANCH_PHASE = c.WORK_PHASE
 TITLE_PREFIX = {
-    "a": "intent",
-    "b": "design",
-    "c": "build",
-    "d": "build",
-    "e": "build",
-    "f": "maintain",
+    c.INTENT: "intent",
+    c.DESIGN: "design",
+    c.BUILD: "build",
+    c.TEST: "build",
+    c.DEPLOY: "build",
+    c.MAINTAIN: "maintain",
 }
 
-# The four questions of build guide step 23, asked at gate (b) in the owner's own words.
+# The four questions of build guide step 23, asked at gate (design) in the owner's own words.
 STEP_23_CHECKLIST = (
     "Does the spec solve the problem the intent states?",
     "Are the open questions from intent.md answered or carried forward?",
@@ -111,13 +112,15 @@ STEP_23_CHECKLIST = (
     "Is plan.md implementable by someone who never saw the conversation?",
 )
 GATE_CHECKLIST = {
-    "a": "read, correct via review comments, merge = approve (gate (a))",
-    "f": "triage (gate (f), decision 25): merge = fix now (gate (a) of this intent); label "
+    c.INTENT: "read, correct via review comments, merge = approve (gate (intent))",
+    c.MAINTAIN: "triage (gate (maintain), decision 25): merge = fix now (gate (intent) of this "
+    "intent); label "
     "`schedule` = later; close with a comment = dismiss the finding (the comment is the "
     "recorded reason)",
-    "b": "; ".join(STEP_23_CHECKLIST)
+    c.DESIGN: "; ".join(STEP_23_CHECKLIST)
     + " Merge = approve; a review comment = change request (/sdlc-fix).",
-    "e": "an approving review = approve (gate (e), decision 36); a review comment is the "
+    c.DEPLOY: "an approving review = approve (gate (deploy), decision 36); a review comment is "
+    "the "
     "change request (/sdlc-fix). Waiting for your approval: the merge App then merges this PR "
     "(without a merge App, merge it after approving) and the release workflow runs "
     "`deploy.command`",
@@ -128,15 +131,15 @@ GATE_CHECKLIST = {
 # Choice 239 (ROADMAP R54): an intent PR opened from the owner's own account, not as a draft,
 # is accepted by that act and starts the design at once (decision 30), so "merge = approve"
 # is not what it needs. The description is written before the PR exists and cannot know who
-# opens it, so a PR not opened as a draft names both cases; a draft keeps the gate (a) line
+# opens it, so a PR not opened as a draft names both cases; a draft keeps the gate (intent) line
 # alone (a draft never takes the fast lane, run_phase.intent_pr_start).
 FAST_LANE_A_CHECKLIST = (
     "opened from your own account, not as a draft, and changing nothing outside its change "
     "folder, nothing: opening it accepted the intent "
     "and started the design (the fast lane, decision 30), and the design run closes this PR as "
     f"`{c.SUPERSEDED_LABEL}`; correct what the design made of it with a review comment on the "
-    "design PR, or on the build PR at gate (e). Opened as a draft or by another account, or "
-    "changing other files: " + GATE_CHECKLIST["a"]
+    "design PR, or on the build PR at gate (deploy). Opened as a draft or by another account, "
+    "or changing other files: " + GATE_CHECKLIST[c.INTENT]
 )
 RELEASE_APPROVAL_LINE = (
     f"Release approval: apply `{c.RELEASE_APPROVED_LABEL}` on this PR with your approval; the "
@@ -146,14 +149,24 @@ NOTHING_NEEDED = "nothing: the run continues to the next phase"
 
 
 # --- small readers ----------------------------------------------------------------------
-def head_branch(change_id: str, phase: str) -> str:
-    """The branch the phase's PR is opened from (b has its own; c, d and e share one)."""
-    return c.branch_name(change_id, PR_BRANCH_PHASE.get(phase, phase))
+def head_branch(change_id: str, phase: str, root: Path | None = None) -> str:
+    """The branch the phase's PR is opened from (design has its own; build, test and deploy
+    share one). With ``root`` (a git checkout), a change in flight on the letter branch an
+    older plugin cut (``sdlc/<id>/c``, R45) gets that branch (``gitops.existing_branch``)."""
+    phase = c.phase_name(phase)
+    names = c.branch_names(change_id, PR_BRANCH_PHASE.get(phase, phase))
+    if root is not None and gitops.is_repo(Path(root)):
+        return gitops.existing_branch(Path(root), names)
+    return names[0]
 
 
 def load_gate(change_dir: Path, phase: str) -> dict[str, Any] | None:
-    """``evidence/gate-<phase>.json`` as the gate wrote it (``GateResult.as_dict``)."""
-    path = Path(change_dir) / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=phase)
+    """``evidence/gate-<phase>.json`` as the gate wrote it (``GateResult.as_dict``); the
+    letter's file (``gate-c.json``) an older plugin wrote is read too (R45)."""
+    phase = c.phase_name(phase)
+    if phase not in c.PHASES:
+        return None
+    path = c.phase_file(Path(change_dir) / art.EVIDENCE_DIR, art.GATE_RESULT, phase)
     if not path.is_file():
         return None
     try:
@@ -165,10 +178,10 @@ def load_gate(change_dir: Path, phase: str) -> dict[str, Any] | None:
 
 def label_for(gate_json: dict[str, Any] | None, phase: str | None = None) -> str | None:
     """The label the gate printed: ``sdlc:<phase>-ready``, ``sdlc:needs-human``, or none.
-    Phase (a) has no gate file - the intent PR always waits for the owner - so a missing
-    result there means ``sdlc:a-ready``."""
+    Phase intent has no gate file - the intent PR always waits for the owner - so a missing
+    result there means ``sdlc:intent-ready``."""
     if not gate_json:
-        return c.ready_label("a") if phase == "a" else None
+        return c.ready_label(c.INTENT) if c.phase_name(phase) == c.INTENT else None
     label = gate_json.get("label")
     return label if isinstance(label, str) and label else None
 
@@ -284,7 +297,7 @@ def evidence_status(change_dir: Path, phase: str, root: Path) -> str:
     """One line: the command logs (``drive.log`` too when ``commands.drive`` is set at
     ``root``), the verifier report, the drive's proof (``proof_status``) and the screenshot
     count."""
-    if phase in ("a", "b"):
+    if phase in (c.INTENT, c.DESIGN):
         return "design phase, no code yet"
     evidence = Path(change_dir) / art.EVIDENCE_DIR
     drive_set = _drive_set(root)
@@ -345,7 +358,7 @@ def _gate_check(gate_json: dict[str, Any] | None, name: str) -> dict[str, Any] |
 
 
 def _conformance_line(gate_json: dict[str, Any] | None, spec_text: str, phase: str) -> str:
-    if phase in ("a", "b"):
+    if phase in (c.INTENT, c.DESIGN):
         items = _list_items(_section(spec_text, "## Open questions from intent"))
         items = [i for i in items if not art.NO_CONCERN_RE.match(i)]
         carried = [i for i in items if CARRIED_FORWARD_RE.search(i)]
@@ -442,7 +455,7 @@ def run_line(change_dir: Path, phase: str) -> str:
     """Decision 29's third answer: the workflow run the phase's evidence came from, read from
     ``evidence/run-<phase>.json`` (the runner names it there, ``github_run``); "" when the
     record names no run (a by-hand run)."""
-    path = Path(change_dir) / art.EVIDENCE_DIR / f"run-{phase}.json"
+    path = c.phase_file(Path(change_dir) / art.EVIDENCE_DIR, "run-{phase}.json", phase)
     try:
         data = json.loads(art.read_text(path) or "")
     except (OSError, ValueError):
@@ -463,19 +476,19 @@ def _owner_line(
         return _auto_round_line(auto)
     if result == "park":
         return f'parked at gate ({phase}) - see "What I need from you" below'
-    if result == "wait" or phase in ("a", "f"):  # (a) and (f) are always human
+    if result == "wait" or phase in (c.INTENT, c.MAINTAIN):  # always human
         return GATE_CHECKLIST.get(phase, "the owner's review is the gate")
     return NOTHING_NEEDED
 
 
 def _intent_bullets(intent: str, st: Status, draft: bool = False) -> list[str]:
-    """Phase (a): the intent PR /sdlc-plan opens. There is no spec, no diff and no gate file
+    """Phase intent: the intent PR /sdlc-intent opens. There is no spec, no diff and no gate file
     yet, so the middle bullets describe the intent itself (build guide step 11). A quick
     intent (R54) says that the design run fills the sections the owner left to it."""
     problem = _first_sentence(_section(intent, "## Problem"))
     # change 0000's install PR changes files outside its folder: never the fast lane
     fast = not draft and st.id != c.INIT_CHANGE_ID
-    needs = FAST_LANE_A_CHECKLIST if fast else GATE_CHECKLIST["a"]
+    needs = FAST_LANE_A_CHECKLIST if fast else GATE_CHECKLIST[c.INTENT]
     if art.is_quick_intent(intent):
         left = (
             "left to the design run (quick intent): it lists what it assumed above the "
@@ -511,7 +524,7 @@ def _intent_bullets(intent: str, st: Status, draft: bool = False) -> list[str]:
 def _incident_bullets(
     intent: str, st: Status, change_dir: Path, gate_json: dict[str, Any] | None
 ) -> list[str]:
-    """Phase (f): the incident intent PR the maintain loop opens (build guide steps 37 and
+    """Phase maintain: the incident intent PR the maintain loop opens (build guide steps 37 and
     39). The finding, the diagnosis's proposed outcome, the route it took, and the triage
     verbs of decision 25."""
     from detect import finding, routes  # noqa: PLC0415
@@ -573,12 +586,17 @@ def _incident_bullets(
         f"- **Proposed outcome**: {st.title}: {outcome}",
         f"- **Route**: {route_line}",
         f"- **Entry route**: {st.entry_route} route, {st.change_type} change",
-        f"- **What needs you**: {_owner_line(gate_json, 'f')}",
+        f"- **What needs you**: {_owner_line(gate_json, c.MAINTAIN)}",
     ]
 
 
 # --- decision 21: the panel's decisions, above the bullets --------------------------------------
-LEDGER_PHASES = {"b": ("b",), "c": ("c",), "d": ("c", "d"), "e": ("c", "d", "e")}
+LEDGER_PHASES = {
+    c.DESIGN: (c.DESIGN,),
+    c.BUILD: (c.BUILD,),
+    c.TEST: (c.BUILD, c.TEST),
+    c.DEPLOY: (c.BUILD, c.TEST, c.DEPLOY),
+}
 
 
 def decisions_block(change_dir: Path, phase: str) -> list[str]:
@@ -615,10 +633,10 @@ def decisions_block(change_dir: Path, phase: str) -> list[str]:
     return lines
 
 
-def assumed_block(spec: str, phase: str = "b") -> list[str]:
+def assumed_block(spec: str, phase: str = c.DESIGN) -> list[str]:
     """R54: ``**What I assumed (N)**`` and the spec's list of assumptions when the change
     started from a quick intent, or []. Shown on the design PR and on the build PR (on the
-    fast lane the design PR is superseded). A fix round at (b) edits spec.md; from (c) on it
+    fast lane the design PR is superseded). A fix round at design edits spec.md; from build on it
     changes the code only and never the spec (/sdlc-fix), so the line stays as written."""
     items: list[str] = []
     for line in _section(spec, art.SPEC_ASSUMED_SECTION).splitlines():
@@ -629,7 +647,7 @@ def assumed_block(spec: str, phase: str = "b") -> list[str]:
             items[-1] = f"{items[-1]} {line.strip()}"
     if not items:
         return []
-    if phase == "b":
+    if phase == c.DESIGN:
         how = "a review comment on any line corrects it (/sdlc-fix)"
     else:
         how = (
@@ -662,9 +680,11 @@ def models_lines(change_dir: Path, phase: str) -> list[str]:
 # --- the body ---------------------------------------------------------------------------------
 def _links_line(root: Path, change_dir: Path, change_id: str, phase: str) -> str:
     rel_dir = str(Path(change_dir).relative_to(root)).replace("\\", "/")
-    if phase == "a":  # spec, plan and the gate result do not exist yet
+    # the gate file the change has: the name's, or the letter's of an older plugin (R45)
+    gate_name = c.phase_file(Path(change_dir) / art.EVIDENCE_DIR, art.GATE_RESULT, phase).name
+    if phase == c.INTENT:  # spec, plan and the gate result do not exist yet
         targets = ["intent.md"]
-    elif phase == "f":  # the incident intent, the finding and the gate result
+    elif phase == c.MAINTAIN:  # the incident intent, the finding and the gate result
         evidence = Path(change_dir) / art.EVIDENCE_DIR
         record_name = (
             "scan-finding.json"
@@ -675,15 +695,15 @@ def _links_line(root: Path, change_dir: Path, change_id: str, phase: str) -> str
         targets = [
             "intent.md",
             f"{art.EVIDENCE_DIR}/{record_name}",
-            f"{art.EVIDENCE_DIR}/{art.GATE_RESULT.format(phase=phase)}",
+            f"{art.EVIDENCE_DIR}/{gate_name}",
         ]
     else:
-        targets = [*ARTIFACTS, f"{art.EVIDENCE_DIR}/{art.GATE_RESULT.format(phase=phase)}"]
+        targets = [*ARTIFACTS, f"{art.EVIDENCE_DIR}/{gate_name}"]
     try:
         repo = gitops.github_repo(Path(root))
     except Exception:  # noqa: BLE001 - a missing git is not a reason to lose the summary
         repo = None
-    branch = head_branch(change_id, phase)
+    branch = head_branch(change_id, phase, root)
     parts = []
     for name in targets:
         rel = f"{rel_dir}/{name}"
@@ -731,13 +751,13 @@ def fast_lane_line(root: Path, st: Status, phase: str) -> str:
         live = None
     if not live:
         return ""
-    intent_pr = (lane.get("a") or {}).get("pr")
-    if phase == "b":
+    intent_pr = (lane.get(c.INTENT) or {}).get("pr")
+    if phase == c.DESIGN:
         return (
             "Fast lane (decision 30): this PR carries your intent too, accepted when you "
             f"opened intent PR #{intent_pr}, which it supersedes (closed, not merged)."
         )
-    design_pr = (lane.get("b") or {}).get("pr")
+    design_pr = (lane.get(c.DESIGN) or {}).get("pr")
     superseded = [
         f"{name} #{number}"
         for name, number in (("intent PR", intent_pr), ("design PR", design_pr))
@@ -769,8 +789,9 @@ def _counters_line(st: Status) -> str:
 
 def build_description(root: Path, change_id: str, phase: str, draft: bool = False) -> str:
     """The whole PR body for a change at a phase. Pure: reads files, contacts nothing.
-    ``draft``: the PR is opened as a draft, which never takes the fast lane at (a)."""
+    ``draft``: the PR is opened as a draft, which never takes the fast lane at intent."""
     root = Path(root).resolve()
+    phase = c.phase_name(phase)
     if phase not in c.PHASES:
         raise ValueError(f"phase must be one of {c.PHASES}, got {phase!r}")
     change_dir = c.find_change_dir(root, change_id)
@@ -782,13 +803,13 @@ def build_description(root: Path, change_id: str, phase: str, draft: bool = Fals
     gate_json = load_gate(change_dir, phase)
 
     banner = risk_mod.banner_lines(change_dir, phase, st)
-    if phase == "a":
+    if phase == c.INTENT:
         bullets = _intent_bullets(intent, st, draft)
         out = [*banner, ""] if banner else []
         out += [" ".join(b.split()) for b in bullets]
         out += ["", _links_line(root, change_dir, change_id, phase), "", _counters_line(st)]
         return "\n".join(out) + "\n"
-    if phase == "f":
+    if phase == c.MAINTAIN:
         bullets = _incident_bullets(intent, st, change_dir, gate_json)
         out = [" ".join(b.split()) for b in bullets]
         if (gate_json or {}).get("result") == "park":
@@ -803,7 +824,7 @@ def build_description(root: Path, change_id: str, phase: str, draft: bool = Fals
     design = _first_sentence(_section(spec, "## Design"))
     if design:
         what = f"{what} Design: {design}"
-    if phase == "b":
+    if phase == c.DESIGN:
         open_items, closed = _concern_counts(spec)
         quoted = "; ".join(f'"{item}"' for item in open_items)
         findings = f"flagged concerns: {len(open_items)} open / {closed} closed"
@@ -832,7 +853,7 @@ def build_description(root: Path, change_id: str, phase: str, draft: bool = Fals
         block = what_i_need_block(gate_json)
         if block:
             out += ["", block]
-    if phase == "e" and production_declared(root):
+    if phase == c.DEPLOY and production_declared(root):
         out += ["", RELEASE_APPROVAL_LINE]
     lane = fast_lane_line(root, st, phase)
     if lane:
@@ -851,7 +872,7 @@ def build_description(root: Path, change_id: str, phase: str, draft: bool = Fals
         quoted_lines = "\n".join(f"> {line}".rstrip() for line in proposals.strip().splitlines())
         out += ["", "## Proposed CLAUDE.md lines", "", quoted_lines]
 
-    if phase == "e":
+    if phase == c.DEPLOY:
         note = release_note(change_dir, intent)
         if note:
             out += ["", "## Release note", "", note]

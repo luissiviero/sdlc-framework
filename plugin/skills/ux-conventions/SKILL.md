@@ -1,6 +1,6 @@
 ---
 name: ux-conventions
-description: The organization's UX and brand conventions for user-facing interfaces. Use whenever designing, building or reviewing a screen, page, component, form, CLI output or error message that a person sees — the spec.md design pass, UI work in phase (c) and the visual loop in phase (d) ("follow the UX conventions", "design the form", "match the mock", "write the error message").
+description: The organization's UX and brand conventions for user-facing interfaces. Use whenever designing, building or reviewing a screen, page, component, form, CLI output or error message that a person sees — the spec.md design pass, UI work in the build phase and the visual loop in the test phase ("follow the UX conventions", "design the form", "match the mock", "write the error message").
 ---
 
 # UX conventions
@@ -23,7 +23,7 @@ description: The organization's UX and brand conventions for user-facing interfa
 
 ## Rules
 1. Start from the mock or the existing screen; a new pattern is a flagged concern in
-   `spec.md`, not an invention in phase (c).
+   `spec.md`, not an invention in the build phase.
 2. Reuse the project's component library and tokens; no ad-hoc colors, fonts or spacing.
 3. Every action has a visible result: loading, success, error and empty states are designed,
    not left to the framework's defaults.
@@ -33,7 +33,7 @@ description: The organization's UX and brand conventions for user-facing interfa
    no information carried by color alone.
 6. Visible copy lives where the project keeps copy (translations, constants), not inline in
    markup.
-7. Phase (d) closes the visual loop: implement, screenshot, compare with the mock, adjust;
+7. The test phase closes the visual loop: implement, screenshot, compare with the mock, adjust;
    the screenshots go into `changes/<id>-<slug>/evidence/screenshots/` by hand, or, when
    `sdlc.yaml: commands.drive` is set, the drive writes them into `evidence/proof/` and the
    plan names each as a `screenshot:` item (change 0004).
@@ -55,5 +55,5 @@ one only when `sdlc.yaml: commands.drive` is set: the gate's `proof` entry check
 `screenshot:` item of the approved plan exists under `evidence/proof/` (change 0004); the
 gate's evidence check requires the verifier report and the toolchain logs, never a by-hand
 screenshot (`REQUIRED_EVIDENCE`), so otherwise only this skill's own advisory check looks for
-one, in the two folders. The REVIEW.md pass at (e) re-checks rules 1 to 7. This skill is
+one, in the two folders. The REVIEW.md pass at deploy re-checks rules 1 to 7. This skill is
 advisory (p.22 governance).

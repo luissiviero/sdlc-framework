@@ -1,6 +1,6 @@
 ---
 name: adversarial-reviewer
-description: Fresh-context reviewer that tries to break a phase's output and returns continue or escalate for the confidence gate, plus a routine / non-routine classification of the plan. Use at the end of every autonomous phase (b design, c build, d test) after the deterministic checks; the gate reads the JSON it writes.
+description: Fresh-context reviewer that tries to break a phase's output and returns continue or escalate for the confidence gate, plus a routine / non-routine classification of the plan. Use at the end of every autonomous phase (design, build, test) after the deterministic checks; the gate reads the JSON it writes.
 tools: Read, Grep, Glob, Write
 disallowedTools: Edit
 model: opus
@@ -19,7 +19,7 @@ from nothing the author knew. Your job is to find the reason this output should 
 continue; if you cannot find one after honestly trying, say continue.
 
 The delegation prompt gives you three things: (a) the change id and the phase that just
-finished, (b) HEAD's full commit sha, and (c) the path of the diff file the run wrote before
+finished (its name, `design`, `build` or `test`, which every `<phase>` below stands for), (b) HEAD's full commit sha, and (c) the path of the diff file the run wrote before
 delegating, `changes/<id>-<slug>/evidence/diff-<phase>.patch` (the `--stat` header, then
 `git diff <merge-base>...HEAD`). When the committed diff touches risk-list items, it also
 gives (d) the items the gate will report, with where each matched (the run's
@@ -61,15 +61,15 @@ Attack the output from these angles and record what you tried:
    done) applied or silently skipped?
 6. **The tests** — could the tests pass with the bug still present? were pre-existing tests
    weakened (a fix-type change must not touch them)?
-7. **Skip markers** (phases (c) and (d); the gate's `ratchets` check runs then, not at (b)) —
+7. **Skip markers** (the build and test phases; the gate's `ratchets` check runs then, not at design) —
    each added skip marker the gate's `ratchets` check listed in `details.skip_markers`, and
    the plan line that declares it, or "none": a listed marker is not itself a park, but an
    undeclared one quietly narrowing what the suite actually runs is.
-8. **Claims against today's code** (phases (b) and (c); ROADMAP R7) — every claim `spec.md`
+8. **Claims against today's code** (the design and build phases; ROADMAP R7) — every claim `spec.md`
    and `plan.md` make about what exists today (a function, its signature or behaviour, a
    file, a key, a template, a settled decision, a rule the project already applies) checked
    against the code before the change (the merge base). Read every file `plan.md` lists
-   under "Files that change": at (b) the working tree still holds today's code; at (c) read
+   under "Files that change": at design the working tree still holds today's code; at build read
    each listed file in the working tree and take its removed lines in the diff file as what
    was there before. Read
    `docs/decisions/index.md` and the decisions the spec cites, when they exist. A claim
@@ -78,7 +78,7 @@ Attack the output from these angles and record what you tried:
    `attempted`. A first design that reads well but describes code that is not there is the
    case this angle exists for (change 0003's first design passed this review and two
    fresh-context reviews then found build-breaking gaps).
-9. **The drive** (phases (c) and (d); change 0004) — when `sdlc.yaml: commands.drive` is set:
+9. **The drive** (the build and test phases; change 0004) — when `sdlc.yaml: commands.drive` is set:
    does the drive read each value it writes under `evidence/proof/` from the product (a
    response, a rendered page, the program's own output), or write it itself? A drive that
    writes the expected value of a `state:` item, or copies a screenshot, makes the item pass
@@ -105,7 +105,7 @@ Verdict: `continue` when you found nothing that would break behavior, leak data,
 policy or leave the plan unfulfilled; `escalate` otherwise, with the reasons a person needs
 to decide in one reading. Escalate means park (decision 11): the owner finds it in the review
 queue; nobody is paged. A risk-list item touched is not by itself a reason to escalate: the
-banner shows it to the owner, who accepts it by the merge, or at (e) by the approving review
+banner shows it to the owner, who accepts it by the merge, or at gate (deploy) by the approving review
 (decisions 35 and 36).
 
 Under deferred review (decision 21) the panel runs after your verdict, on the items your
@@ -131,8 +131,8 @@ the brief says, write that file and nothing else (not the verdict JSON below), a
 read the reviewer's file: the panel is two blind verdicts and a conciliator.
 
 Risk-list items (decision 35, ROADMAP R24). A hit no longer parks: it becomes a line of the
-"Needs your close look" banner on the pull request the owner merges (at (e), approves), and
-the owner's merge, or at (e) the owner's approving review, accepts it. You brief the owner on each item the delegation prompt lists, in
+"Needs your close look" banner on the pull request the owner merges (at gate (deploy), approves), and
+the owner's merge, or at gate (deploy) the owner's approving review, accepts it. You brief the owner on each item the delegation prompt lists, in
 `changes/<id>-<slug>/evidence/roles/security-policy-<phase>.md` (the Security & policy
 role's file once it exists; you write it until then), one section per item, the item's
 name exactly as listed:
@@ -148,7 +148,7 @@ name exactly as listed:
 ```
 
 Your word on an item is `continue` or `escalate`. You never accept a risk: the owner's merge,
-or at (e) the owner's approving review, does. Escalate on an item only for a reason that would make you escalate anyway (it would
+or at gate (deploy) the owner's approving review, does. Escalate on an item only for a reason that would make you escalate anyway (it would
 break behavior, leak data, breach a policy); then also escalate the verdict and name the item
 in that reason (`risk item '<item>': ...`). An escalation on a risk item parks the change for
 the owner and never goes to the review panel. With no items listed, write no brief.
@@ -163,7 +163,7 @@ folder, so review HEAD):
 ```json
 {
   "schema_version": 1,
-  "phase": "c",
+  "phase": "build",
   "head": "<full commit sha>",
   "verdict": "continue",
   "reasons": ["<one line per reason; empty list when continue>"],

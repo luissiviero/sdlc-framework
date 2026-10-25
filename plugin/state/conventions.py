@@ -12,36 +12,52 @@ from pathlib import Path
 from typing import Any
 
 # --- phases -----------------------------------------------------------------------------
-PHASES = ("a", "b", "c", "d", "e", "f")
+PHASES = ("intent", "design", "build", "test", "deploy", "maintain")
+INTENT, DESIGN, BUILD, TEST, DEPLOY, MAINTAIN = PHASES
+# R45 (decision 39, row 1): the phases are named after what they produce, as the article's
+# stages are (p.4), with (a) as ``intent`` so "plan" means plan.md only. Until plugin 1.0.42
+# they were the letters (a) to (f). ``phase_name`` reads a letter as its name wherever a phase
+# is read (status.yaml, --phase, branches, labels, sdlc.yaml keys, evidence files) for one
+# release; the readers of history (a remote ``sdlc/<id>/<letter>`` branch, a merged change's
+# folder) keep reading letters for good (choice 273), so ``LEGACY_PHASES``, ``phase_name``'s
+# letter mapping and ``BRANCH_RE``'s letter branch stay when the sixth rename PR removes the
+# live readers' calls. A project moves its workflow copies with its pin (``/sdlc-init``'s
+# upgrade): a copy older than 1.0.43 filters the build PR on ``/c`` and the incident PR on
+# ``/a``, and never fires for a change cut with the names.
+LEGACY_PHASES = dict(zip(("a", "b", "c", "d", "e", "f"), PHASES, strict=True))
+PHASE_LETTERS = {name: letter for letter, name in LEGACY_PHASES.items()}
 # Not a phase: the end state of a change whose PR the owner closed without merging at a gate
-# (a)-(e) (decision 25). ``status.yaml: phase: abandoned``; the branches are kept and every
-# workflow's guard skips the change. Never a value of ``gate.phase`` or a branch name.
+# intent to deploy (decision 25). ``status.yaml: phase: abandoned``; the branches are kept and
+# every workflow's guard skips the change. Never a value of ``gate.phase`` or a branch name.
 ABANDONED = "abandoned"
-PHASE_NAMES = {
-    "a": "plan",
-    "b": "design",
-    "c": "build",
-    "d": "test",
-    "e": "deploy",
-    "f": "maintain",
-}
 # Artifact each phase commits (OPERATING_MODEL section 1; article p.6 lists the artifacts).
 PHASE_ARTIFACTS = {
-    "a": ["intent.md"],
-    "b": ["spec.md", "plan.md"],
-    "c": ["<diff and tests on the build PR>"],
-    "d": ["evidence/"],
-    "e": ["<reviewed PR / release>"],
-    "f": ["lessons/ (incident record) -> new intent.md"],
+    INTENT: ["intent.md"],
+    DESIGN: ["spec.md", "plan.md"],
+    BUILD: ["<diff and tests on the build PR>"],
+    TEST: ["evidence/"],
+    DEPLOY: ["<reviewed PR / release>"],
+    MAINTAIN: ["lessons/ (incident record) -> new intent.md"],
 }
 
+
+def phase_name(value: Any) -> Any:
+    """The phase name for ``value``: a letter (a) to (f) becomes its name (R45), a name stays
+    as it is, and anything else (``review``, ``fix``, ``abandoned``, None) comes back
+    unchanged, so every reader can pass what it read through this one function."""
+    if isinstance(value, str):
+        stripped = value.strip()
+        return LEGACY_PHASES.get(stripped, stripped if stripped in PHASES else value)
+    return value
+
+
 # --- the human gates (decisions 18, 30 and 25, as decision 37 narrowed them) --------------
-# One profile (decision 37, plugin 1.0.21): the owner's gates are (a), (b) and (e), shaped by
-# the fast lane (decision 30), and (f), the triage of each incident intent PR (decision 25).
-# Gates (c) and (d) are the confidence gate's alone. The Full profile, its ``sdlc:c-approved``
-# and ``sdlc:d-approved`` labels and the per-change ``profile_override`` are gone, as Lite was
-# in 0.2.14 (decision 21).
-HUMAN_GATES = frozenset({"a", "b", "e", "f"})
+# One profile (decision 37, plugin 1.0.21): the owner's gates are intent, design and deploy,
+# shaped by the fast lane (decision 30), and maintain, the triage of each incident intent PR
+# (decision 25). The build and test gates are the confidence gate's alone. The Full profile,
+# its approval labels and the per-change ``profile_override`` are gone, as Lite was in 0.2.14
+# (decision 21).
+HUMAN_GATES = frozenset({INTENT, DESIGN, DEPLOY, MAINTAIN})
 
 # --- deferred review (decisions 21 and 32, as decision 37 narrowed them) ------------------
 # One review mode: a judgment item of the fixed list always goes to the review panel
@@ -112,9 +128,31 @@ SUPERSEDED_LABEL = "sdlc:superseded"
 
 
 def ready_label(phase: str) -> str:
-    """Set whenever a run stops at a human gate and waits for the owner."""
-    _check_phase(phase)
-    return f"{LABEL_PREFIX}{phase}-ready"
+    """Set whenever a run stops at a human gate and waits for the owner: ``sdlc:<name>-ready``
+    (R45; a letter is read as its name)."""
+    return f"{LABEL_PREFIX}{_check_phase(phase)}-ready"
+
+
+def legacy_ready_label(phase: str) -> str:
+    """The label ``ready_label`` gave before R45 (``sdlc:c-ready``), read for one release on a
+    PR an older plugin labelled."""
+    return f"{LABEL_PREFIX}{PHASE_LETTERS[_check_phase(phase)]}-ready"
+
+
+def ready_labels(phase: str) -> frozenset[str]:
+    """The labels that say a PR waits at ``phase``'s gate: the name's and, for one release,
+    the letter's."""
+    return frozenset({ready_label(phase), legacy_ready_label(phase)})
+
+
+READY_LABEL_RE = re.compile(rf"^{LABEL_PREFIX}(?P<phase>[a-f]|{'|'.join(PHASES)})-ready$")
+
+
+def ready_label_phase(label: str) -> str | None:
+    """The phase name a waiting label names (``sdlc:build-ready``, or ``sdlc:c-ready`` from an
+    older plugin), or None for any other label."""
+    m = READY_LABEL_RE.match(str(label))
+    return phase_name(m.group("phase")) if m else None
 
 
 def runner_labels() -> list[str]:
@@ -134,31 +172,71 @@ def all_labels() -> list[str]:
 
 
 # --- branches -----------------------------------------------------------------------------
-BRANCH_RE = re.compile(r"^sdlc/(?P<id>\d{4})/(?P<phase>[a-f])$")
+# R45: ``sdlc/<id>/<name>``; a letter branch (``sdlc/<id>/c``) is read as its phase for good,
+# since remote branches are never renamed (choice 273): a change in flight keeps its branch.
+BRANCH_RE = re.compile(rf"^sdlc/(?P<id>\d{{4}})/(?P<phase>[a-f]|{'|'.join(PHASES)})$")
 
 
 def branch_name(change_id: str, phase: str) -> str:
     _check_id(change_id)
-    _check_phase(phase)
-    return f"sdlc/{change_id}/{phase}"
+    return f"sdlc/{change_id}/{_check_phase(phase)}"
+
+
+def legacy_branch_name(change_id: str, phase: str) -> str:
+    """The branch an older plugin cut for ``phase`` (``sdlc/<id>/c``): a change in flight
+    when its project moved past plugin 1.0.42 finishes on it."""
+    _check_id(change_id)
+    return f"sdlc/{change_id}/{PHASE_LETTERS[_check_phase(phase)]}"
+
+
+def branch_names(change_id: str, phase: str) -> tuple[str, str]:
+    """``(name, letter)`` branches of ``phase``: the one this plugin cuts, then the one an
+    older plugin cut; a reader looks for both, the name first."""
+    return branch_name(change_id, phase), legacy_branch_name(change_id, phase)
 
 
 def parse_branch(name: str) -> tuple[str, str] | None:
+    """``(id, phase name)`` for ``sdlc/<id>/<name>`` or ``sdlc/<id>/<letter>``, else None."""
     m = BRANCH_RE.match(name.strip())
-    return (m.group("id"), m.group("phase")) if m else None
+    return (m.group("id"), phase_name(m.group("phase"))) if m else None
 
 
-# Which branch a phase actually works on (OPERATING_MODEL section 8): (a) carries the intent
-# PR, (b) the spec+plan PR, and (c) "the build PR that stays open through (d) and (e)" — so
-# the test and deploy runs commit on sdlc/<id>/c, never on a branch of their own. Phase (f)
-# produces a new intent, which is phase (a) work of that change.
-WORK_PHASE = {"a": "a", "b": "b", "c": "c", "d": "c", "e": "c", "f": "a"}
+# Which branch a phase actually works on (OPERATING_MODEL section 8): intent carries the intent
+# PR, design the spec+plan PR, and build "the build PR that stays open through test and
+# deploy", so the test and deploy runs commit on sdlc/<id>/build, never on a branch of their
+# own. Maintain produces a new intent, which is intent work of that change.
+WORK_PHASE = {
+    INTENT: INTENT,
+    DESIGN: DESIGN,
+    BUILD: BUILD,
+    TEST: BUILD,
+    DEPLOY: BUILD,
+    MAINTAIN: INTENT,
+}
 
 
 def work_branch(change_id: str, phase: str) -> str:
     """The branch a run of ``phase`` commits on (``branch_name`` stays the literal name)."""
-    _check_phase(phase)
-    return branch_name(change_id, WORK_PHASE[phase])
+    return branch_name(change_id, WORK_PHASE[_check_phase(phase)])
+
+
+def work_branches(change_id: str, phase: str) -> tuple[str, str]:
+    """``(name, letter)`` of the branch a run of ``phase`` commits on (``branch_names``)."""
+    return branch_names(change_id, WORK_PHASE[_check_phase(phase)])
+
+
+def phase_file(directory: Path | str, pattern: str, phase: str, **fields: Any) -> Path:
+    """The file ``pattern`` names for ``phase`` in ``directory`` (``gate-{phase}.json``,
+    ``{phase}-{n}-reviewer.md``): the name's (``gate-build.json``), unless only the letter's
+    exists (``gate-c.json``, written by a plugin before R45), which is then read. A writer
+    takes the name's always: ``Path(directory) / pattern.format(phase=name)``. A run that is
+    not a phase (``review``, ``fix``) has one name and its file is returned as it is."""
+    name = phase_name(phase)
+    path = Path(directory) / pattern.format(phase=name, **fields)
+    if path.exists() or name not in PHASES:
+        return path
+    legacy = Path(directory) / pattern.format(phase=PHASE_LETTERS[name], **fields)
+    return legacy if legacy.exists() else path
 
 
 # --- change folder ------------------------------------------------------------------------
@@ -242,9 +320,12 @@ def find_change_dir(project_root: Path, change_id: str) -> Path | None:
     return None
 
 
-def _check_phase(phase: str) -> None:
-    if phase not in PHASES:
+def _check_phase(phase: str) -> str:
+    """``phase``'s name (a letter is read as its name, R45), or ValueError."""
+    name = phase_name(phase)
+    if name not in PHASES:
         raise ValueError(f"unknown phase {phase!r}; expected one of {PHASES}")
+    return name
 
 
 def _check_id(change_id: str) -> None:
@@ -253,8 +334,7 @@ def _check_id(change_id: str) -> None:
 
 
 def is_human_gate(phase: str) -> bool:
-    _check_phase(phase)
-    return phase in HUMAN_GATES
+    return _check_phase(phase) in HUMAN_GATES
 
 
 def retired_settings_note(config: Mapping[str, Any]) -> str:

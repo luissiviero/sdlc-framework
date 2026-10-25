@@ -5,14 +5,15 @@ agent editing test files during a fix task').
 Mechanism (OPERATING_MODEL section 8, "Test-file lock"): the build run of a change whose
 ``status.yaml`` says ``change_type: fix`` commits the reproducing test first and then sets
 ``status.yaml: tests_locked: true``. From that commit on, while the run is on the change's
-``sdlc/<id>/c`` branch — phases (c), (d) and (e) share it, and ``/d`` and ``/e`` are treated as
-locked too should they ever exist — every ``Edit``/``Write``/``MultiEdit``/``NotebookEdit`` whose
+``sdlc/<id>/build`` branch (``sdlc/<id>/c`` from a plugin before R45) — the build, test and
+deploy phases share it, and ``/test`` and ``/deploy`` are treated as locked too should they ever
+exist — every ``Edit``/``Write``/``MultiEdit``/``NotebookEdit`` whose
 target matches a glob in ``sdlc.yaml: test_paths`` is denied. The fix must make the committed
 test pass; if the test itself is wrong, the change parks and only the owner unlocks it
 (``state/cli.py unlock-tests``), in a reviewed PR.
 
-Never denies outside a phase (c)/(d)/(e) branch: on ``main``, on an (a)/(b) branch or in a
-project that is not a git repository the hook exits 0 without output. On a locked branch it
+Never denies outside a build, test or deploy branch: on ``main``, on an intent or design branch
+or in a project that is not a git repository the hook exits 0 without output. On a locked branch it
 fails closed — an unreadable ``status.yaml`` or ``sdlc.yaml`` denies the edit with the error in
 the reason, so a broken state file cannot quietly unlock the tests.
 
@@ -48,7 +49,7 @@ from state import (
 )
 from state import status as status_mod  # noqa: E402
 
-LOCKED_PHASES = ("c", "d", "e")
+LOCKED_PHASES = (c.BUILD, c.TEST, c.DEPLOY)
 # Used only when sdlc.yaml has no `test_paths:` key (a project initialised before step 25):
 # the union of the Python and Node defaults /sdlc-init writes, so the lock still holds.
 DEFAULT_TEST_PATHS = (
@@ -72,7 +73,7 @@ REASON = (
 )
 FAIL_CLOSED = (
     "Test-file lock cannot tell whether the tests of this change are frozen ({error}); on a "
-    "phase (c)/(d)/(e) branch the hook fails closed and refuses the edit. Fix the change's "
+    "build, test or deploy branch the hook fails closed and refuses the edit. Fix the change's "
     "status.yaml or the project's sdlc.yaml, or park the change for the owner."
 )
 
@@ -117,11 +118,11 @@ def test_path_patterns(config: dict) -> list[str]:
 
 def locked_change_ids(root: str, branch: str, git=_git) -> list[str]:
     """(change id, branch name) pairs the lock applies to: the current branch's, or, when the
-    session left it (a detached HEAD, a branch of its own), every local ``sdlc/<id>/c|d|e``
-    branch that contains HEAD and, on a runner, every one HEAD contains, so a commit on the
-    session's own branch does not lift it (R59, the plugin security review of 2026-10-19,
-    M3, and the review of 1.0.27). By hand only the first: an owner's branch carries old
-    change branches it merged."""
+    session left it (a detached HEAD, a branch of its own), every local
+    ``sdlc/<id>/build|test|deploy`` (or letter) branch that contains HEAD and, on a runner, every
+    one HEAD contains, so a commit on the session's own branch does not lift it (R59, the plugin
+    security review of 2026-10-19, M3, and the review of 1.0.27). By hand only the first: an owner's
+    branch carries old change branches it merged."""
     own = locked_change_id(branch) if branch else None
     if own is not None:
         return [(own, branch)]
@@ -186,7 +187,7 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None, gi
     branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
     change_ids = locked_change_ids(root, branch, git) if branch else []
     if not change_ids:
-        return Decision.allow()  # not a git repo, or HEAD on no phase (c)/(d)/(e) branch
+        return Decision.allow()  # not a git repo, or HEAD on no build/test/deploy branch
     try:
         if not any(is_locked(root, cid, git, name) for cid, name in change_ids):
             return Decision.allow()

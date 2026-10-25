@@ -2,12 +2,12 @@
 model's session (plugin 0.2.27; the review of the 0.2.26 diff, M4; the 1.0.0 readiness
 review, group B).
 
-The deploy job runs the review pass and then phase (e); the detect job runs phase (f) and
-then ``finish``. Between the two, a ``claude`` session held ``Write`` and ``Bash(git *)`` in
-the same checkout, so what the second step reads is what the session left: the framework
-tree under ``framework/``, the project's ``.git/config`` (its remote, its fetch refspec, any
-``url.<x>.insteadOf`` that redirects a fetch) and the remote-tracking refs. The steps that
-run this script are:
+The deploy job runs the review pass and then the deploy phase; the detect job runs the
+maintain phase and then ``finish``. Between the two, a ``claude`` session held ``Write`` and
+``Bash(git *)`` in the same checkout, so what the second step reads is what the session
+left: the framework tree under ``framework/``, the project's ``.git/config`` (its remote,
+its fetch refspec, any ``url.<x>.insteadOf`` that redirects a fetch) and the remote-tracking
+refs. The steps that run this script are:
 
 1. ``python -c "import shutil; shutil.rmtree('framework', ignore_errors=True)"`` — the
    framework checkout the session could reach is removed, not inspected: a check of a tree

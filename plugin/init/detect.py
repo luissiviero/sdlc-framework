@@ -8,7 +8,7 @@ registry hosts, the formatter commands and the secret-shaped paths /sdlc-init pr
 Python targets are ``python -m ...`` commands and Node targets ``npm ...`` commands, so each
 runs identically on Windows, in a cloud session and on a Linux runner (decision 7). A target
 the detector cannot find or create is left as ``None``: the installer writes a placeholder
-and the gate refuses to enter phase (c) until the owner provides one.
+and the gate refuses to enter phase build until the owner provides one.
 """
 
 from __future__ import annotations

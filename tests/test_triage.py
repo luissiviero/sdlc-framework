@@ -73,18 +73,24 @@ def test_the_logs_for_a_park_include_the_drive_s_files(tmp_path):
 
     def logs(failed: list[str]) -> list[str]:
         record = {"result": "park", "checks": [{"name": n, "ok": False} for n in failed]}
-        (evidence / "gate-c.json").write_text(json.dumps(record), encoding="utf-8")
-        out = {"change_dir": change, "gate_record": f"{change}/evidence/gate-c.json"}
+        (evidence / "gate-build.json").write_text(json.dumps(record), encoding="utf-8")
+        out = {"change_dir": change, "gate_record": f"{change}/evidence/gate-build.json"}
         return [
             p.removeprefix(f"{change}/evidence/")
             for p in triage.logs_for(tmp_path, "park", out, [])
         ]
 
-    assert logs(["commands"]) == ["gate-c.json", "test.log", "build.log", "lint.log", "drive.log"]
-    assert logs(["proof"]) == ["gate-c.json", "drive.log", "proof/manifest.json"]
+    assert logs(["commands"]) == [
+        "gate-build.json",
+        "test.log",
+        "build.log",
+        "lint.log",
+        "drive.log",
+    ]
+    assert logs(["proof"]) == ["gate-build.json", "drive.log", "proof/manifest.json"]
     assert logs(["commands", "proof"])[-2:] == ["drive.log", "proof/manifest.json"]
     (evidence / "drive.log").unlink()
-    assert logs(["commands"]) == ["gate-c.json", "test.log", "build.log", "lint.log"]
+    assert logs(["commands"]) == ["gate-build.json", "test.log", "build.log", "lint.log"]
 
 
 def test_a_failed_setup_comes_first_and_a_missing_result_reads_as_red():
@@ -108,7 +114,7 @@ def test_the_lines_are_capped_and_a_line_carrying_a_secret_is_dropped():
 # --- the park block ------------------------------------------------------------------------------
 def test_the_park_block_prints_the_triage_lines_under_their_label():
     result = gate_mod.GateResult.from_dict(
-        {**PARK, "change_id": "0001", "slug": "s", "phase": "c", "triage": ["a", "b"]}
+        {**PARK, "change_id": "0001", "slug": "s", "phase": "build", "triage": ["a", "b"]}
     )
     block = result.what_i_need()
     assert gate_mod.TRIAGE_HEADING in block and "  - a\n  - b" in block
@@ -127,8 +133,8 @@ def test_a_parked_run_writes_its_out_file_and_the_triage_output(
     park's record and the session's files, and the step output says ``triage=park``."""
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    write(change / "evidence" / "gate-build.json", json.dumps(DEFERRED_GATE_FILE))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     monkeypatch.setattr(
         run_phase, "run_gate_commands", lambda *a, **k: {"ok": False, "reason": "gate: boom"}
@@ -138,7 +144,7 @@ def test_a_parked_run_writes_its_out_file_and_the_triage_output(
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN, GITHUB_OUTPUT=str(output))
     args = Args(
         root=str(root),
-        phase="c",
+        phase="build",
         dry_run=False,
         no_dispatch=True,
         claude=fake_cli(fake_claude),
@@ -148,9 +154,9 @@ def test_a_parked_run_writes_its_out_file_and_the_triage_output(
     capsys.readouterr()
     data = json.loads(out.read_text(encoding="utf-8"))
     assert data["triage"] == "park" and data["exit_code"] == run_phase.EXIT_FAILED
-    assert data["change_id"] == "0001" and data["gate_phase"] == "c"
-    assert data["gate_record"] == "changes/0001-percent-helper/evidence/gate-c.json"
-    assert data["result_file"].endswith("evidence/claude-c.json")
+    assert data["change_id"] == "0001" and data["gate_phase"] == "build"
+    assert data["gate_record"] == "changes/0001-percent-helper/evidence/gate-build.json"
+    assert data["result_file"].endswith("evidence/claude-build.json")
     assert data["emitted"]["parked"].startswith("commands: deferred")
     assert "triage=park\n" in output.read_text(encoding="utf-8")
 
@@ -158,13 +164,13 @@ def test_a_parked_run_writes_its_out_file_and_the_triage_output(
 def test_a_red_run_with_no_park_says_red(project, fake_claude, monkeypatch, capsys, tmp_path):
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
+    set_state(change, "design", gate_phase="design", gate_result="passed")
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "is_error": True}))
     out = tmp_path / "run.json"
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     args = Args(
         root=str(root),
-        phase="c",
+        phase="build",
         dry_run=False,
         no_dispatch=True,
         claude=fake_cli(fake_claude),
@@ -181,7 +187,7 @@ def test_a_run_refused_before_it_starts_still_writes_its_out_file(tmp_path, monk
     out = tmp_path / "run.json"
     monkeypatch.delenv("SDLC_APP_TOKEN_MINTED_AT", raising=False)
     monkeypatch.setattr(run_phase.app_token, "app_missing", lambda env: "no App")
-    argv = ["--root", str(tmp_path), "--phase", "c", "--id", "0001", "--out", str(out)]
+    argv = ["--root", str(tmp_path), "--phase", "build", "--id", "0001", "--out", str(out)]
     assert run_phase.main(argv) == run_phase.EXIT_FAILED
     data = json.loads(out.read_text(encoding="utf-8"))
     assert data["triage"] == "red" and data["why"] == "no App"
@@ -248,11 +254,11 @@ def test_a_parked_run_gets_its_lines_in_the_park_block(project, monkeypatch, cap
         **PARK,
         "change_id": "0001",
         "slug": "percent-helper",
-        "phase": "c",
+        "phase": "build",
         "label": "sdlc:needs-human",
     }
     record["what_i_need"] = gate_mod.GateResult.from_dict(record).what_i_need()
-    write(evidence / "gate-c.json", json.dumps(record))
+    write(evidence / "gate-build.json", json.dumps(record))
     write(evidence / "test.log", "FAILED test_percent\n")
     out = tmp_path / "run.json"
     out.write_text(
@@ -260,10 +266,10 @@ def test_a_parked_run_gets_its_lines_in_the_park_block(project, monkeypatch, cap
             {
                 "triage": "park",
                 "change_id": "0001",
-                "gate_phase": "c",
-                "branch_phase": "c",
+                "gate_phase": "build",
+                "branch_phase": "build",
                 "change_dir": "changes/0001-percent-helper",
-                "gate_record": "changes/0001-percent-helper/evidence/gate-c.json",
+                "gate_record": "changes/0001-percent-helper/evidence/gate-build.json",
                 "exit_code": 1,
             }
         ),
@@ -283,7 +289,7 @@ def test_a_parked_run_gets_its_lines_in_the_park_block(project, monkeypatch, cap
     assert run_phase.run_triage(_triage_args(root, out), env) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["case"] == "park" and report["added"] is True
-    stored = json.loads((evidence / "gate-c.json").read_text(encoding="utf-8"))
+    stored = json.loads((evidence / "gate-build.json").read_text(encoding="utf-8"))
     assert stored["triage"] == ["test_percent fails", "looks real"]
     assert "Triage (model-written)" in stored["what_i_need"]
     assert AWS_KEY not in json.dumps(stored)
@@ -376,7 +382,7 @@ def test_a_red_review_pass_keeps_the_change_at_its_phase(project, monkeypatch, c
     it on the build branch without moving the change to (e), so the next deploy run's guard
     still finds it at (d)."""
     root, change = project
-    set_state(change, "d", gate_phase="d", gate_result="passed")
+    set_state(change, "test", gate_phase="test", gate_result="passed")
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "at d")
     write(change / "evidence" / "claude-review.stderr.txt", "Traceback: review/cli.py\n")
@@ -388,7 +394,7 @@ def test_a_red_review_pass_keeps_the_change_at_its_phase(project, monkeypatch, c
                 "exit_code": 1,
                 "change_id": "0001",
                 "gate_phase": "review",
-                "branch_phase": "e",
+                "branch_phase": "deploy",
                 "change_dir": "changes/0001-percent-helper",
                 "stderr_file": "changes/0001-percent-helper/evidence/claude-review.stderr.txt",
             }
@@ -402,9 +408,9 @@ def test_a_red_review_pass_keeps_the_change_at_its_phase(project, monkeypatch, c
     assert report["commit"]["ok"] is True and report["session"]["result_file"] == (
         "claude-triage.json"
     )
-    assert status_mod.read_status(change).phase == "d"
+    assert status_mod.read_status(change).phase == "test"
     committed = _git(root, "show", "HEAD:changes/0001-percent-helper/status.yaml")
-    assert "phase: d" in committed
+    assert "phase: test" in committed
 
 
 def test_a_red_run_the_runner_already_explained_costs_no_session(tmp_path, monkeypatch, capsys):
@@ -423,7 +429,7 @@ def test_the_two_halves_run_in_two_steps(project, monkeypatch, capsys, tmp_path)
     """The review, finding S4: the read-only half writes its lines to a file with no GitHub
     token in its environment; the writing half reads that file and calls no model."""
     root, change = project
-    write(change / "evidence" / "claude-c.stderr.txt", "boom\n")
+    write(change / "evidence" / "claude-build.stderr.txt", "boom\n")
     out = tmp_path / "run.json"
     out.write_text(
         json.dumps(
@@ -431,9 +437,9 @@ def test_the_two_halves_run_in_two_steps(project, monkeypatch, capsys, tmp_path)
                 "triage": "red",
                 "exit_code": 1,
                 "change_id": "0001",
-                "gate_phase": "c",
+                "gate_phase": "build",
                 "change_dir": "changes/0001-percent-helper",
-                "stderr_file": "changes/0001-percent-helper/evidence/claude-c.stderr.txt",
+                "stderr_file": "changes/0001-percent-helper/evidence/claude-build.stderr.txt",
             }
         ),
         encoding="utf-8",
@@ -611,3 +617,11 @@ def test_each_phase_workflow_triages_after_a_fresh_framework_checkout(name):
         if "project_setup.py" in line:
             assert '--out "$RUNNER_TEMP/sdlc-setup.json"' in line, line
     assert "        id: setup\n" in text
+
+
+def test_a_run_file_an_older_plugin_wrote_names_its_phase(tmp_path):
+    """R45: ``phase: c`` in a run's out file reads as the build in the failed-run record."""
+    record = triage.failed_run_record("red", {"phase": "c", "exit_code": 1}, None, [], {})
+    assert record["phase"] == "build"
+    record = triage.failed_run_record("red", {"phase": "review", "exit_code": 1}, None, [], {})
+    assert record["phase"] == "review"

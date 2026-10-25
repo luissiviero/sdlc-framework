@@ -5,9 +5,9 @@ post-mortem to a version-controlled lessons file that future investigations can 
 Project content: the fix of an incident appends a lesson here; the plugin only creates the
 folder, this README and the generated index. -->
 
-One file per incident, **written when its fix ships** (the phase (e) run of a change whose
+One file per incident, **written when its fix ships** (the deploy run of a change whose
 entry route is `incident`, `/sdlc-deploy` step 0b), and **read before any diagnosis** (the
-phase (f) run of `/sdlc-maintain` reads `lessons/index.md` first, then only the lessons its
+maintain run of `/sdlc-maintain` reads `lessons/index.md` first, then only the lessons its
 tags name): the second incident of a class is cheaper than the first only if the first was
 written down. The file rides in the fix PR and is reviewed like any other file.
 
@@ -84,7 +84,7 @@ wherever the body cites a source.
 
 A file here with no frontmatter block (a lesson from before this shape, or a hand-written
 one) is still read, never rejected: `plugin/lessons/index.py` lists it under `## Unsorted`
-in the generated index, using its first heading as the title, and the phase (f) diagnosis
+in the generated index, using its first heading as the title, and the maintain phase's diagnosis
 still opens it.
 
 ## The generated index

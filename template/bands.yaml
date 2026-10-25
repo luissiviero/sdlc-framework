@@ -1,6 +1,6 @@
 # bands.yaml — control bands for the maintain phase (build guide step 37; article p.43-44).
 # Written by /sdlc-init; project content the owner tunes. Read by the deterministic detection
-# script of phase (f) (B5): "detection stays entirely deterministic, with no model involved".
+# script of the maintain phase (B5): "detection stays entirely deterministic, with no model involved".
 # Response tiers (p.43 step 3): at 1 sigma the script only logs, at 2 sigma it invokes Claude
 # read-only to diagnose, at 3 sigma Claude may act, only through a gated route.
 

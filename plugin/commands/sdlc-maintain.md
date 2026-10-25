@@ -1,11 +1,11 @@
 ---
-description: Phase (f) maintain — the diagnosis of a control-band breach the deterministic detection script filed (or, by hand, run the detection first), read-only on source, from the project's lessons and the failed runs, written as an incident intent.md with its Evidence section and a proposed route (the intent PR itself, or at 3σ a listed runbook), dispatched through the route's authorization (pre-approved runs now; go parks with "Go" requested), then gate (f): the intent PR opens with sdlc:f-ready and incident and waits for the owner's triage — merge (fix now), label schedule, or close with a reason (dismiss). Re-runnable.
+description: The maintain phase — the diagnosis of a control-band breach the deterministic detection script filed (or, by hand, run the detection first), read-only on source, from the project's lessons and the failed runs, written as an incident intent.md with its Evidence section and a proposed route (the intent PR itself, or at 3σ a listed runbook), dispatched through the route's authorization (pre-approved runs now; go parks with "Go" requested), then the triage gate: the intent PR opens with sdlc:maintain-ready and incident and waits for the owner's triage — merge (fix now), label schedule, or close with a reason (dismiss). Re-runnable.
 argument-hint: [change id, e.g. 0007; empty = run the detection first]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/detect/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *), Bash(git *), Bash(gh run view *), Bash(gh run list *), Read, Glob, Grep, Write
 ---
 
-# /sdlc-maintain — phase (f)
+# /sdlc-maintain — the maintain phase
 
 Source: build guide step 37 (article p.42–45: "A deterministic script watches production and
 invokes Claude when a control band is breached"; step 3: "At 1σ the script only logs, at 2σ
@@ -13,7 +13,7 @@ it invokes Claude read-only to diagnose, and at 3σ Claude may act, though only 
 PR into the review gate or triggering a pre-approved runbook"; step 5: "The agent writes its
 diagnosis as intent.md in the Stage 1: Plan format, covering the anomaly and its evidence, a
 proposed outcome, the affected systems and any open questions"), step 36 (the lessons file
-the diagnosis reads first, p.49), step 39 (gate (f) is the owner's triage of the incident PR,
+the diagnosis reads first, p.49), step 39 (the triage gate is the owner's triage of the incident PR,
 decision 25), decisions 14 and 26 (routes split by blast radius; a rehearsed rollback on a
 declared production is pre-approved), decision 15 (the first metric is CI test failure rate).
 
@@ -31,10 +31,11 @@ One shell command per Bash call (an unattended run denies a chained command whol
   line and stop), a dismissed or already-open finding (stop and report it), or
   `filed change <id>` — continue with that id.
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" show --root "${CLAUDE_PROJECT_DIR}" --id <id>`:
-  `entry_route` is `incident`, the phase is `f` (a change at another phase is not this
-  command's: stop and say so); `git fetch origin`, `git switch sdlc/<id>/a`,
-  `git pull --ff-only origin sdlc/<id>/a` (the filing step created the branch).
-- `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase f`
+  `entry_route` is `incident`, the phase is `maintain` (`f` in an older change; a change at another phase is
+  not this command's: stop and say so); `git fetch origin`, `git switch sdlc/<id>/intent`,
+  `git pull --ff-only origin sdlc/<id>/intent` (the filing step created the branch; an older
+  change's is `sdlc/<id>/a`).
+- `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase maintain`
 - Load the `intent-template` skill (the incident shape with its Evidence section).
 
 ## 1. Read before you diagnose (build guide step 36; article p.49)
@@ -66,7 +67,7 @@ Use only the tools the bands allow plus Read/Grep/Glob: `gh run view <run id> --
 on the failed runs the record lists (at most five, newest first), the tests and modules
 those logs name, `git log` over the commits in the breach window. Do not run the test
 suite, do not edit source, do not fix anything: the fix is a change of its own that starts
-at gate (a) when the owner merges this intent. Rule things out explicitly; what you could
+at the intent gate when the owner merges this intent. Rule things out explicitly; what you could
 not determine is an open question.
 
 ## 3. Write the incident intent (skill `intent-template`)
@@ -95,12 +96,12 @@ when it is the right action: the dispatcher parks the PR with "Go" requested and
 wait.
 
 ## 5. Commit the diagnosis
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase f --message "maintain(<id>): diagnosis" --push`
-(only the change folder is committed; `--phase f` commits on `sdlc/<id>/a`).
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase maintain --message "maintain(<id>): diagnosis" --push`
+(only the change folder is committed; `--phase maintain` commits on `sdlc/<id>/intent`).
 **When `$ARGUMENTS` carries `--diagnosis-only` (the CI runner passes it), stop here** and
 report the commit: the workflow's next step (`detect/cli.py finish`, with the project's
 runbook secrets in its own environment and none in this session's) dispatches the route,
-runs gate (f), commits the evidence and opens the PR. Steps 6–8 are the by-hand run's.
+runs the triage gate, commits the evidence and opens the PR. Steps 6–8 are the by-hand run's.
 
 ## 6. Dispatch the route (deterministic; decisions 14 and 26)
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/detect/cli.py" dispatch --root "${CLAUDE_PROJECT_DIR}" --id <id> --commit`
@@ -116,30 +117,31 @@ branch. Read its JSON; a rejected proposal (`acted: false` with a reason) is fix
 rewriting `proposal.json` once (a listed route, the right arguments) and re-running steps
 5 and 6; a second rejection stays and the gate parks with the reason.
 
-## 7. Gate (f)
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase f`
+## 7. The triage gate
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase maintain`
 — the intent in its incident shape, nothing committed outside the change folder, the
 guardrails and the risk list, the finding (tier 2 or 3, not dismissed) and the route (listed
 for the tier; a runbook that ran; `go-requested` parks with "apply `sdlc:go`"). Exit 3
-`wait` is the normal outcome (gate (f) is always human); 4 = `park`. Then commit
+`wait` is the normal outcome (the triage gate is always human); 4 = `park`. Then commit
 the evidence:
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase f --message "maintain(<id>): gate (f) evidence" --push`
-The change stays at phase `f` on its branch: your merge of the intent PR is gate (a) of
-this change (decision 25) and the design workflow reads a merged change at `f` as at `a`.
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase maintain --message "maintain(<id>): gate (maintain) evidence" --push`
+The change stays at phase `maintain` on its branch: your merge of the intent PR is the intent
+gate of this change (decision 25) and the design workflow reads a merged change at `maintain`
+as at `intent`.
 
 ## 8. Open the intent PR (the triage queue, build guide step 39)
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase f`
-— head `sdlc/<id>/a`, title `maintain(<id>): <title>`, the summary (the finding, the
-proposed outcome, the route and its state, what needs the owner), labels `sdlc:f-ready` (or
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase maintain`
+— head `sdlc/<id>/intent`, title `maintain(<id>): <title>`, the summary (the finding, the
+proposed outcome, the route and its state, what needs the owner), labels `sdlc:maintain-ready` (or
 `sdlc:needs-human` with "What I need from you": Go requested, or a failed check) and
 `incident`. Nothing merges, nothing deploys, and you notify nobody (in CI the finish step
 requests the owner's review on the PR, decision 31).
 
 ## 9. Report
-One line: the PR URL and "gate (f): merge = fix now (the design run starts); label
+One line: the PR URL and "gate (maintain): merge = fix now (the design run starts); label
 `schedule` = later; close with a comment = dismiss (the comment is the reason, recorded by
 the abandon workflow in a dismissal PR)". When a route waits for Go, add "apply `sdlc:go`
-on the PR to run runbook <name>". Do not start phase (b).
+on the PR to run runbook <name>". Do not start the design phase.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `policies/**`, `bands.yaml`
 (a bands change is the owner's PR) or `evidence/detection.json`. Never edit source. Never

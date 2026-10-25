@@ -2,7 +2,7 @@
 
 Usage: python tasks.py <task>
 Tasks: test | lint | format | check | verify | notes-index | decisions-index | choices-index |
-       docs-lint | next-free | version-check | template-hashes | help
+       docs-lint | next-free | version-check | template-hashes | workflow-copies | help
 
 Everything runs through ``sys.executable -m ...`` with argument lists (no shell), so the
 same file works in cmd.exe, PowerShell, Git Bash and a Linux runner. ``notes-index`` runs in
@@ -20,7 +20,10 @@ to a version ``main`` already holds or a tag already has (ROADMAP R5's race, cho
 that a fetched open branch bumped to first (choice 266), and one that changes ``plugin/`` or
 ``template/`` without a version above ``main``'s (choice 270). ``template-hashes`` rewrites
 ``plugin/init/template_hashes.json``, the hash of each refreshed copy's template at every tag,
-which ``/sdlc-init`` reads to tell a copy nobody edited (ROADMAP R64).
+which ``/sdlc-init`` reads to tell a copy nobody edited (ROADMAP R64). ``workflow-copies``
+writes this repository's ``.github/workflows/`` copies as the copy test expects them
+(``tests/test_templates.py``): for the owner to run, never a session, since a session may not
+write a workflow; a workflow template change otherwise means pasting every line by hand.
 """
 
 from __future__ import annotations
@@ -1798,6 +1801,39 @@ def task_template_hashes() -> int:
     return 0
 
 
+def task_workflow_copies() -> int:
+    """Write .github/workflows/ as the copy test renders the templates (the owner runs it)."""
+    plugin_dir = str(ROOT / "plugin")
+    if plugin_dir not in sys.path:
+        sys.path.insert(0, plugin_dir)
+    # the one expectation: test_this_repository_s_workflow_copies_match_the_template's own
+    spec = importlib.util.spec_from_file_location(
+        "_copy_expectation", ROOT / "tests" / "test_templates.py"
+    )
+    expectation = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(expectation)
+    written = 0
+    for name in expectation.ALL_WORKFLOWS:
+        if name == expectation.EVALS_WORKFLOW:
+            continue  # this repository runs framework-evals.yml instead (the test says why)
+        text = expectation.sdlc_init.apply_env_markers(
+            expectation.render.render_file(expectation.WORKFLOW_DIR / name, expectation.VALUES),
+            [],
+        )
+        path = expectation.REPO_WORKFLOW_DIR / name
+        if path.is_file() and path.read_text(encoding="utf-8") == text:
+            print(f"workflow-copies: {name} unchanged")
+            continue
+        path.write_text(text, encoding="utf-8", newline="\n")
+        print(f"workflow-copies: wrote .github/workflows/{name}")
+        written += 1
+    if written:
+        print(f"workflow-copies: {written} written; commit them on the branch")
+    else:
+        print("workflow-copies: every copy already matches its template")
+    return 0
+
+
 TASKS = {
     "test": task_test,
     "lint": task_lint,
@@ -1811,6 +1847,7 @@ TASKS = {
     "next-free": task_next_free,
     "version-check": task_version_check,
     "template-hashes": task_template_hashes,
+    "workflow-copies": task_workflow_copies,
 }
 
 

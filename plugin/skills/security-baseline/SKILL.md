@@ -40,8 +40,8 @@ description: The organization's security baseline: the rules this project applie
    config) that the change touches goes into `spec.md` "Flagged concerns", declared closed
    (`- decided (decision 35): risk item '<item>': ...`, the `spec-template` skill); the gate
    shows it in the "Needs your close look" banner of the PR the owner merges, with the
-   reviewer's brief on it, and the owner's merge accepts it (decision 35; at (e), the
-   owner's approving review, decision 36; it no longer parks).
+   reviewer's brief on it, and the owner's merge accepts it (decision 35; at the deploy
+   gate, the owner's approving review, decision 36; it no longer parks).
 
 ## Check
 Run the deterministic check and include its output in your summary (article p.22 pattern):
@@ -57,5 +57,5 @@ It scans the added lines for secrets (same patterns as the hook) and dangerous c
 Deterministic backing, rule by rule (R27): rule 3, the secrets hook; rule 7, the permission
 deny rules and the sandbox's network allow-list; rule 8, the gate's `risk_list` check and
 its banner. Rules 1, 2, 4, 5 and 6 have no hook: the security review pass (B3) and the
-REVIEW.md pass at (e) re-check them, and the weekly scan reads them. This skill is advisory
+REVIEW.md pass at deploy re-check them, and the weekly scan reads them. This skill is advisory
 (p.22 governance).

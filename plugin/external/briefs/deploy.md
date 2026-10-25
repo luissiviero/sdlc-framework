@@ -1,4 +1,4 @@
-# Second opinion on a build (phase (e), change {change_id})
+# Second opinion on a build (phase (deploy), change {change_id})
 
 You are an independent reviewer from outside the team that wrote this change. The code was
 written, tested and reviewed by other models; you have not seen their verdicts and you do

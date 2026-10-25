@@ -1,15 +1,15 @@
 """Command-line face of the confidence gate (build guide steps 16 and 19).
 
-    python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root . --id 0001 --phase c \
+    python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root . --id 0001 --phase build \
         [--base origin/main] [--dry-run]
-    python cli.py run-commands --root . --id 0001 --phase c     # the runner, after the session
-    python cli.py start-run --root . --id 0001 --phase c [--run build|fix]  # step 19
-    python cli.py record-spend --root . --id 0001 --phase c --usd 1.25 \\
+    python cli.py run-commands --root . --id 0001 --phase build     # the runner, after the session
+    python cli.py start-run --root . --id 0001 --phase build [--run build|fix]  # step 19
+    python cli.py record-spend --root . --id 0001 --phase build --usd 1.25 \\
         [--run review] [--source claude-review.json]
     python cli.py set-iterations --root . --id 0001 --count 0   # owner only (decisions 5, 24)
     python cli.py bump-iteration --root . --id 0001             # one fix round (step 24)
     python cli.py spec-header --root . --id 0001 [--plugin-root <path>]
-    python cli.py risk-hits --root . --id 0001 --phase c       # decision 35: the brief's items
+    python cli.py risk-hits --root . --id 0001 --phase build       # decision 35: the brief's items
 
 ``bump-iteration`` counts one fix round of the change's current phase (the runbooks call it
 per round of the verifier / evidence / review loops), writes ``status.yaml`` and prints the
@@ -25,7 +25,7 @@ the entry unique (a repeated record of the same source replaces it). The gate's 
 check compares ``gate.max_budget_usd`` with the ledger's total, not with the last session.
 
 ``start-run`` writes ``evidence/run-<phase>.json`` with the run's start (the wall clock).
-The build run (``--phase c``) and a fix round, whatever the change's phase, also record
+The build run (``--phase build``) and a fix round, whatever the change's phase, also record
 ``"run": "build"``, which gives them the build caps (decision 32, 1.0.8:
 ``gate.build_max_wall_clock_minutes``): the runner marks a fix session with ``SDLC_RUN=fix``
 in its environment, and ``--run fix|build`` says the same for a by-hand run.
@@ -125,8 +125,12 @@ def _change(args):
     return change_dir, status_mod.read_status(change_dir)
 
 
-def _run_file(change_dir: Path, phase: str) -> Path:
-    return change_dir / "evidence" / limits.RUN_FILE.format(phase=phase)
+def _run_file(change_dir: Path, phase: str, write: bool = False) -> Path:
+    """``evidence/run-<phase>.json``: written under the phase's name; read under it unless
+    only the letter's (``run-c.json``, a plugin before R45) exists."""
+    if write:
+        return change_dir / "evidence" / limits.RUN_FILE.format(phase=c.phase_name(phase))
+    return c.phase_file(change_dir / "evidence", limits.RUN_FILE, phase)
 
 
 def _write_run(path: Path, data: dict) -> None:
@@ -142,12 +146,12 @@ def cmd_start_run(args) -> int:
     data = {"phase": args.phase, "started_at": now, "spend_usd": None}
     # decision 32: the build run and every fix round get the build caps (limits.run_caps)
     if (
-        args.phase == "c"
+        args.phase == c.BUILD
         or args.run in ("build", "fix")
         or os.environ.get(limits.RUN_KIND_ENV) == limits.FIX_RUN
     ):
         data["run"] = limits.BUILD_RUN
-    _write_run(_run_file(change_dir, args.phase), data)
+    _write_run(_run_file(change_dir, args.phase, write=True), data)
     _emit(data)
     return 0
 
@@ -171,7 +175,7 @@ def cmd_record_spend(args) -> int:
         print(f"gate: {exc}", file=sys.stderr)
         return 2
     data.update({"phase": args.phase, "spend_usd": float(args.usd)})
-    _write_run(path, data)
+    _write_run(_run_file(change_dir, args.phase, write=True), data)
     _emit({**data, "spend_usd_total": ledger["total_usd"], "spend_entries": len(ledger["entries"])})
     return 0
 
@@ -320,7 +324,7 @@ def build_parser() -> argparse.ArgumentParser:
     ck = sub.add_parser("check")
     ck.add_argument("--root", default=".")
     ck.add_argument("--id", required=True)
-    ck.add_argument("--phase", required=True, choices=c.PHASES)
+    ck.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
     ck.add_argument("--base", default=None, help="base ref for the diff (default: origin HEAD)")
     ck.add_argument("--dry-run", action="store_true", help="evaluate only; write nothing")
     ck.set_defaults(fn=cmd_check)
@@ -330,14 +334,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rc.add_argument("--root", default=".")
     rc.add_argument("--id", required=True)
-    rc.add_argument("--phase", required=True, choices=c.PHASES)
+    rc.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
     rc.add_argument("--base", default=None, help="base ref for the diff (default: origin HEAD)")
     rc.set_defaults(fn=cmd_run_commands)
 
     sr = sub.add_parser("start-run")
     sr.add_argument("--root", default=".")
     sr.add_argument("--id", required=True)
-    sr.add_argument("--phase", required=True, choices=c.PHASES)
+    sr.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
     sr.add_argument(
         "--run",
         default=None,
@@ -349,7 +353,7 @@ def build_parser() -> argparse.ArgumentParser:
     rs = sub.add_parser("record-spend")
     rs.add_argument("--root", default=".")
     rs.add_argument("--id", required=True)
-    rs.add_argument("--phase", required=True, choices=c.PHASES)
+    rs.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
     rs.add_argument("--usd", required=True, type=float)
     rs.add_argument("--run", default=None, help="the run that spent it (default: --phase)")
     rs.add_argument("--source", default=None, help="the stored result the figure came from")
@@ -386,7 +390,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rh.add_argument("--root", default=".")
     rh.add_argument("--id", required=True)
-    rh.add_argument("--phase", required=True, choices=c.PHASES)
+    rh.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
     rh.add_argument("--base", default=None, help="base ref for the diff (default: origin HEAD)")
     rh.set_defaults(fn=cmd_risk_hits)
     return p

@@ -9,10 +9,13 @@ import re
 from pathlib import Path
 from typing import Any
 
+from state.conventions import phase_name
+
 BRIEFS = Path(__file__).resolve().parent / "briefs"
 PROVIDER = "gemini"
 MARKER = "<!-- sdlc:second-opinion -->"
-# the (b) opinion of a design PR the fast lane superseded, carried onto the build PR at (e)
+# the design opinion of a design PR the fast lane superseded, carried onto the build PR at
+# deploy
 CARRIED_MARKER = "<!-- sdlc:second-opinion-carried #{pr} -->"
 VERDICTS = ("no concerns", "concerns")
 SEVERITIES = ("important", "minor")
@@ -44,7 +47,10 @@ SCHEMA: dict[str, Any] = {
 
 
 def prompt(phase: str, change_id: str, pieces: list[dict[str, str]], left_out: list[Any]) -> str:
-    brief = (BRIEFS / f"{phase}.md").read_text(encoding="utf-8").replace("{change_id}", change_id)
+    """The brief of ``phase`` (``briefs/design.md``, ``briefs/deploy.md``; a letter is read as
+    its name, R45), the change's pieces after it."""
+    name = phase_name(phase)
+    brief = (BRIEFS / f"{name}.md").read_text(encoding="utf-8").replace("{change_id}", change_id)
     parts = [brief]
     if left_out:
         names = "; ".join(f"{x['path']} ({x['why']})" for x in left_out)
@@ -161,16 +167,17 @@ def _inert_again(text: str) -> str:
 
 
 def carried(design_pr: int, body: str | None, url: str | None) -> str:
-    """The (b) opinion of design PR ``design_pr``, which the fast lane closed as superseded,
-    quoted for the build PR at (e) (decision 30: the owner's first look on the fast lane is
-    there; plugin 1.0.24). ``body`` None: no (b) record was found on the design PR, which is
+    """The design opinion of design PR ``design_pr``, which the fast lane closed as
+    superseded, quoted for the build PR at deploy (decision 30: the owner's first look on the
+    fast lane is there; plugin 1.0.24). ``body`` None: no design record was found on the
+    design PR, which is
     said rather than left silent. The quote keeps the original's text, already made inert,
     and never reads as a verdict of this head (``cli.given_on_head``)."""
     lines = [CARRIED_MARKER.format(pr=design_pr)]
     if body is None:
         lines.append(
             f"**The design's second opinion was not found** on the superseded design PR "
-            f"#{design_pr}: no (b) record was posted there (its design run's "
+            f"#{design_pr}: no design record was posted there (its design run's "
             "`second-opinion` job says why)."
         )
         return "\n".join(lines) + "\n"

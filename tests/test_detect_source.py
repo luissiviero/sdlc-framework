@@ -132,8 +132,8 @@ def test_counts_skips_the_framework_workflows(name, expected):
 @pytest.mark.parametrize(
     ("head_branch", "expected"),
     [
-        ("sdlc/0001/c", False),
-        ("sdlc/0009/a", False),
+        ("sdlc/0001/build", False),
+        ("sdlc/0009/intent", False),
         ("sdlc/0009/dismiss", False),
         ("main", True),
         ("feature/sdlc/x", True),

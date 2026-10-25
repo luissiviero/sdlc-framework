@@ -1,9 +1,9 @@
 """R51, gap G1 (``docs/proposals/concurrent-changes.md``; the race analysis's checks 6, 7 and
 12, ``docs/reviews/2026-10-20-r51-race-analysis.md``): a build PR behind the default branch
-is brought up to date and re-checked before gate (e) is offered, and a run whose push found
+is brought up to date and re-checked before gate (deploy) is offered, and a run whose push found
 its branch moved re-checks the merged tree before it hands anything over.
 
-- ``update_before_offer``: before the REVIEW.md pass, the (e) run and a fix round at (e), the
+- ``update_before_offer``: before the REVIEW.md pass, the deploy run and a fix round at deploy, the
   default branch is merged into the work branch with a merge commit (``merge_default_branch``
   of the runner, 1.0.10's merge); a conflict parks, and a merge that went in is re-checked.
 - ``recheck``: the three targets run once more by the runner itself on the merged tree, never
@@ -13,7 +13,7 @@ its branch moved re-checks the merged tree before it hands anything over.
   when the remote branch had moved (check 12); the runner then re-checks that tree.
 
 The merge commit of ``update_before_offer`` is pushed by the run's next push (the review
-pass's run record, the park, or the (e) run's own commits), as 1.0.10's merge is.
+pass's run record, the park, or the deploy run's own commits), as 1.0.10's merge is.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from typing import Any
 from gate import checks as gate_checks
 
 CHECK = "base_update"
-MERGE_MESSAGE = "run({phase}): {base} merged before gate (e) is offered (R51)"
+MERGE_MESSAGE = "run({phase}): {base} merged before gate (deploy) is offered (R51)"
 CONFLICT_PARK = CHECK + ": the default branch does not merge into {branch}: {files}"
 CONFLICT_NEED = (
     "The default branch moved since this change's gates ran, and it does not merge into "
@@ -36,7 +36,7 @@ CONFLICT_NEED = (
 RED_PARK = CHECK + ": {what} is not green: {red}"
 RED_NEED = (
     "No gate judged this tree: {what}. Fix the red target on {branch} (a review comment or an "
-    "@claude comment starts a fix round), then gate (e) is offered on the fixed head."
+    "@claude comment starts a fix round), then gate (deploy) is offered on the fixed head."
 )
 UPDATED = "the default branch merged into {branch} as {sha}"
 MOVED = "the remote {branch} moved during the run and was merged in as {sha}"

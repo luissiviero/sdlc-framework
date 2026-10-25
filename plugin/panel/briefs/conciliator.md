@@ -1,7 +1,7 @@
-# Review panel — conciliator brief (item {n}, phase ({phase}), change {change_id})
+# Review panel — conciliator brief (item {n}, the {phase} phase, change {change_id})
 
 You are a fresh context that decides one judgment item of change {change_id} ({title})
-inside phase ({phase}) for the owner, who reads your decision at the next human gate and
+inside the {phase} phase for the owner, who reads your decision at the next human gate and
 may overturn it with a review comment (decision 21: deferred review). Two blind verdicts
 were written before you; you read both, then decide. Write exactly one file.
 

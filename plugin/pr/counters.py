@@ -32,7 +32,9 @@ from gate import risk as risk_mod  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
 
-SHIPPED_PHASE = "e"  # at phase e on the default branch: merged on the owner's approval (dec. 36)
+# at phase deploy on the default branch: merged on the owner's approval (decision 36); a
+# change merged before R45 records the letter ``e``, which ``Status`` reads as deploy for good
+SHIPPED_PHASE = c.DEPLOY
 CLASSES = ("routine", "non-routine")  # the adversarial reviewer's call on the plan
 
 # R26, choice 257 (R60's port): the play each row measures, with the article page, and
@@ -114,7 +116,7 @@ def collect(root: Path) -> dict[str, Any]:
     for change_dir, st in shipped_dirs:
         found = limits.classification_in(change_dir / art.EVIDENCE_DIR, SHIPPED_PHASE)
         by_class[found if found in CLASSES else "unclassified"].append(st)
-        # choice 257 (R60's port): the files the plan gained after gate (b)
+        # choice 257 (R60's port): the files the plan gained after gate (design)
         added = risk_mod.plan_grown(change_dir, SHIPPED_PHASE)
         if added is None:
             continue  # no record of it (gate records before 1.0.39): unknown, not zero
@@ -182,7 +184,7 @@ def render(counts: dict[str, Any]) -> str:
     grown = counts.get("plan_grown") or {}
     rows = [
         ("Changes (folders on the default branch, not abandoned)", str(counts["changes"]), ""),
-        ("Shipped (merged at gate (e))", str(shipped), ""),
+        ("Shipped (merged at gate (deploy))", str(shipped), ""),
         (
             "First-pass merge share",
             f"{_pct(counts['first_pass_share'])} ({counts['first_pass_merges']} of {shipped})",
@@ -214,7 +216,7 @@ def render(counts: dict[str, Any]) -> str:
         )
     rows += [
         (
-            "Plan grown since gate (b) (shipped changes with the record)",
+            "Plan grown since gate (design) (shipped changes with the record)",
             f"{len(grown)} of {counts.get('plan_growth_recorded', 0)} "
             f"({sum(grown.values())} files)",
             f"{PLAN_MODE}, lagging",
@@ -248,8 +250,8 @@ def render(counts: dict[str, Any]) -> str:
         "too. Fix iterations are read from status.yaml, which a reset sets back to 0, so a "
         "reset change counts fewer rounds than it ran. The plan's class is the adversarial "
         "reviewer's newest call, as the iteration cap reads it. Plan grown: the files the "
-        "plan lists that the copy approved at gate (b) did not, over the shipped changes whose "
-        "gate records carry it (plugin 1.0.39 on). A by-hand reset made before plugin 1.0.39 "
+        "plan lists that the copy approved at gate (design) did not, over the shipped changes "
+        "whose gate records carry it (plugin 1.0.39 on). A by-hand reset made before plugin 1.0.39 "
         "left no mark and still reads as first-pass. Dismissals in force: unexpired only."
     )
     reset = counts.get("reset_shipped") or []

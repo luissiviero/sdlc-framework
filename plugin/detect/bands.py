@@ -1,4 +1,4 @@
-"""The bands.yaml reader of phase (f) maintain (build guide step 37.1; article p.43-44).
+"""The bands.yaml reader of phase maintain (build guide step 37.1; article p.43-44).
 
 ``bands.yaml`` sits at the project root (written by ``/sdlc-init`` from
 ``template/bands.yaml``; project content the owner tunes). Keys:

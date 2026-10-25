@@ -490,9 +490,11 @@ def test_file_findings_opens_one_incident_change_per_finding(tmp_path):
     assert [r["type"] for r in results] == ["fix", "feature"]
     assert all(r["pushed"] and r["commit"] for r in results)
     assert all(r["pr_route"] == "none" and r["pr"] is None for r in results)  # no GitHub remote
-    # gate (f) ran on each filed change (the scan finding read as a tier-3 record): the
+    # gate (maintain) ran on each filed change (the scan finding read as a tier-3 record): the
     # intent PR carries the gate's label beside `incident`, and the evidence is committed
-    assert all(r["gate"] == "wait" and r["label"] == "sdlc:f-ready" for r in results), results
+    assert all(r["gate"] == "wait" and r["label"] == "sdlc:maintain-ready" for r in results), (
+        results
+    )
     # the checkout is back on main, with nothing of the changes left in it
     assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "main"
     assert not list((root / "changes").glob("0001-*"))
@@ -501,7 +503,7 @@ def test_file_findings_opens_one_incident_change_per_finding(tmp_path):
         results, (BOUNDED, WIDE), ("fix", "feature"), strict=True
     ):
         change_id = result["change_id"]
-        branch = f"sdlc/{change_id}/a"
+        branch = f"sdlc/{change_id}/intent"
         assert result["branch"] == branch and remote_has(root, branch)
         ref = f"origin/{branch}"
         rel = f"changes/{change_dir_name(root, ref, change_id)}"
@@ -510,7 +512,7 @@ def test_file_findings_opens_one_incident_change_per_finding(tmp_path):
             status_mod.yamlish.loads(show(root, ref, f"{rel}/status.yaml"))
         )
         assert status.entry_route == "incident" and status.change_type == change_type
-        assert status.phase == "f"
+        assert status.phase == "maintain"
         intent = show(root, ref, f"{rel}/intent.md")
         assert f"Change id: {change_id}." in intent and "## Evidence" in intent
         record = json.loads(show(root, ref, f"{rel}/evidence/scan-finding.json"))
@@ -527,7 +529,9 @@ def test_file_findings_opens_one_incident_change_per_finding(tmp_path):
         # the branch starts from the default branch and carries only the change folder
         diff = git(root, "diff", "--name-only", "origin/main", ref).split()
         assert diff and all(p.startswith(rel + "/") for p in diff)
-    patch = show(root, "origin/sdlc/0001/a", f"{results[0]['dir']}/evidence/suggested-patch.diff")
+    patch = show(
+        root, "origin/sdlc/0001/intent", f"{results[0]['dir']}/evidence/suggested-patch.diff"
+    )
     assert patch == PATCH
 
 
@@ -547,7 +551,7 @@ def test_the_incident_intent_pr_requests_the_owner_s_review(tmp_path, monkeypatc
 
     monkeypatch.setattr(route_mod, "_cli", spy)
     route_mod.file_findings(root, chosen, head=head_of(root), repo=REPO, push=True, dry_run=False)
-    assert len(upserts) == 1 and upserts[0][-3:] == ["--phase", "f", "--request-review"]
+    assert len(upserts) == 1 and upserts[0][-3:] == ["--phase", "maintain", "--request-review"]
 
 
 def test_file_findings_without_push_allocates_distinct_ids(tmp_path):
@@ -558,11 +562,11 @@ def test_file_findings_without_push_allocates_distinct_ids(tmp_path):
     )
     assert [r["change_id"] for r in results] == ["0001", "0002"]
     assert not any(r["pushed"] for r in results)
-    assert git(root, "branch", "--list", "sdlc/0001/a", "sdlc/0002/a").split() == [
-        "sdlc/0001/a",
-        "sdlc/0002/a",
+    assert git(root, "branch", "--list", "sdlc/0001/intent", "sdlc/0002/intent").split() == [
+        "sdlc/0001/intent",
+        "sdlc/0002/intent",
     ]
-    assert not remote_has(root, "sdlc/0001/a")
+    assert not remote_has(root, "sdlc/0001/intent")
 
 
 def test_file_findings_dry_run_touches_nothing(tmp_path):
@@ -583,7 +587,7 @@ def test_a_filed_scan_change_can_be_dismissed_by_the_detect_cli(tmp_path):
     results = route_mod.file_findings(
         root, chosen, head=head_of(root), repo=REPO, push=True, dry_run=False
     )
-    git(root, "checkout", "-q", "sdlc/0001/a")
+    git(root, "checkout", "-q", "sdlc/0001/intent")
     proc = subprocess.run(
         [sys.executable, str(DETECT_CLI), "dismiss", "--root", str(root), "--id", "0001",
          "--reason", "accepted: internal tool", "--by", "owner", "--dry-run"],
@@ -612,7 +616,7 @@ def test_route_files_the_undismissed_finding_and_is_idempotent(tmp_path, capsys,
     assert len(out["filed"]) == 1
     filed = out["filed"][0]
     assert filed["signature"] == findings_mod.signature(WIDE) and filed["type"] == "feature"
-    assert remote_has(root, f"sdlc/{filed['change_id']}/a")
+    assert remote_has(root, f"sdlc/{filed['change_id']}/intent")
     reasons = {f["signature"]: f["skip_reason"] for f in out["skipped"]}
     assert reasons[dismissed_sig] == "dismissed"
     assert reasons[findings_mod.signature(NIT)] == "nit"

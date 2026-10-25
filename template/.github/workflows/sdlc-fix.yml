@@ -68,7 +68,7 @@ on:
         required: true
         type: string
       head_ref:
-        description: "The pull request's head branch, e.g. sdlc/0001/c; it keys the concurrency group"
+        description: "The pull request's head branch, e.g. sdlc/0001/build; it keys the concurrency group"
         required: false
         type: string
       trigger:
@@ -136,9 +136,9 @@ jobs:
     # build run and every fix round take gate.build_max_wall_clock_minutes (180 by default),
     # so 185 + 50 + 10, with room
     # Change 0004: a set commands.drive adds gate.drive_timeout to the commands step (300 s by
-    # default: 185 + 55 + 10 = 250 of 260; at most 600 s at (c) and (d): 255). Not counted
+    # default: 185 + 55 + 10 = 250 of 260; at most 600 s at build and test: 255). Not counted
     # here: commands.setup (up to 15 minutes, more with Playwright's browser install) and the
-    # R18 triage step after a park (5 minutes). The worst case is a fix round at (e): R51's
+    # R18 triage step after a park (5 minutes). The worst case is a fix round at deploy: R51's
     # merge and re-check of the targets (45 minutes, only when the default branch moved) come
     # before the session, so 45 + 185 + 50 + 10 = 290 of 260 without a drive, and
     # 45 + 180 + 55 + 10 = 290 of 260 with one (the drive's minutes come off that session's

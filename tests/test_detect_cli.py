@@ -389,7 +389,7 @@ def test_run_below_tier_2_only_logs(tmp_path, src, gh, capsys, monkeypatch, make
     # nothing filed: no new change folder, no incident branch anywhere
     assert [p.name for p in change_dirs(root)] == ["0000-sdlc-init"]
     assert gitops.current_branch(root) == "main"
-    assert not remote_has(root, "sdlc/0001/a")
+    assert not remote_has(root, "sdlc/0001/intent")
     assert not git(root, "branch", "--list", "sdlc/*").strip()
 
 
@@ -452,7 +452,7 @@ def test_run_spike_with_file_opens_the_incident_change(tmp_path, src, gh, capsys
     assert out["outcome"] == f"filed change {change_id}"
     change = incident_dir(root, change_id)
     st = status_mod.read_status(change)
-    assert (st.entry_route, st.change_type, st.phase) == ("incident", "fix", "f")
+    assert (st.entry_route, st.change_type, st.phase) == ("incident", "fix", "maintain")
 
     record = json.loads((change / "evidence" / "detection.json").read_text(encoding="utf-8"))
     assert finding.validate(record) == []
@@ -465,8 +465,8 @@ def test_run_spike_with_file_opens_the_incident_change(tmp_path, src, gh, capsys
     assert 0 < len(record["observations"]) <= finding.RECENT_POINTS
     assert record["observations"][-1]["at"] == "2026-09-16"
 
-    # the commit is on sdlc/<id>/a and was pushed; main (local and remote) is untouched
-    branch = f"sdlc/{change_id}/a"
+    # the commit is on sdlc/<id>/intent and was pushed; main (local and remote) is untouched
+    branch = f"sdlc/{change_id}/intent"
     assert out["filed"]["branch"] == branch
     assert remote_has(root, branch)
     subject = git(bare(root), "log", "-1", "--format=%s", branch).strip()
@@ -530,7 +530,7 @@ def test_run_force_tier_with_no_observation_still_files_the_rehearsal(
     assert record["observations"] == []
     assert record["failed_run_urls"] == [] and record["commits"] == []
     assert "no complete-day observation" in record["reason"]
-    branch = f"sdlc/{change_id}/a"
+    branch = f"sdlc/{change_id}/intent"
     rel = f"changes/{change.name}/evidence/detection.json"
     assert json.loads(git(bare(root), "show", f"{branch}:{rel}")) == record
     [entry] = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()]
@@ -598,7 +598,7 @@ def test_run_skips_a_dismissed_signature(tmp_path, src, gh, capsys):
     assert out["dismissal"]["change_id"] == "0009"
     assert out["filed"] == {}
     assert [p.name for p in change_dirs(root)] == ["0000-sdlc-init"]
-    assert not remote_has(root, "sdlc/0001/a")
+    assert not remote_has(root, "sdlc/0001/intent")
 
 
 def test_run_skips_while_an_incident_of_the_metric_is_open(tmp_path, src, gh, capsys):
@@ -612,7 +612,7 @@ def test_run_skips_while_an_incident_of_the_metric_is_open(tmp_path, src, gh, ca
     assert [i["change_id"] for i in out["open_incidents"]] == ["0001"]
     assert out["filed"] == {}
     assert not [p for p in change_dirs(root) if p.name.startswith("0002-")]
-    assert not remote_has(root, "sdlc/0002/a")
+    assert not remote_has(root, "sdlc/0002/intent")
 
 
 def test_run_source_error_exits_1_and_logs_the_error(tmp_path, src, gh, capsys):
@@ -724,7 +724,7 @@ def test_dispatch_preapproved_revert_runs_records_and_commits(incident, spy, cap
     assert record["pr_url"] == "https://x/pr/9"
     assert record["authorization"]["authorization"] == "preapproved"
     assert out["commit"]["ok"] is True
-    branch = "sdlc/0001/a"
+    branch = "sdlc/0001/intent"
     assert gitops.current_branch(root) == branch
     rel = f"changes/{change.name}/evidence/runbook-revert-pr.json"
     assert json.loads(git(root, "show", f"{branch}:{rel}"))["status"] == "ran"
@@ -811,12 +811,12 @@ def test_go_by_a_person_runs_the_runbook_and_reruns_the_gate(rollback_incident, 
     assert args == (REPO, 12, [], ["sdlc:go"])
     [(args, _kw)] = gh.named("label_actor")
     assert args == (REPO, 12, "sdlc:go")
-    assert (change / "evidence" / "gate-f.json").is_file()
+    assert (change / "evidence" / "gate-maintain.json").is_file()
     assert isinstance(out["gate"], dict)
     assert isinstance(out["pr"], dict)
     assert out["commit"]["ok"] is True
     rel = f"changes/{change.name}/status.yaml"
-    assert "runbook_authorized_by: the-owner" in git(bare(root), "show", f"sdlc/0001/a:{rel}")
+    assert "runbook_authorized_by: the-owner" in git(bare(root), "show", f"sdlc/0001/intent:{rel}")
 
 
 @pytest.mark.parametrize(
@@ -852,7 +852,7 @@ def test_go_and_park_refuse_without_the_app(rollback_incident, gh, spy, capsys, 
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("SDLC_WORKFLOW_TOKEN", "wf")
     monkeypatch.delenv("SDLC_APP_TOKEN_MINTED_AT", raising=False)
-    before = git(bare(root), "rev-parse", "sdlc/0001/a").strip()
+    before = git(bare(root), "rev-parse", "sdlc/0001/intent").strip()
     extra = ["--check", "setup", "--reason", "x"] if verb == "park" else []
     code, out = cli(
         capsys, verb, "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12",
@@ -861,7 +861,7 @@ def test_go_and_park_refuse_without_the_app(rollback_incident, gh, spy, capsys, 
     assert code == 1
     assert out["performed"] is False and "GitHub App is required" in out["reason"]
     assert spy.calls == [] and gh.named("set_labels") == [] and gh.named("label_actor") == []
-    assert git(bare(root), "rev-parse", "sdlc/0001/a").strip() == before
+    assert git(bare(root), "rev-parse", "sdlc/0001/intent").strip() == before
     # the label stays, so the Go runs on a re-run once the App is set up
     monkeypatch.delenv("GITHUB_ACTIONS")
     if verb == "go":
@@ -883,7 +883,7 @@ def test_park_records_the_failed_setup_step_where_the_owner_looks(
 ):
     """A failed setup step in the runbook job used to be a red run: the label stayed and
     nothing wrote "what I need from you". ``park`` writes the park on the incident branch
-    (status, gate-f.json in the gate's shape, committed and pushed), removes the Go label and
+    (status, gate-maintain.json in the gate's shape, committed and pushed), removes the Go label and
     refreshes the PR; no runbook runs."""
     root, change = rollback_incident
     write_proposal(change, "runbook:rollback-deploy")
@@ -914,12 +914,13 @@ def test_park_records_the_failed_setup_step_where_the_owner_looks(
     detail = f"{error} (run: https://github.com/o/r/actions/runs/42)"
     reason = f"setup: {detail}"
     assert out["parked"] == reason and out["check"] == "setup"
-    assert out["gate_result"] == f"changes/{change.name}/evidence/gate-f.json"
+    assert out["gate_result"] == f"changes/{change.name}/evidence/gate-maintain.json"
     st = status_mod.read_status(change)
-    assert st.parked_reason == reason and st.phase == "f"
+    assert st.parked_reason == reason and st.phase == "maintain"
     assert st.runbook_authorized_by is None
-    gate = json.loads((change / "evidence" / "gate-f.json").read_text(encoding="utf-8"))
-    assert gate["result"] == "park" and gate["phase"] == "f" and gate["label"] == "sdlc:needs-human"
+    gate = json.loads((change / "evidence" / "gate-maintain.json").read_text(encoding="utf-8"))
+    assert gate["result"] == "park" and gate["phase"] == "maintain"
+    assert gate["label"] == "sdlc:needs-human"
     [check] = gate["checks"]
     assert check == {
         "name": "setup",
@@ -946,7 +947,7 @@ def test_park_records_the_failed_setup_step_where_the_owner_looks(
     assert args[:4] == (REPO, 12, [], ["sdlc:go"])
     assert out["label_removed"]["ok"] is True
     assert out["pr"]["url"] == "https://x/pr/12"
-    assert upserts[0][-3:] == ["--phase", "f", "--request-review"]  # decision 31
+    assert upserts[0][-3:] == ["--phase", "maintain", "--request-review"]  # decision 31
     assert spy.calls == [] and runbook_records(change) == ["runbook-rollback-deploy.json"]
     # a park nobody can find is the red run this replaces: no PR route is a failure
     monkeypatch.setattr(detect_cli, "_cli", real_cli)
@@ -971,7 +972,7 @@ def test_park_refuses_a_change_that_is_not_an_incident(tmp_path, gh, capsys, mon
     phase (f), so nothing is parked, committed or relabelled."""
     root = project(tmp_path)
     change = root / "changes" / "0000-sdlc-init"
-    assert change.is_dir() and status_mod.read_status(change).phase != "f"
+    assert change.is_dir() and status_mod.read_status(change).phase != "maintain"
     before = git(root, "rev-parse", "HEAD")
     code, out = cli(
         capsys, "park", "--root", str(root), "--id", "0000", "--repo", REPO,
@@ -1141,9 +1142,35 @@ def test_open_incidents_is_empty_without_a_remote_incident(tmp_path):
 def test_open_incidents_finds_the_filed_one_for_its_metric_only(incident):
     root, _change = incident
     [found] = detect_cli.open_incidents(root, METRIC)
-    assert (found["change_id"], found["ref"]) == ("0001", "origin/sdlc/0001/a")
+    assert (found["change_id"], found["ref"]) == ("0001", "origin/sdlc/0001/intent")
     assert found["signature"] == finding.signature(METRIC, "we1")
     assert detect_cli.open_incidents(root, "p95_latency") == []
+
+
+def test_open_incidents_reads_the_letter_branch_of_an_older_plugin_for_good(incident):
+    """R45, choice 273: remote branches are never renamed, so an incident an older plugin
+    filed on ``sdlc/0001/a`` is found there, once per change even beside a name branch, and
+    a letter ``phase: e`` on the default branch still reads as shipped."""
+    root, change = incident
+    letter = "sdlc/0001/" + "a"
+    git(root, "push", "-q", "origin", f"origin/sdlc/0001/intent:refs/heads/{letter}")
+    git(root, "fetch", "-q", "origin")
+    [found] = detect_cli.open_incidents(root, METRIC)
+    assert found["ref"] == "origin/sdlc/0001/intent"  # the name's branch first
+    git(root, "push", "-q", "origin", "--delete", "sdlc/0001/intent")
+    git(root, "fetch", "-q", "--prune", "origin")
+    [found] = detect_cli.open_incidents(root, METRIC)
+    assert found["ref"] == f"origin/{letter}" and found["change_id"] == "0001"
+    rel = f"changes/{change.name}"
+    git(root, "checkout", "-q", "main")
+    git(root, "checkout", f"origin/{letter}", "--", rel)
+    path = root / rel / "status.yaml"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("phase: maintain", "phase: " + "e"), encoding="utf-8")
+    git(root, "add", "--", rel)
+    git(root, "commit", "-q", "-m", "shipped by an older plugin")
+    git(root, "push", "-q", "origin", "main")
+    assert detect_cli.open_incidents(root, METRIC) == []
 
 
 def test_open_incidents_ignores_an_abandoned_incident(incident):
@@ -1154,7 +1181,7 @@ def test_open_incidents_ignores_an_abandoned_incident(incident):
     status_mod.write_status(change, st)
     git(root, "add", "--", str(change / "status.yaml"))
     git(root, "commit", "-q", "-m", "abandon(0001)")
-    git(root, "push", "-q", "origin", "sdlc/0001/a")
+    git(root, "push", "-q", "origin", "sdlc/0001/intent")
     assert detect_cli.open_incidents(root, METRIC) == []
 
 
@@ -1163,9 +1190,9 @@ def test_open_incidents_ignores_a_shipped_incident(incident):
     assert len(detect_cli.open_incidents(root, METRIC)) == 1  # found before the ship
     rel = f"changes/{change.name}"
     git(root, "checkout", "-q", "main")
-    git(root, "checkout", "sdlc/0001/a", "--", rel)
+    git(root, "checkout", "sdlc/0001/intent", "--", rel)
     st = status_mod.read_status(root / rel)
-    st.phase = "e"
+    st.phase = "deploy"
     status_mod.write_status(root / rel, st)
     git(root, "add", "--", rel)
     git(root, "commit", "-q", "-m", "ship 0001 (as if the fix merged and deployed)")
@@ -1175,25 +1202,26 @@ def test_open_incidents_ignores_a_shipped_incident(incident):
 
 def test_open_incidents_ignores_a_merged_incident_abandoned_on_a_later_branch(incident):
     """The live sequence of 2026-09-25: the owner merges the incident PR (the folder lands on
-    main at phase f; GitHub deletes sdlc/0001/a), then closes the design PR on sdlc/0001/b;
+    main at phase f; GitHub deletes sdlc/0001/intent), then closes the design PR on
+    sdlc/0001/design;
     abandon writes ``phase: abandoned`` on the change's branches only, never on main."""
     root, change = incident
     rel = f"changes/{change.name}"
     git(root, "checkout", "-q", "main")
-    git(root, "merge", "-q", "--no-ff", "-m", "merge the incident PR", "sdlc/0001/a")
+    git(root, "merge", "-q", "--no-ff", "-m", "merge the incident PR", "sdlc/0001/intent")
     git(root, "push", "-q", "origin", "main")
-    git(root, "push", "-q", "origin", "--delete", "sdlc/0001/a")
+    git(root, "push", "-q", "origin", "--delete", "sdlc/0001/intent")
     git(root, "fetch", "-q", "--prune", "origin")
     # control: merged and not abandoned, the incident is in flight until it ships
     [found] = detect_cli.open_incidents(root, METRIC)
     assert (found["change_id"], found["ref"]) == ("0001", "the checkout")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b", "main")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design", "main")
     st = status_mod.read_status(root / rel)
     st.abandon("closed: the design PR")
     status_mod.write_status(root / rel, st)
     git(root, "add", "--", rel)
     git(root, "commit", "-q", "-m", "abandon(0001)")
-    git(root, "push", "-q", "origin", "sdlc/0001/b")
+    git(root, "push", "-q", "origin", "sdlc/0001/design")
     git(root, "checkout", "-q", "main")
     git(root, "fetch", "-q", "origin")
     assert not status_mod.read_status(root / rel).abandoned  # main still says phase f
@@ -1207,7 +1235,7 @@ def test_remote_abandoned_ids_ignores_the_dismiss_and_revert_branches(incident):
     root, change = incident
     rel = f"changes/{change.name}"
     git(root, "checkout", "-q", "main")
-    git(root, "checkout", "sdlc/0001/a", "--", rel)
+    git(root, "checkout", "sdlc/0001/intent", "--", rel)
     st = status_mod.read_status(root / rel)
     st.abandon("closed: looks abandoned")
     status_mod.write_status(root / rel, st)
@@ -1283,7 +1311,7 @@ def test_go_runs_only_a_route_that_asked_for_it(rollback_incident, gh, spy, caps
 
 
 def test_finish_dispatches_runs_the_gate_and_opens_the_pr(incident, gh, capsys):
-    """The CI tail after the model's diagnosis-only session: dispatch, gate (f), the evidence
+    """The CI tail after the model's diagnosis-only session: dispatch, gate (maintain), the evidence
     commit and the intent PR, in one deterministic step that holds the runbook secrets."""
     root, change = incident
     # the model's diagnosis-only session wrote the intent and the proposal and committed them
@@ -1302,12 +1330,12 @@ def test_finish_dispatches_runs_the_gate_and_opens_the_pr(incident, gh, capsys):
     code, out = cli(capsys, "finish", "--root", str(root), "--id", "0001", "--repo", REPO)
     assert out["dispatch"]["acted"] is True
     failed = [ch for ch in out["gate"]["checks"] if not ch["ok"]]
-    assert out["gate"]["result"] == "wait" and out["gate"]["label"] == "sdlc:f-ready", failed
-    assert (change / "evidence" / "gate-f.json").is_file()
+    assert out["gate"]["result"] == "wait" and out["gate"]["label"] == "sdlc:maintain-ready", failed
+    assert (change / "evidence" / "gate-maintain.json").is_file()
     assert out["evidence_commit"]["ok"] is True
     assert out["pr"]["route"] == "none" and code == 1  # no GitHub route in the test: red
-    rel = f"changes/{change.name}/evidence/gate-f.json"
-    assert git(bare(root), "show", f"sdlc/0001/a:{rel}")
+    rel = f"changes/{change.name}/evidence/gate-maintain.json"
+    assert git(bare(root), "show", f"sdlc/0001/intent:{rel}")
 
 
 def test_finish_judges_by_the_default_branch_s_bands_not_the_checkout_s(
@@ -1347,9 +1375,9 @@ def test_open_incidents_sees_a_merged_incident_on_the_default_branch(incident, s
     the default branch until its fix ships, and still suppresses a second filing."""
     root, change = incident
     git(root, "checkout", "-q", "main")
-    git(root, "merge", "-q", "--no-ff", "-m", "merge the incident (gate a)", "sdlc/0001/a")
+    git(root, "merge", "-q", "--no-ff", "-m", "merge the incident (gate a)", "sdlc/0001/intent")
     git(root, "push", "-q", "origin", "main")
-    git(root, "push", "-q", "origin", "--delete", "sdlc/0001/a")
+    git(root, "push", "-q", "origin", "--delete", "sdlc/0001/intent")
     git(root, "fetch", "-q", "--prune", "origin")
     found = detect_cli.open_incidents(root, METRIC)
     assert [i["change_id"] for i in found] == ["0001"] and found[0]["ref"] == "the checkout"
@@ -1375,7 +1403,7 @@ def test_a_pending_dismissal_branch_already_suppresses_the_finding(incident, src
     status_mod.write_status(change, st)
     git(root, "add", "changes")
     git(root, "commit", "-q", "-m", "abandon")
-    git(root, "push", "-q", "origin", "sdlc/0001/a")
+    git(root, "push", "-q", "origin", "sdlc/0001/intent")
     # the abandon workflow opened the dismissal PR (0.2.27: a branch with no PR mutes nothing)
     gh.pr_by_head["sdlc/0001/dismiss"] = {"number": 6, "state": "open", "merged": False}
     src.observations = series(20, spike=True)
@@ -1403,7 +1431,7 @@ def test_a_dismissal_whose_pr_was_closed_without_a_merge_no_longer_suppresses(
     status_mod.write_status(change, st)
     git(root, "add", "changes")
     git(root, "commit", "-q", "-m", "abandon")
-    git(root, "push", "-q", "origin", "sdlc/0001/a")
+    git(root, "push", "-q", "origin", "sdlc/0001/intent")
     gh.pr_by_head["sdlc/0001/dismiss"] = {"number": 6, "state": "closed", "merged": False}
     src.observations = series(20, spike=True)
     code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--file")
@@ -1455,7 +1483,7 @@ def test_dismiss_takes_the_reason_only_from_a_member_of_the_repository(incident,
     assert code == 0 and out["dismissed"] is True
     assert (out["reason"], out["by"]) == ("our runner", "the-owner")
     gh.comments["comments"] = gh.comments["comments"][1:]
-    git(root, "checkout", "-q", "sdlc/0001/a")
+    git(root, "checkout", "-q", "sdlc/0001/intent")
     git(root, "branch", "-q", "-D", "sdlc/0001/dismiss")
     code, out = cli(
         capsys, "dismiss", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "13"
@@ -1554,7 +1582,7 @@ def test_default_branch_prefers_the_explicit_environment_value(tmp_path, monkeyp
     assert detect_cli._default_branch(root) == "trunk"
     monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "")
     assert detect_cli._default_branch(root) == "main"
-    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "sdlc/0001/a")  # a framework branch: refused
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "sdlc/0001/intent")  # a framework branch: refused
     assert detect_cli._default_branch(root) == "main"
 
 
@@ -2078,9 +2106,9 @@ def test_finish_refuses_a_detection_record_the_session_changed(incident, gh, cap
     assert out["parked"].startswith(c.DETECTION_SNAPSHOT_PARK_PREFIX)
     assert out["snapshot"]["expected"] == snapshot and out["snapshot"]["actual"] != snapshot
     assert "gate" not in out and out["park_commit"]["ok"] is True
-    # the park is a queue item: evidence/gate-f.json carries the park and the PR gets
+    # the park is a queue item: evidence/gate-maintain.json carries the park and the PR gets
     # sdlc:needs-human (the review of the 0.2.27 diff, M1)
-    gate_file = json.loads((change / "evidence" / "gate-f.json").read_text(encoding="utf-8"))
+    gate_file = json.loads((change / "evidence" / "gate-maintain.json").read_text(encoding="utf-8"))
     assert gate_file["result"] == "park" and gate_file["label"] == "sdlc:needs-human"
     assert gate_file["checks"][0]["name"] == "detection_snapshot"
     assert "restore the record" in gate_file["checks"][0]["need"]
@@ -2089,7 +2117,7 @@ def test_finish_refuses_a_detection_record_the_session_changed(incident, gh, cap
     assert st.parked_reason.startswith(c.DETECTION_SNAPSHOT_PARK_PREFIX)
     assert "when the detect step wrote it" in st.parked_reason
     rel = f"changes/{change.name}/status.yaml"
-    assert "parked_reason: " in git(bare(root), "show", f"sdlc/0001/a:{rel}")
+    assert "parked_reason: " in git(bare(root), "show", f"sdlc/0001/intent:{rel}")
     # the record the detect step wrote, with its digest: judged as before
     path.write_text(original, encoding="utf-8")
     git(root, "commit", "-q", "-am", "maintain(0001): the record restored")
@@ -2116,7 +2144,7 @@ def test_finish_refuses_a_detection_record_the_session_changed(incident, gh, cap
 
 def test_finish_refuses_to_run_over_the_runner_s_owner_fields_park(incident, gh, capsys):
     """The review of the 0.2.26 diff, M5: the runner's park after the session wrote an
-    owner-only field (choice 103) was overwritten by gate (f) in the finish step."""
+    owner-only field (choice 103) was overwritten by gate (maintain) in the finish step."""
     from state import conventions as c
 
     root, change = incident

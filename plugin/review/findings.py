@@ -350,7 +350,7 @@ def claude_md_first_time_lines(findings: list[dict[str, Any]], change_id: str) -
     """One line per finding that names ``CLAUDE.md`` itself (REVIEW.md: "Flag when the change
     has made CLAUDE.md outdated"): the fix is a CLAUDE.md edit, which only the owner makes, so
     the proposal goes into the PR body the first time, not only on the second occurrence
-    (HANDOFF 6(f): the "CLAUDE.md outdated" finding was a deadlock at gate (e) otherwise)."""
+    (HANDOFF 6(f): the "CLAUDE.md outdated" finding was a deadlock at gate (deploy) otherwise)."""
     lines: list[str] = []
     for finding in findings:
         if not isinstance(finding, dict):

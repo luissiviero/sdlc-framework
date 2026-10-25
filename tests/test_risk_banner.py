@@ -91,7 +91,9 @@ def test_a_glob_item_does_not_match_its_words_on_paths():
 
 # --- the brief and the escalation -----------------------------------------------------------
 def test_the_brief_is_read_per_item_with_the_reviewer_s_word():
-    brief = risk.parse_brief(BRIEF.format(phase="c", word="escalate") + "\n## `money movement`\n")
+    brief = risk.parse_brief(
+        BRIEF.format(phase="build", word="escalate") + "\n## `money movement`\n"
+    )
     assert brief["auth"]["word"] == "escalate"
     assert brief["auth"]["What could break"] == "sessions expire after a minute"
     assert brief["money movement"] == {"item": "money movement", "word": "continue"}
@@ -113,51 +115,51 @@ def _auth_change(root: Path, change: Path) -> None:
 
 
 def test_a_hit_parks_nothing_and_its_park_record_keeps_no_reason(project):  # noqa: F811
-    """The release guard on a merge over a parked gate (e) is unchanged in the code: a hit
+    """The release guard on a merge over a parked gate (deploy) is unchanged in the code: a hit
     no longer sets ``parked_reason``, so it never makes the release wait for the label."""
     root, change = project
     _auth_change(root, change)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c")
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build")
     assert result.result == "continue", result.reason
     assert status_mod.read_status(change).parked_reason is None
-    record = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    record = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     assert risk.recorded_hits(record) == {"auth": ["sample_pkg/auth.py"]}
 
 
 def test_the_reviewer_s_escalation_on_a_risk_item_parks(project):  # noqa: F811
     root, change = project
     _auth_change(root, change)
-    write(risk.brief_path(change, "c"), BRIEF.format(phase="c", word="escalate"))
+    write(risk.brief_path(change, "build"), BRIEF.format(phase="build", word="escalate"))
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "the reviewer's brief")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "park"
     r = next(ch for ch in result.failed if ch.name == "risk_list")
     assert r.details["escalated"] == ["auth"] and "'auth'" in r.reason
     assert "never goes to the review panel" in r.need
-    assert "evidence/roles/security-policy-c.md" in r.need
+    assert "evidence/roles/security-policy-build.md" in r.need
     # the reviewer's word continue: a banner line, no park
-    write(risk.brief_path(change, "c"), BRIEF.format(phase="c", word="continue"))
+    write(risk.brief_path(change, "build"), BRIEF.format(phase="build", word="continue"))
     git(root, "commit", "-q", "-am", "the reviewer's brief, continue")
-    verdict(root, "c")
-    assert gate.run_gate(root, "0001", "c", dry_run=True).result == "continue"
+    verdict(root, "build")
+    assert gate.run_gate(root, "0001", "build", dry_run=True).result == "continue"
 
 
 def test_an_escalate_verdict_naming_a_hit_item_stays_off_the_panel(project):  # noqa: F811
     root, change = project
     _auth_change(root, change)
     head = git(root, "rev-parse", "HEAD").strip()
-    path = change / "evidence" / "adversarial-review-c.json"
-    verdict(root, "c", verdict="escalate")
+    path = change / "evidence" / "adversarial-review-build.json"
+    verdict(root, "build", verdict="escalate")
     data = json.loads(path.read_text(encoding="utf-8"))
     data["reasons"] = ["risk item 'auth': the token never expires on refresh"]
     data["head"] = head
     write(path, json.dumps(data))
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert {"risk_list", "adversarial_review"} <= set(ch.name for ch in result.failed)
-    items, parks = panel_cli.collect_items(root, change, "c", result)
+    items, parks = panel_cli.collect_items(root, change, "build", result)
     assert not any(i["kind"] == "escalate" for i in items)
     assert any(
         p["check"] == "adversarial_review" and "never the panel's" in p["reason"] for p in parks
@@ -168,23 +170,23 @@ def test_an_escalate_verdict_naming_a_hit_item_stays_off_the_panel(project):  # 
 def test_an_escalate_verdict_on_something_else_still_goes_to_the_panel(project):  # noqa: F811
     root, change = project
     _auth_change(root, change)
-    verdict(root, "c", verdict="escalate")  # "blast radius larger than the plan says"
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    verdict(root, "build", verdict="escalate")  # "blast radius larger than the plan says"
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "risk_list" not in {ch.name for ch in result.failed}
-    items, _parks = panel_cli.collect_items(root, change, "c", result)
+    items, _parks = panel_cli.collect_items(root, change, "build", result)
     assert [i["kind"] for i in items] == ["escalate"]
 
 
 def test_risk_hits_now_lists_the_items_for_the_reviewer(project):  # noqa: F811
     root, change = project
     _auth_change(root, change)
-    found = gate.risk_hits_now(root, "0001", "c")
+    found = gate.risk_hits_now(root, "0001", "build")
     assert found["hits"] == {"auth": ["sample_pkg/auth.py"]}
-    assert found["brief"] == "changes/0001-percent-helper/evidence/roles/security-policy-c.md"
+    assert found["brief"] == "changes/0001-percent-helper/evidence/roles/security-policy-build.md"
     # the review pass asks for (e) while status.yaml still says (c) or (d)
-    assert gate.risk_hits_now(root, "0001", "e")["phase"] == "e"
+    assert gate.risk_hits_now(root, "0001", "deploy")["phase"] == "deploy"
     with pytest.raises(gate.GateError):
-        gate.build_context(root, "0001", "e")  # a gate itself still refuses the mismatch
+        gate.build_context(root, "0001", "deploy")  # a gate itself still refuses the mismatch
 
 
 # --- the fast lane --------------------------------------------------------------------------
@@ -196,15 +198,15 @@ def _results(hits: dict, accepted=()) -> list[CheckResult]:
 
 
 def test_a_design_with_an_unaccepted_hit_never_takes_the_fast_lane():
-    assert gate.fast_lane_applies("b", True, _results({}), True)
-    assert not gate.fast_lane_applies("b", True, _results({"auth": ["x"]}), True)
+    assert gate.fast_lane_applies("design", True, _results({}), True)
+    assert not gate.fast_lane_applies("design", True, _results({"auth": ["x"]}), True)
     accepted = _results({"auth": ["x"]}, accepted=["auth"])
-    assert gate.fast_lane_applies("b", True, accepted, True)
+    assert gate.fast_lane_applies("design", True, accepted, True)
     assert gate.unaccepted_risk_hits(_results({"auth": ["x"], "b": ["y"]}, ["b"])) == ["auth"]
 
 
 # --- the acceptance record ------------------------------------------------------------------
-def _line(phase="b", items=("auth",), shown=True, pr=12, by=OWNER):
+def _line(phase="design", items=("auth",), shown=True, pr=12, by=OWNER):
     return risk.acceptance_line(
         phase, list(items), by, "2026-10-20T10:00:00Z", pr, "abc1234", shown
     )
@@ -218,7 +220,9 @@ def test_the_acceptance_line_round_trips_and_is_absent_until_written(tmp_path):
     status_mod.write_status(change_dir, st)
     back = status_mod.read_status(change_dir)
     assert back.risk_acceptances == [_line()]
-    assert risk.accepted(back) == {"auth": "accepted at gate (b) by @luissiviero on 2026-10-20"}
+    assert risk.accepted(back) == {
+        "auth": "accepted at gate (design) by @luissiviero on 2026-10-20"
+    }
     st.risk_acceptances = [_line(shown=False)]
     assert risk.accepted(st) == {}  # an acceptance the owner could not read is none
     st.risk_acceptances = [{**_line(), "via": "label"}]
@@ -235,38 +239,38 @@ def _gate_file(change: Path, phase: str, hits: dict, declared=()) -> None:
 
 def test_the_banner_lists_each_item_with_its_brief_and_what_merging_does(tmp_path):
     change, st = status_mod.new_change(tmp_path, "Risky")
-    _gate_file(change, "b", {"auth": ["spec.md Flagged concerns: text"]})
-    write(risk.brief_path(change, "b"), BRIEF.format(phase="b", word="continue"))
-    lines = risk.banner_lines(change, "b", st)
+    _gate_file(change, "design", {"auth": ["spec.md Flagged concerns: text"]})
+    write(risk.brief_path(change, "design"), BRIEF.format(phase="design", word="continue"))
+    lines = risk.banner_lines(change, "design", st)
     assert lines[0].startswith(risk.BANNER_HEADING) and "Merging this PR accepts them" in lines[0]
-    assert lines[1].startswith("- `auth` — first found at gate (b): spec.md Flagged concerns")
+    assert lines[1].startswith("- `auth` — first found at gate (design): spec.md Flagged concerns")
     assert "what could break: sessions expire after a minute" in lines[1]
-    assert "evidence/roles/security-policy-b.md" in lines[1]
+    assert "evidence/roles/security-policy-design.md" in lines[1]
     assert risk.banner_shown("intro\n" + "\n".join(lines), ["auth"])
     assert not risk.banner_shown("no banner", ["auth"]) and risk.banner_shown("", [])
     # the build PR: accepted at (b), touched again at (c); a new item at (d) with no brief
     st.risk_acceptances = [_line()]
-    _gate_file(change, "c", {"auth": ["sample_pkg/auth.py"]})
-    _gate_file(change, "d", {"money movement": ["pay.py"]}, declared=["tests/a.py (plan)"])
-    lines = risk.banner_lines(change, "d", st)
-    assert "Only your approval at gate (e) accepts them" in lines[0]
-    assert lines[1].startswith("- `auth` — accepted at gate (b) by @luissiviero on 2026-10-20")
-    assert lines[2].startswith("- `money movement` — first found at gate (d): pay.py.")
+    _gate_file(change, "build", {"auth": ["sample_pkg/auth.py"]})
+    _gate_file(change, "test", {"money movement": ["pay.py"]}, declared=["tests/a.py (plan)"])
+    lines = risk.banner_lines(change, "test", st)
+    assert "Only your approval at gate (deploy) accepts them" in lines[0]
+    assert lines[1].startswith("- `auth` — accepted at gate (design) by @luissiviero on 2026-10-20")
+    assert lines[2].startswith("- `money movement` — first found at gate (test): pay.py.")
     assert lines[2].endswith("the reviewer wrote no brief on it")
     assert lines[3] == "- dropped, declared by the approved plan: tests/a.py (plan)"
-    assert risk.new_items(risk.banner_entries(change, "e", st)) == ["money movement"]
-    assert risk.banner_lines(change, "f", st) == []  # (f) asks nothing
-    assert risk.banner_lines(change, "a", st) == []  # (a) asks only on the install PR
+    assert risk.new_items(risk.banner_entries(change, "deploy", st)) == ["money movement"]
+    assert risk.banner_lines(change, "maintain", st) == []  # (f) asks nothing
+    assert risk.banner_lines(change, "intent", st) == []  # (a) asks only on the install PR
 
 
 def test_the_build_pr_body_opens_with_the_banner(project):  # noqa: F811
     root, change = project
     _auth_change(root, change)
-    verdict(root, "c")
-    gate.run_gate(root, "0001", "c")
-    body = desc.build_description(root, "0001", "c")
+    verdict(root, "build")
+    gate.run_gate(root, "0001", "build")
+    body = desc.build_description(root, "0001", "build")
     assert body.startswith(risk.BANNER_HEADING)
-    assert "- `auth` — first found at gate (c): sample_pkg/auth.py." in body
+    assert "- `auth` — first found at gate (build): sample_pkg/auth.py." in body
     assert risk.banner_shown(body, ["auth"])
 
 
@@ -296,13 +300,13 @@ def _merge_event(tmp_path: Path, head: str, merged_by: str, body: str) -> dict[s
 def test_the_build_run_records_the_design_merge_s_acceptance(tmp_path):
     root = tmp_path / "proj"
     change, st = status_mod.new_change(root, "Risky")
-    _gate_file(change, "b", {"auth": ["spec.md Flagged concerns: text"]})
-    body = "\n".join(risk.banner_lines(change, "b", st))
+    _gate_file(change, "design", {"auth": ["spec.md Flagged concerns: text"]})
+    body = "\n".join(risk.banner_lines(change, "design", st))
     env = _merge_event(tmp_path, f"sdlc/{st.id}/b", OWNER, body)
     out = run_phase.record_design_acceptance(root, change, {}, env)
     line = out["line"]
     assert (line["by"], line["pr"], line["at"]) == (OWNER, 12, "2026-10-20T10:00:00Z")
-    assert line["details"] == {"phase": "b", "items": ["auth"], "banner_shown": True}
+    assert line["details"] == {"phase": "design", "items": ["auth"], "banner_shown": True}
     assert status_mod.read_status(change).risk_acceptances == [line]
     # again (a re-run of the build): the item is accepted, nothing more is written
     assert run_phase.record_design_acceptance(root, change, {}, env) == {"ok": True, "items": []}
@@ -316,7 +320,7 @@ def test_the_build_run_records_the_design_merge_s_acceptance(tmp_path):
 def test_only_the_owner_s_merge_accepts_and_an_unseen_banner_is_recorded_as_such(tmp_path):
     root = tmp_path / "proj"
     change, st = status_mod.new_change(root, "Risky")
-    _gate_file(change, "b", {"auth": ["x"]})
+    _gate_file(change, "design", {"auth": ["x"]})
     env = _merge_event(tmp_path, f"sdlc/{st.id}/b", "sdlc-merge[bot]", "")
     out = run_phase.record_design_acceptance(root, change, {}, env)
     assert out["ok"] is False and "only the owner accepts a risk" in out["reason"]
@@ -342,7 +346,7 @@ def test_the_runner_guards_the_acceptance_record_like_an_owner_field(tmp_path, m
     banner = f"{risk.BANNER_HEADING}: …\n- `auth` — first found at gate (b): x."
 
     class GitHub:
-        def __init__(self, merged_by, head="sdlc/0001/b", body=banner):
+        def __init__(self, merged_by, head="sdlc/0001/design", body=banner):
             self.merged_by, self.head, self.body = merged_by, head, body
 
         def pr_by_number(self, repo, number):
@@ -353,7 +357,7 @@ def test_the_runner_guards_the_acceptance_record_like_an_owner_field(tmp_path, m
     cases = (
         (GitHub(OWNER), []),
         (GitHub("mallory"), ["was not merged by 'luissiviero'"]),
-        (GitHub(OWNER, head="sdlc/0001/c"), ["is not the PR whose merge is gate (b)"]),
+        (GitHub(OWNER, head="sdlc/0001/build"), ["is not the PR whose merge is gate (design)"]),
         (GitHub(OWNER, body="no banner"), ["shows no banner line for auth"]),
     )
     for fake, expected in cases:
@@ -364,7 +368,7 @@ def test_the_runner_guards_the_acceptance_record_like_an_owner_field(tmp_path, m
     # another change's merged design PR accepts nothing for this one (the R22 double
     # check, F2): with the change id, the head's id must be this change's
     repo = f"{OWNER}/name"
-    monkeypatch.setattr(run_phase, "_github", lambda: GitHub(OWNER, head="sdlc/0099/b"))
+    monkeypatch.setattr(run_phase, "_github", lambda: GitHub(OWNER, head="sdlc/0099/design"))
     found = run_phase.acceptance_mismatches(after, {}, repo, env, {}, "0001")
     assert any("another change's, not 0001's" in r for r in found), found
     monkeypatch.setattr(run_phase, "_github", lambda: GitHub(OWNER))
@@ -393,7 +397,7 @@ class MergedBy(FakeGitHub):
 
 
 def _e_hit(change_dir: Path) -> None:
-    path = change_dir / "evidence" / "gate-e.json"
+    path = change_dir / "evidence" / "gate-deploy.json"
     record = json.loads(path.read_text(encoding="utf-8"))
     record["checks"].append(
         {"name": "risk_list", "ok": True, "details": {"hits": {"auth": ["report.py"]}}}
@@ -404,12 +408,12 @@ def _e_hit(change_dir: Path) -> None:
 def test_the_e_merge_s_acceptance_is_stored_by_the_record_job(tmp_path):
     root, change_dir = _repo_with_change(tmp_path)
     _e_hit(change_dir)
-    _git(root, "commit", "-q", "-am", "gate (e) reported a hit")
+    _git(root, "commit", "-q", "-am", "gate (deploy) reported a hit")
     _git(root, "checkout", "-q", "main")
-    _git(root, "merge", "-q", "--no-ff", "-m", "merge #7", "sdlc/0001/c")
-    _git(root, "checkout", "-q", "sdlc/0001/c")
+    _git(root, "merge", "-q", "--no-ff", "-m", "merge #7", "sdlc/0001/build")
+    _git(root, "checkout", "-q", "sdlc/0001/build")
     _with_remote(root)
-    _git(root, "merge", "-q", "sdlc/0001/c")  # the merge commit carries the gate (e) record
+    _git(root, "merge", "-q", "sdlc/0001/build")  # the merge commit carries the gate (e) record
     outputs = tmp_path.parent / f"{tmp_path.name}-outputs"
     outputs.write_text("", encoding="utf-8")
     body = f"{risk.BANNER_HEADING}: …\n- `auth` — first found at gate (e): report.py."
@@ -419,13 +423,13 @@ def test_the_e_merge_s_acceptance_is_stored_by_the_record_job(tmp_path):
     assert "release: risk: accepted by luissiviero's merge: auth (banner shown)" in lines
     written = dict(line.split("=", 1) for line in outputs.read_text(encoding="utf-8").splitlines())
     acceptance = json.loads(written["risk_acceptance"])
-    assert acceptance["details"] == {"phase": "e", "items": ["auth"], "banner_shown": True}
+    assert acceptance["details"] == {"phase": "deploy", "items": ["auth"], "banner_shown": True}
     assert acceptance["by"] == OWNER and written["change_id"] == "0001"
     assert "released" not in written  # deploy.action none: no release ran
     code, lines = _record(root, "--released", "", "--acceptance", written["risk_acceptance"])
     assert code == 0 and lines[0].startswith("release: record: stored on"), lines
     _git(root, "fetch", "-q", "origin", "+refs/sdlc/*:refs/sdlc/*")
-    for ref in ("refs/remotes/origin/sdlc/0001/c", "refs/sdlc/released/0001"):
+    for ref in ("refs/remotes/origin/sdlc/0001/build", "refs/sdlc/released/0001"):
         text = _git(root, "show", f"{ref}:changes/0001-export-the-claims-report/status.yaml")
         stored = yamlish.loads(text)
         assert stored["risk_acceptances"] == [acceptance] and not stored.get("released_at"), ref
@@ -433,7 +437,7 @@ def test_the_e_merge_s_acceptance_is_stored_by_the_record_job(tmp_path):
     st, where = release_cli.remote_record(
         root, "0001", "changes/0001-export-the-claims-report/status.yaml", _approval_git()
     )
-    assert st is None and where == "no release record on sdlc/0001/c"  # the branch is read too
+    assert st is None and where == "no release record on sdlc/0001/build"  # the branch is read too
     # the job re-run changes nothing
     code, lines = _record(root, "--released", "", "--acceptance", written["risk_acceptance"])
     assert code == 0 and "already records it" in lines[0]
@@ -463,8 +467,8 @@ def test_only_the_owner_s_e_merge_accepts(tmp_path):
     line, _why = release_cli.merge_acceptance(
         change_dir, st, {"merged_by": OWNER, "body": ""}, 7, "abc", {}, env
     )
-    assert line["details"] == {"phase": "e", "items": ["auth"], "banner_shown": False}
-    st.risk_acceptances = [_line(phase="e", pr=7)]
+    assert line["details"] == {"phase": "deploy", "items": ["auth"], "banner_shown": False}
+    st.risk_acceptances = [_line(phase="deploy", pr=7)]
     again = release_cli.merge_acceptance(change_dir, st, {"merged_by": OWNER}, 7, "abc", {}, env)
     assert again is None
 
@@ -509,7 +513,7 @@ def test_after_r22_the_owner_s_approval_accepts_and_the_merge_app_never(tmp_path
         assert got[0] is None and "no approving review by the owner" in got[1]
     # an approval line belongs to gate (e) only
     with pytest.raises(ValueError):
-        risk.validate_acceptances([{**line, "details": {**line["details"], "phase": "b"}}])
+        risk.validate_acceptances([{**line, "details": {**line["details"], "phase": "design"}}])
 
 
 def test_the_runner_confirms_an_approval_line_from_the_reviews(tmp_path, monkeypatch):
@@ -517,12 +521,12 @@ def test_the_runner_confirms_an_approval_line_from_the_reviews(tmp_path, monkeyp
     only as the owner's latest decisive review, on the commit it names, on this change's own
     build PR; a collaborator's approval or another change's PR accepts nothing here."""
     _change, st = status_mod.new_change(tmp_path, "Risky")
-    st.risk_acceptances = [{**_line(phase="e", pr=7), "via": risk.ACCEPT_VIA_APPROVAL}]
+    st.risk_acceptances = [{**_line(phase="deploy", pr=7), "via": risk.ACCEPT_VIA_APPROVAL}]
     after = run_phase.owner_fields(st)
     repo = f"{OWNER}/name"
 
     class GitHub:
-        def __init__(self, reviews, merged=True, head_ref="sdlc/0001/c"):
+        def __init__(self, reviews, merged=True, head_ref="sdlc/0001/build"):
             self.reviews, self.merged, self.head_ref = reviews, merged, head_ref
 
         def pr_by_number(self, repo, number):
@@ -535,7 +539,7 @@ def test_the_runner_confirms_an_approval_line_from_the_reviews(tmp_path, monkeyp
 
     env = {"GITHUB_ACTIONS": "true"}
     approval = [{"author": OWNER, "state": "APPROVED", "commit": "abc1234"}]
-    forged = {**_line(phase="e", pr=7, by="sdlc-merge[bot]")}
+    forged = {**_line(phase="deploy", pr=7, by="sdlc-merge[bot]")}
     st.risk_acceptances = [forged]
     bot_fields = run_phase.owner_fields(st)
     monkeypatch.setattr(run_phase, "_github", lambda: GitHub(approval))
@@ -549,14 +553,14 @@ def test_the_runner_confirms_an_approval_line_from_the_reviews(tmp_path, monkeyp
         (GitHub(withdrawn), ["no approving review by"]),
         (GitHub([{**approval[0], "commit": "def5678"}]), ["while the owner approved"]),
         (GitHub(approval, merged=False), ["is not merged"]),
-        (GitHub(approval, head_ref="sdlc/0099/c"), ["another change's, not 0001's"]),
+        (GitHub(approval, head_ref="sdlc/0099/build"), ["another change's, not 0001's"]),
     ):  # fmt: skip
         monkeypatch.setattr(run_phase, "_github", lambda fake=fake: fake)
         found = run_phase.acceptance_mismatches(after, {}, repo, env, {}, "0001")
         assert [e for e in expected if not any(e in r for r in found)] == [], found
         assert bool(found) is bool(expected)
     # a line naming a collaborator, whatever the reviews say, is not the owner's
-    st.risk_acceptances = [{**_line(phase="e", pr=7, by="mallory"), "via": "approval"}]
+    st.risk_acceptances = [{**_line(phase="deploy", pr=7, by="mallory"), "via": "approval"}]
     monkeypatch.setattr(
         run_phase, "_github",
         lambda: GitHub([{"author": "mallory", "state": "APPROVED", "commit": "abc1234"}]),
@@ -575,13 +579,13 @@ def test_the_baseline_check_passes_the_change_id_and_the_owner_s_config_on(tmp_p
     change's PR is refused and a sound approval line stands."""
     change, st = status_mod.new_change(tmp_path, "Risky")
     assert change.name.startswith("0001-")
-    st.risk_acceptances = [{**_line(phase="e", pr=7), "via": risk.ACCEPT_VIA_APPROVAL}]
+    st.risk_acceptances = [{**_line(phase="deploy", pr=7), "via": risk.ACCEPT_VIA_APPROVAL}]
     before = run_phase.owner_fields(st)
     repo = f"{OWNER}/name"
     env = {"GITHUB_ACTIONS": "true"}
 
     class GitHub:
-        head_ref = "sdlc/0099/c"
+        head_ref = "sdlc/0099/build"
 
         def pr_by_number(self, repo, number):
             body = f"{risk.BANNER_HEADING}: …\n- `auth` — first found at gate (e): x."
@@ -597,7 +601,7 @@ def test_the_baseline_check_passes_the_change_id_and_the_owner_s_config_on(tmp_p
     monkeypatch.setattr(run_phase, "_github", lambda: fake)
     found = run_phase.baseline_mismatches(before, None, repo, None, env, change, config={})
     assert any("another change's, not 0001's" in r for r in found), found
-    fake.head_ref = "sdlc/0001/c"
+    fake.head_ref = "sdlc/0001/build"
     assert run_phase.baseline_mismatches(before, None, repo, None, env, change, config={}) == []
     found = run_phase.baseline_mismatches(before, None, repo, None, env, change, config=None)
     assert any("cannot be judged" in r for r in found), found
@@ -636,7 +640,32 @@ def test_the_review_pass_is_asked_for_the_e_brief_and_the_cli_lists_the_hits(
     assert review_cli.risk_section(root, "0001", None) == ""
     _auth_change(root, change)
     text = review_cli.risk_section(root, "0001", None)
-    assert "evidence/roles/security-policy-e.md" in text
+    assert "evidence/roles/security-policy-deploy.md" in text
     assert "- `auth`: sample_pkg/auth.py" in text and "- Word: continue" in text
-    assert gate_cli.main(["risk-hits", "--root", str(root), "--id", "0001", "--phase", "c"]) == 0
+    assert (
+        gate_cli.main(["risk-hits", "--root", str(root), "--id", "0001", "--phase", "build"]) == 0
+    )
     assert json.loads(capsys.readouterr().out)["hits"] == {"auth": ["sample_pkg/auth.py"]}
+
+
+# --- R45: the phase names, and the letters an older plugin wrote --------------------------------
+def test_the_banner_reads_an_older_plugin_s_letter_records_and_briefs(tmp_path):
+    """A change in flight: ``gate-c.json``, ``security-policy-c.md`` and an acceptance line
+    whose ``details.phase`` is ``b`` are read under their names; a new brief is written under
+    the name (``brief_rel``)."""
+    change, st = status_mod.new_change(tmp_path, "Risky")
+    _gate_file(change, "c", {"auth": ["sample_pkg/auth.py"]})
+    letter_brief = change / "evidence" / "roles" / "security-policy-c.md"
+    write(letter_brief, BRIEF.format(phase="c", word="continue"))
+    assert risk.brief_path(change, "build") == letter_brief
+    assert risk.brief_rel("c") == "evidence/roles/security-policy-build.md"
+    lines = risk.banner_lines(change, "c", st)
+    assert lines[1].startswith("- `auth` — first found at gate (build): sample_pkg/auth.py.")
+    assert "brief (evidence/roles/security-policy-build.md)" in lines[1]
+    st.risk_acceptances = [{**_line(), "details": {**_line()["details"], "phase": "b"}}]
+    risk.validate_acceptances(st.risk_acceptances)
+    assert risk.accepted(st)["auth"].startswith("accepted at gate (design) by @luissiviero")
+    assert not risk.record_acceptance(st, _line())  # the same PR and phase: one act
+    approval = {**_line(phase="e", pr=7), "via": risk.ACCEPT_VIA_APPROVAL}
+    risk.validate_acceptances([approval, {**approval, "details": {**approval["details"]}}])
+    assert _line(phase="e")["details"]["phase"] == "deploy"  # a writer writes the name

@@ -1,5 +1,5 @@
-"""The dismissal store of gate (f): ``changes/.dismissed.json`` (build guide steps 38 and
-39; decision 25; article p.47 step 4 "Dismiss with a reason, so the dismissal is recorded
+"""The dismissal store of gate (maintain): ``changes/.dismissed.json`` (build guide steps 38
+and 39; decision 25; article p.47 step 4 "Dismiss with a reason, so the dismissal is recorded
 and the same finding does not return as new on the next run", p.44 "Dismissals tune the
 bands").
 
