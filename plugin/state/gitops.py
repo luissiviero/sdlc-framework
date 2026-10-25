@@ -318,6 +318,18 @@ def ref_exists(root: Path, ref: str) -> bool:
     )
 
 
+def existing_branch(root: Path, candidates: tuple[str, ...] | list[str]) -> str:
+    """The first of ``candidates`` (``conventions.branch_names``: the phase name's branch,
+    then the letter's) that exists locally or on ``origin``, else the first. R45: a change in
+    flight when its project moved past plugin 1.0.42 finishes on its letter branch, so a run
+    of it checks out ``sdlc/<id>/c`` while a new change gets ``sdlc/<id>/build``."""
+    for name in candidates:
+        for ref in (f"refs/heads/{name}", f"refs/remotes/origin/{name}"):
+            if ref_exists(root, ref):
+                return name
+    return candidates[0]
+
+
 def only_change_folder_moved(root: Path, change_dir: Path, sha: str | None) -> bool:
     """Whether ``sha`` is HEAD, or an ancestor of HEAD from which only ``change_dir`` moved:
     the rule a fix round's head check (``ci/auto_round.head_matches``) and the PR body's
