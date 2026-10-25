@@ -10,6 +10,8 @@ This session ran on branch `claude/r45-1-phase-names`, from `main` at `11d5661` 
 5. **The readers of history** (choice 273) read both forms for good: `detect/cli.py` and `scan/route.py` read `origin/sdlc/<id>/a` and `/intent`; `counters.py` counts a change at `deploy` (a letter `e` is read as `deploy`); the old reason "waiting for the owner at gate (e)" is read as the merge reason on the default branch (`status.WAITING_AT_GATE_E_REASONS`).
 6. **Not in this PR**, by section 12's order: `incident`, `schedule`, `escalate` and the triage session (PR 2), `external_review`'s key name (PR 3), `doorbell` and "fallback C1" (PR 4), the rulesets and the roles (PR 5). This repository's `changes/*/status.yaml` keep their letters: each repository migrates them in its own pin-move PR (choice 273).
 
+7. **The decisions it renames, annotated** (decision 39, "What it amends"; choice 126): decisions 3, 10, 11, 13, 14, 18, 19, 21, 22, 25, 27, 35 and 36, each beside its reference line, with the names that replace its letters; the substance of none changes.
+
 ## How it was built
 The shared API (`conventions.py`, `status.py`, `gitops.py`) was written first, as its own commit ("readers"); four sub-agents then converted the rest in parallel, each on a disjoint set of files and the tests that cover them (the runner; the gate, panel and hooks; the PR, release, detect and scan modules; the commands, skills and templates), and this session merged their work, bumped the version, regenerated `plugin/init/template_hashes.json` (`python tasks.py template-hashes`, with every `v*` tag fetched) and ran the suite. Tests that asserted the old names now assert the new ones; none was deleted or skipped; each group added tests that its readers still accept the letters.
 
