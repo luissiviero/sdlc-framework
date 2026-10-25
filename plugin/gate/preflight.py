@@ -51,7 +51,7 @@ if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 from gate import artifacts as art  # noqa: E402
-from gate import limits  # noqa: E402
+from gate import limits, policy  # noqa: E402
 from gate.checks import (  # noqa: E402
     COMMANDS_RUNNER_ENV,
     PLACEHOLDER_COMMAND_RE,
@@ -67,7 +67,7 @@ from state import status as status_mod  # noqa: E402
 POLICY_SKILLS = (
     "coding-standards",
     "security-baseline",
-    "ux-conventions",
+    "ux-and-brand",  # ux-conventions before plugin 1.0.46 (R45 row 80)
     "data-conventions",
     "definition-of-done",
 )
@@ -151,10 +151,12 @@ def check_policy_skills(root: Path, plugin_root: Path) -> CheckResult:
     found: dict[str, str] = {}
     missing: list[str] = []
     for name in POLICY_SKILLS:
-        project = root / ".claude" / "skills" / name / "SKILL.md"
+        project = policy.skill_override(root, name)
         shipped = plugin_root / "plugin" / "skills" / name / "SKILL.md"
-        if project.is_file():
+        if project == f".claude/skills/{name}/SKILL.md":
             found[name] = "project override"
+        elif project:  # R45 row 80: an override under the old name, honoured for one release
+            found[name] = f"project override ({project}, the name before plugin 1.0.46)"
         elif shipped.is_file():
             found[name] = "plugin"
         else:

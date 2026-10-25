@@ -1,13 +1,13 @@
-# The framework-level suite (build guide step 35). R27: the trigger eval of the ux-conventions
+# The framework-level suite (build guide step 35). R27: the trigger eval of the ux-and-brand
 # policy skill, prompt 3 of 3. The run loads the skill on its own, seen in its Skill tool
 # call (plugin/evals/run.py, the skill check; the shape in docs/notes/61.md); the prompt asks
 # for the task without naming the skill and the run edits nothing.
-description: the ux-conventions skill loads for "cli output" without being named
+description: the ux-and-brand skill loads for "cli output" without being named
 tools: "Read,Grep,Glob,Skill"
 max_turns: 12
 budget_usd: 0.5
 timeout_seconds: 300
 checks:
-  - skill: "sdlc:ux-conventions"
+  - skill: "sdlc:ux-and-brand"
   - file: "sample_pkg/calc.py"
     unchanged: true

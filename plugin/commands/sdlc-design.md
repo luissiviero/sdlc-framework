@@ -78,14 +78,14 @@ The gate reads the wall clock from it; an automated design gate parks without it
 
 ## 3. Spec pass — prompt v1 (article p.14, with the policy skills loaded)
 Load the five policy skills before writing: `coding-standards`, `security-baseline`,
-`ux-conventions`, `data-conventions`, `definition-of-done` (a project override under
+`ux-and-brand`, `data-conventions`, `definition-of-done` (a project override under
 `.claude/skills/<name>/` replaces the plugin's; the owner's source `policies/<name>.md`,
 where it exists, wins over either (decision 40)). Load the `spec-template` skill. Then apply
 this prompt to `changes/<id>-<slug>/intent.md`:
 
 > Read intent.md and produce a requirements and design spec for integrating it into this
 > codebase. Load every organization skill available to you — coding-standards,
-> security-baseline, ux-conventions, data-conventions, definition-of-done — and for each one
+> security-baseline, ux-and-brand, data-conventions, definition-of-done — and for each one
 > either apply it or state in the spec that it does not apply and why; cite the rule wherever
 > one constrained you. Write exactly these level-2 sections, in this order: Requirements,
 > Design, Open questions from intent, Flagged concerns, Acceptance (skill spec-template).

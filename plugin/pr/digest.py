@@ -78,10 +78,7 @@ PREDATES_GATE_E = "your approval predates gate (deploy): approve again on the he
 NO_CHECK = "waiting for the sdlc/review check on its head"
 RED_CHECK = "sdlc/review is not green on its head"
 CONFLICT = "a conflict with the default branch"
-NOT_YET = (
-    "not merged yet: read the latest SDLC merge (deploy) run, or merge it yourself when no merge "
-    "App is set up (fallback C1)"
-)
+NOT_YET = "not merged yet: read the latest SDLC merge (deploy) run; no merge App: merge it yourself"
 
 
 def _now() -> str:

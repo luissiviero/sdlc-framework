@@ -629,6 +629,36 @@ def test_init_upgrade_never_adds_production_gate_beside_the_old_key(tmp_path):
     )
 
 
+def test_init_reports_the_old_ux_skill_paths_for_the_owner(tmp_path):
+    """R45 row 80 (N35): a project's policies/ux-conventions.md and .claude/skills/ux-conventions/
+    are guardrail paths: the report says each is still honoured for one release, and that a
+    settings rule naming sdlc:ux-conventions is not; nothing is renamed by the install."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    assert "legacy_paths" not in _run_init(root)
+    (root / "policies" / "ux-conventions.md").write_text("Blue.\n", encoding="utf-8")
+    override = root / ".claude" / "skills" / "ux-conventions" / "SKILL.md"
+    override.parent.mkdir(parents=True)
+    override.write_text("---\nname: ux-conventions\n---\n", encoding="utf-8")
+    settings = root / ".claude" / "settings.json"
+    data = json.loads(settings.read_text(encoding="utf-8"))
+    data["permissions"]["allow"].append("Skill(sdlc:ux-conventions)")
+    settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    lines = _run_init(root)["legacy_paths"]
+    assert len(lines) == 3
+    assert lines[0].startswith("policies/ux-conventions.md: the skill ux-conventions is ")
+    assert "still read for one release" in lines[0]
+    assert lines[1].startswith(".claude/skills/ux-conventions/: ")
+    assert "still honoured as the ux-and-brand override" in lines[1]
+    assert lines[2].startswith(".claude/settings.json names ux-conventions") and (
+        "not honoured" in lines[2] and "sdlc:ux-and-brand" in lines[2]
+    )
+    assert override.is_file() and (root / "policies" / "ux-conventions.md").is_file()
+    assert "Skill(sdlc:ux-conventions)" in settings.read_text(encoding="utf-8")
+    (root / "policies" / "ux-and-brand.md").write_text("Green.\n", encoding="utf-8")
+    assert "no longer read" in _run_init(root)["legacy_paths"][0]
+
+
 # --- the SDLC workflows /sdlc-init installs (build guide step 30, task 30.8) -----------------
 def _git_init(root: Path, branch: str) -> None:
     """A repository with one commit, so gitops.default_branch() has a HEAD to read."""

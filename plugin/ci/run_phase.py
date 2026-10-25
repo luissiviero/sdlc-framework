@@ -5693,8 +5693,8 @@ def offer_merge(
     waits for the owner, dispatch ``sdlc-merge.yml`` with the PR's number: an approval the
     owner gave before the check turned green merges now, and with no approval the merge
     step says so and waits (decision 36, points 3 and 4). A project whose copies predate
-    1.0.18 has no merge workflow: the dispatch fails and the run goes on (the owner merges,
-    fallback C1)."""
+    1.0.18 has no merge workflow: the dispatch fails and the run goes on (no merge App: the
+    owner merges)."""
     change_dir = c.find_change_dir(root, change_id)
     if change_dir is None or not (change_dir / "evidence" / "review-findings.json").is_file():
         return {"posted": None, "reason": "no evidence/review-findings.json: no check to post"}

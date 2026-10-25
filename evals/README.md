@@ -89,7 +89,7 @@ passes the wall clock fails its case.
 
 The runner writes `evals-report.json` in the current directory (every case, its checks, turns
 and cost, the pass rate) and prints a table; it exits 0 when the pass rate reaches
-`--min-pass-rate` (default 1.0), 1 below. In CI (`sdlc-evals.yml`) the pass rate is the merge
+`--min-pass-rate` (default 1.0), 1 below. In CI (`sdlc-agent-evals.yml`) the pass rate is the merge
 check on a pull request that changes `CLAUDE.md`, `.claude/**` or `evals/**`: "A skill change
 that drops the pass rate gets reviewed before it merges" (p.30 step 4; p.31 governance: "The
 pass-rate threshold is enforced as a merge check").

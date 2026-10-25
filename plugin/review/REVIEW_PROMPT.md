@@ -26,7 +26,7 @@ second only when this brief ends with "Risk-list items this change touches".
    `iterations`).
 3. The diff: `git diff {base}...{head}` and `git diff --stat {base}...{head}`; the files it
    touches, in full where the diff is not enough.
-4. The policy skills in force (`coding-standards`, `security-baseline`, `ux-conventions`,
+4. The policy skills in force (`coding-standards`, `security-baseline`, `ux-and-brand`,
    `data-conventions`, `definition-of-done`; a project override under `.claude/skills/`
    replaces the plugin's; the owner's source `policies/<name>.md`, where it exists, wins
    over either (decision 40)): re-check every rule the spec cited and every rule the diff

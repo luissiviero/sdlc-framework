@@ -31,7 +31,7 @@ UNATTENDED = tuple(name for name in PHASE_COMMAND_FILES if name not in ATTENDED)
 POLICY_SKILLS = (
     "coding-standards",
     "security-baseline",
-    "ux-conventions",
+    "ux-and-brand",
     "data-conventions",
     "definition-of-done",
 )
@@ -968,7 +968,7 @@ def test_the_policy_skills_say_what_the_gate_checks_of_a_screenshot():
     assert (
         "by-hand screenshots under `evidence/screenshots/` are still required by no check" in done
     )
-    ux = flat(PLUGIN / "skills" / "ux-conventions" / "SKILL.md")
+    ux = flat(PLUGIN / "skills" / "ux-and-brand" / "SKILL.md")
     assert "`evidence/proof/` or `evidence/screenshots/` holds a screenshot" in ux
     assert "Rule 7 has one only when `sdlc.yaml: commands.drive` is set" in ux
     assert "UI changed but evidence/proof/ and evidence/screenshots/ hold no screenshot" in ux

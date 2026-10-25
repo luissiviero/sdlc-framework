@@ -1413,7 +1413,7 @@ def merge_environment(repo: str, branch: str) -> dict[str, Any]:
     'exists', 'safe', 'found', 'reason'}. Safe means a deployment branch policy of selected
     branches whose one rule is ``branch``; any other policy lets a workflow on another ref
     read the key of a bypass actor of ruleset 1 (choice 250; the R22 double check, F8). No
-    environment is safe (the merge stays the owner's, fallback C1). Read-only: the workflow
+    environment is safe (no merge App: the merge stays the owner's). Read-only: the workflow
     token's ``actions: read`` (``GET /repos/{repo}/environments/{name}`` and its
     ``deployment-branch-policies``); a lookup that fails is ``ok: False``."""
     tok = token()

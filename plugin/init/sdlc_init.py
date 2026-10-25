@@ -1014,10 +1014,54 @@ def run(args) -> dict:
         for rel, state in report["files"].items()
         if state.startswith("refreshed (was ")
     }
+    legacy = legacy_skill_paths(root)
+    if legacy:
+        report["legacy_paths"] = legacy
     report["maintain"] = _maintain_report(root, source, why)
     report["proposed"] = _proposed(root, det)
     report["values"] = values
     return report
+
+
+def legacy_skill_paths(root: Path) -> list[str]:
+    """R45 row 80 (N35): one line per guardrail path of the project that names a policy
+    skill by the name it had before plugin 1.0.46 (``gate/policy.py RENAMED_SKILLS``), with
+    whether this release still honours it. The renames are the owner's edits (decision 6)."""
+    from gate import policy  # noqa: PLC0415
+
+    notes: list[str] = []
+    settings = root / ".claude" / "settings.json"
+    try:
+        settings_text = settings.read_text(encoding="utf-8") if settings.is_file() else ""
+    except OSError:
+        settings_text = ""
+    for new, old in policy.RENAMED_SKILLS.items():
+        why = f"the skill {old} is {new} since plugin 1.0.46 (R45 row 80)"
+        if (root / "policies" / f"{old}.md").is_file():
+            if (root / "policies" / f"{new}.md").is_file():
+                state = f"no longer read, since policies/{new}.md exists; delete it"
+            else:
+                state = (
+                    f"still read for one release while policies/{new}.md is missing; rename "
+                    "it in a commit of your own"
+                )
+            notes.append(f"policies/{old}.md: {why}; {state}")
+        if (root / ".claude" / "skills" / old / "SKILL.md").is_file():
+            if (root / ".claude" / "skills" / new / "SKILL.md").is_file():
+                state = f"no longer honoured, since .claude/skills/{new}/ exists; delete it"
+            else:
+                state = (
+                    f"still honoured as the {new} override for one release; rename the folder "
+                    f"to .claude/skills/{new}/ and its name: to {new} in a reviewed PR"
+                )
+            notes.append(f".claude/skills/{old}/: {why}; {state}")
+        if re.search(rf"(?<![\w-]){re.escape(old)}(?![\w-])", settings_text):
+            notes.append(
+                f".claude/settings.json names {old}: {why}; not honoured: a rule that names "
+                f"sdlc:{old} matches nothing from plugin 1.0.46, so change it to sdlc:{new} "
+                "in a reviewed PR"
+            )
+    return notes
 
 
 def _maintain_report(root: Path, source: str, why: str = "given") -> dict[str, str]:

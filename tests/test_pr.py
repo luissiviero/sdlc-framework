@@ -1835,7 +1835,7 @@ def test_merge_environment_is_safe_only_for_the_default_branch_alone(recorder):
     answers[("GET", env_url)]["data"]["deployment_branch_policy"] = None
     got = github.merge_environment("o/r", "main")
     assert got["safe"] is False and got["found"] == "every branch and tag may use it"
-    # no environment: the merge stays the owner's (fallback C1), nothing to warn about
+    # no environment: no merge App, the merge stays the owner's; nothing to warn about
     answers[("GET", env_url)] = {"status": 404, "data": {}, "error": "Not Found"}
     got = github.merge_environment("o/r", "main")
     assert (got["ok"], got["exists"], got["safe"]) == (True, False, True)

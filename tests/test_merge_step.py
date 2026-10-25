@@ -336,7 +336,7 @@ def test_allowed_after_review_is_evidence_status_and_the_seen_record():
         assert not fmod.allowed_after_review(path, DIR)
 
 
-# --- doorbell ---------------------------------------------------------------------------------
+# --- on-approval (doorbell before plugin 1.0.46, R45 row N5) ---------------------------------
 def review_payload(state="approved", login="owner", ref="sdlc/0007/build", head_repo=REPO):
     return {
         "action": "submitted",
@@ -346,7 +346,7 @@ def review_payload(state="approved", login="owner", ref="sdlc/0007/build", head_
     }
 
 
-def test_the_owner_s_approval_rings_the_merge(tmp_path, capsys):
+def test_the_owner_s_approval_dispatches_the_merge(tmp_path, capsys):
     sent = []
 
     def send(*args):
@@ -354,12 +354,12 @@ def test_the_owner_s_approval_rings_the_merge(tmp_path, capsys):
         return {"ok": True}
 
     e = env(tmp_path, review_payload(), name="pull_request_review")
-    assert merge_step.doorbell(checkout(tmp_path), REPO, e, FakeGitHub(), send) == 0
+    assert merge_step.on_approval(checkout(tmp_path), REPO, e, FakeGitHub(), send) == 0
     assert sent == [(REPO, "sdlc-merge.yml", "main", "0007", "sdlc/0007/build", {"pr": "12"})]
-    assert "dispatched sdlc-merge.yml for #12" in capsys.readouterr().out
+    assert "on-approval: dispatched sdlc-merge.yml for #12" in capsys.readouterr().out
 
 
-def test_any_other_review_rings_nothing(tmp_path, capsys):
+def test_any_other_review_dispatches_nothing(tmp_path, capsys):
     for data, why in (
         (review_payload(state="changes_requested"), "does not approve"),
         (review_payload(login="someone"), "not the owner's"),
@@ -369,14 +369,33 @@ def test_any_other_review_rings_nothing(tmp_path, capsys):
     ):
         sent = []
         e = env(tmp_path, data, name="pull_request_review")
-        code = merge_step.doorbell(checkout(tmp_path), REPO, e, FakeGitHub(), sent.append)
+        code = merge_step.on_approval(checkout(tmp_path), REPO, e, FakeGitHub(), sent.append)
         assert code == 0 and sent == []
         assert why in capsys.readouterr().out
     failed = env(tmp_path, review_payload(), name="pull_request_review")
-    code = merge_step.doorbell(
+    code = merge_step.on_approval(
         checkout(tmp_path), REPO, failed, FakeGitHub(), lambda *a: {"ok": False, "status": 404}
     )
     assert code == 1
+
+
+def test_the_old_doorbell_subcommand_still_runs_for_one_release(tmp_path, monkeypatch, capsys):
+    """R45 row N5: an sdlc-merge.yml copy from before plugin 1.0.46 calls ``merge_step.py
+    doorbell``; it runs on-approval, under the new log prefix."""
+    from ci import run_phase  # noqa: PLC0415
+
+    sent = []
+    monkeypatch.setattr(run_phase, "dispatch", lambda *a: sent.append(a) or {"ok": True})
+    for key, value in env(tmp_path, review_payload(), name="pull_request_review").items():
+        monkeypatch.setenv(key, value)
+    root = checkout(tmp_path)
+    for cmd in ("doorbell", "on-approval"):
+        assert merge_step.main([cmd, "--root", str(root), "--repo", REPO]) == 0
+        out = capsys.readouterr().out
+        assert "on-approval: dispatched sdlc-merge.yml for #12" in out
+        assert "doorbell" not in out
+    assert len(sent) == 2 and sent[0] == sent[1]
+    assert merge_step.LINES[merge_step.ON_APPROVAL] == "on-approval"
 
 
 # --- not-build --------------------------------------------------------------------------------
@@ -520,6 +539,12 @@ def test_the_digest_says_an_approved_build_pr_is_not_merged_and_why(monkeypatch)
         gh, "_request", lambda *a, **k: {"data": {"mergeable_state": "dirty"}, "error": ""}
     )
     assert digest.approval_of("owner/r", pr)["reason"] == digest.CONFLICT
+    monkeypatch.setattr(
+        gh, "_request", lambda *a, **k: {"data": {"mergeable_state": "clean"}, "error": ""}
+    )
+    # R45 row N7: the mode without a merge App says what it is, not an option's label
+    assert digest.approval_of("owner/r", pr)["reason"] == digest.NOT_YET
+    assert "no merge App: merge it yourself" in digest.NOT_YET and "C1" not in digest.NOT_YET
     # not approved, or not at (e): no line
     monkeypatch.setattr(gh, "pr_reviews", lambda *a, **k: {"ok": True, "reviews": []})
     assert digest.approval_of("owner/r", pr) is None

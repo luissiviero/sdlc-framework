@@ -459,14 +459,14 @@ def test_skills_loaded_reads_the_line_per_message_shape_too():
             "type": "assistant",
             "message": {
                 "content": [
-                    {"type": "tool_use", "name": "Skill", "input": {"command": "/ux-conventions"}}
+                    {"type": "tool_use", "name": "Skill", "input": {"command": "/ux-and-brand"}}
                 ]
             },
         },
         {"type": "result", "subtype": "success"},
     ]
     stdout = "\n".join(json.dumps(m) for m in lines)
-    assert run.skills_loaded(stdout) == ["ux-conventions"]
+    assert run.skills_loaded(stdout) == ["ux-and-brand"]
     assert run.skills_loaded("") == [] and run.skills_loaded("not json") == []
     # odd shapes are skipped, never raised: a string message, a string input, a list content
     odd = [
