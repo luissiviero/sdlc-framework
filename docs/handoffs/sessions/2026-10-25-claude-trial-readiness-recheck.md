@@ -3,7 +3,7 @@
 **Builds on:** `docs/handoffs/sessions/2026-10-25-ccr-ca9f0149-a29zgl-wave-5.md` (#386), `2026-10-25-claude-r67-order-cell.md` (#388), `2026-10-25-claude-r67-proposal-decision.md` (#391) and `2026-10-25-claude-0004-workflow-comments.md` (#385), and through them the files they name; their open items are carried by reference, not re-verified, but for the rows named below.
 
 ## Where the project stands
-- **Framework `main` is at `7ac4131`** (#391), on plugin **1.0.44**, tagged `v1.0.44` on `dc9692b` (#390) (verified, `git fetch origin`, `git log -1 origin/main` and `git tag --points-at dc9692b`, read at the start of this session on 2026-10-25). R45's PRs 1 and 2 are merged (#389, 1.0.43; #390, 1.0.44); PR 3 is on `claude/r45-3-config-values`, taking 1.0.45 (`python tasks.py next-free`). Decision 41 is accepted (#391).
+- **Framework `main` is at `7ac4131`** (#391), on plugin **1.0.44**, tagged `v1.0.44` on `dc9692b` (#390) (verified, `git fetch origin`, `git log -1 origin/main` and `git tag --points-at dc9692b`). R45's PRs 1 and 2 are merged (#389, 1.0.43; #390, 1.0.44); PR 3 is on `claude/r45-3-config-values`, taking the next patch (`python tasks.py next-free`). Read at 22:02 UTC on 2026-10-25 on `7ac4131`. Decision 41 is accepted (#391).
 - **This PR**: the trial readiness re-check (`docs/reviews/2026-10-25-trial-readiness-recheck.md`) and one dated annotation on the review of 2026-10-20 (the record: `docs/progress/2026-10-25-claude-trial-readiness-recheck.md`). Documentation only, no version.
 
 ## Preconditions of the moment

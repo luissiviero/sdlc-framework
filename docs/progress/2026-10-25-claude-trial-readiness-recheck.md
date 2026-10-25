@@ -8,8 +8,11 @@ This session ran on branch `claude/trial-readiness-recheck`, from `main` at `7ac
 3. **This session's file**, `docs/handoffs/sessions/2026-10-25-claude-trial-readiness-recheck.md`.
 
 ## What the re-check found, in short
-- Risks 2, 3 and 5 are closed for the seven languages detection counts, risk 6 for the trial; risks 1 and 4 are partly closed.
-- Three residuals the review did not have, each with a proposed line and no ROADMAP row (the owner's decision T6): a sandboxed target that writes under `$HOME` (Gradle, Maven, Cargo, Go's module cache; not verified live); a repository in a language detection does not count is still "Python" with one helper `.py` file (run below); `--time-commands` does not name the test job's 200 minutes, which a `command_timeout` above 1,200 seconds overruns (read from the arithmetic, not run).
+- Risk 2 is closed for the seven languages detection counts; risks 3, 5 and 6 are closed for the trial (3 with an owner check, 5 with two secret names short); risks 1 and 4 are partly closed.
+- Three residuals the review did not have, each with a proposed line and no ROADMAP row (the owner's decision T6): a sandboxed target that writes under `$HOME` (Gradle, Maven, Cargo, NuGet, Go's module cache; not verified live); a repository in a language detection does not count is still "Python" with one helper `.py` file (run below); `--time-commands` names only the build and fix jobs, while a raised `command_timeout` overruns the deploy job above 900 seconds when the default branch moved (a job that cannot be raised), the test job above 1,200 and the design job above 1,400 (read from the workflows and the code, not run).
+
+## The fresh-context review
+An independent reviewer (a general-purpose agent with no context but the brief) reported two blocking findings and twelve minor ones on the first head (`95a8f54`). Each was checked against the code before it was taken. Blocking: the deploy job's arithmetic, which the first head left uncomputed and which overruns at any raise (taken: risk 4, item 6, T6 and the verdict rewritten); the verdict's "risks 2 to 6 are closed" beside "risk 4 partly closed" (taken). Minor, all taken: the annotation's language qualifier, the two secret names `SECRET_PATTERNS` lacks, the test job's drive, setup and re-check, the design job, one language list with .NET, "nothing is left" narrowed to `python` and `npm` targets, six citations moved to the lines that hold them, item 2's wording, the table's dependencies, the new findings aligned with this record, the next-free number dropped from the files, and the rulesets' new names.
 
 ## The detection probe
 Run on `7ac4131` from the repository root with `python <scratchpad>/probe_detect.py`. The script writes four synthetic repositories into temporary folders and prints `detect()`'s answer:
@@ -53,7 +56,7 @@ node + docs/conf.py: language=node test='npm test'; first note: no lint script i
 And `rule_for` on eight target commands (`python -c` from the repository root): `go test ./...` → `Bash(go test ./... *)`; `cargo test --all` → `Bash(cargo test --all *)`; `./gradlew test` → `Bash(./gradlew test *)`; `mvn -q verify` → `Bash(mvn -q verify *)`; `make test` → `Bash(make test *)`; `dotnet test` → `Bash(dotnet test *)`; `bundle exec rspec` → `Bash(bundle exec rspec *)`; `go vet ./... && golangci-lint run` → `Bash(go vet ./... *)`.
 
 ## Checked
-- `python tasks.py next-free` after `git fetch origin` on `7ac4131`: choice 275, candidate R68, note 62, decision 42, patch 1.0.46 (1.0.45 taken by `claude/r45-3-config-values`). This PR takes no number.
+- `python tasks.py next-free` after `git fetch origin` on `7ac4131`: this PR takes no number.
 - Every PR, version and tag in the re-check's first table: `git log --first-parent origin/main` and `git tag --points-at` on each merge commit (#343 `ebb3467` v1.0.26, #344 `d72de6a` v1.0.27, #350 `4e122da` v1.0.29, #355 `69f2679` v1.0.32, #357 `12e86ff` no tag, #370 `9740c78` v1.0.37, #382 `6fa82f9` v1.0.40, #389 `0ce7f6b` v1.0.43, #390 `dc9692b` v1.0.44, #391 `7ac4131` no tag).
 - Every file and line the re-check cites, opened on `7ac4131` and compared with its sentence (choice 241); the choices (238, 257, 258, 260, 265, 273, 274), decisions 39 and 41, `docs/notes/44.md` and the R61 record's line 97 likewise.
 
