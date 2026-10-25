@@ -11,7 +11,7 @@ This session ran on branch `claude/r67-order-cell`, from `main` at `11d5661` (#3
 
 ## Checked
 - `python tasks.py next-free` after `git fetch origin` on `11d5661`: choices 273 and 274 are held by `ccr-ca9f0149-a29zgl` (#386); this PR takes no number.
-- Choice 274 (`docs/progress/2026-10-25-ccr-ca9f0149-a29zgl-wave-5.md`, item 274, on #386's branch): R67 is placed after R45 and before the real-project trial, no rank moves, and it changes choice 238's "R45 is the last change before the trial" because the trial runs fix rounds at (e) and today a round GitHub cancels ends with no park.
+- Choice 274 (`docs/progress/2026-10-25-ccr-ca9f0149-a29zgl-wave-5.md:12`, on `main` since #386 merged as `bf75b7c`; this branch merged `main` at `f3946f8`): R67 is placed after R45 and before the real-project trial, no rank moves, and it changes choice 238's "R45 is the last change before the trial" because the trial runs fix rounds at (e) and today a round GitHub cancels ends with no park.
 - Choice 238 (`docs/progress/2026-10-19-order-before-the-trial-and-choice-238.md:15`): R45 at rank 20, the last change before the trial; the quoted words are those of ROADMAP's annotation at `docs/ROADMAP.md:66`.
 - R67's row (`docs/ROADMAP.md:124`): "A job past 260 is cancelled by GitHub, and the park steps run only on a failed step, so such a round ends with no park".
 

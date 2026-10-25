@@ -8,7 +8,7 @@
 
 ## Preconditions of the moment
 - The standing ones are in `HANDOFF.md`; the central session's in `docs/handoffs/central-session.md`.
-- This PR cites choice 274, which #386 adds: it merges after #386.
+- This PR cites choice 274, which #386 added: #386 merged as `bf75b7c`, and this branch merged `main` at `f3946f8` (#387) before its push (verified, `git log origin/main`, read at 19:34 UTC).
 
 ## Next steps, in order
 1. **This PR**: `Framework checks` green on its final head; the central session names it for merge; the owner merges.
