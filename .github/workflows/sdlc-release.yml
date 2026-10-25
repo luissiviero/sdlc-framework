@@ -13,8 +13,8 @@
 #   * closed - the merge (the merge App's events start runs, the workflow token's never
 #     would; whether its merge starts this workflow is to verify at the merge App's first merge, else
 #     the merge workflow dispatches it). Without a declared production
-#     (deploy.production: false) the approval at the deploy gate is the release's and it runs now;
-#   * labeled - with deploy.production: true the release also needs the label
+#     (deploy.production_gate: false) the approval at the deploy gate is the release's and it runs now;
+#   * labeled - with deploy.production_gate: true the release also needs the label
 #     sdlc:release-approved, applied by a person on GitHub - the only route: a run cannot
 #     approve itself (decision 5), so no signed tag counts and no bot's label does. The
 #     owner may apply the label after merging, when the closed event has already fired and

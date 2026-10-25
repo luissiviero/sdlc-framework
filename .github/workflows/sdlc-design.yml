@@ -268,14 +268,15 @@ jobs:
 
   # ROADMAP R8 (plugin 1.0.19): a second opinion on the design from a model of another vendor,
   # advisory. Off unless the default branch's sdlc.yaml lists design under
-  # external_review.phases. A job of its own on a fresh runner after the design job: the
+  # second_opinion.phases (external_review until plugin 1.0.44, read for one release). A job
+  # of its own on a fresh runner after the design job: the
   # Claude session never held the Gemini key and never shared this machine, and the key
   # reaches only the one step that calls the API. The step reads the PR's head from git
   # (never the session's working tree), posts one comment on the PR as the workflow token
   # (a fix round never applies a bot's comment) and never fails: a failed call is "not run".
   # 1.0.24: a framework pinned before 1.0.19 has no plugin/external/, and the step is skipped
   # green (hashFiles is empty), so a project may carry these copies at any pin; with
-  # external_review off the command prints "off" and writes and posts nothing. On the fast
+  # second_opinion off the command prints "off" and writes and posts nothing. On the fast
   # lane the design PR is superseded before the owner reads it: the deploy job carries this
   # opinion onto the build PR (sdlc-deploy.yml).
   second-opinion:
