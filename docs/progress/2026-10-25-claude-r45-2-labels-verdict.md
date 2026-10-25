@@ -29,4 +29,4 @@ For this repository's pin-move PR (letters and the old labels keep working until
 ## What the owner does
 | When | Act |
 |---|---|
-| Now | Write and commit the six workflow copies on `claude/r45-2-labels-verdict` with `python tasks.py workflow-copies` (the PR body's commands), then merge the PR when `Framework checks` is green on its final head. |
+| Now | Write and commit the seven workflow copies (design, build, test, deploy, fix, detect, scan) on `claude/r45-2-labels-verdict` with `python tasks.py workflow-copies` (the PR body's commands), then merge the PR when `Framework checks` is green on its final head. |
