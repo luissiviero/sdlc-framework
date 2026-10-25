@@ -25,8 +25,8 @@ approval on a declared production), `sdlc:needs-human` (parked); the owner's un-
 risk-list hit parks nothing: it is a line of the PR's "Needs your close look" banner, and
 your merge accepts it, at the deploy gate your approving review (decisions 35 and 36; `sdlc:accept-risk` retired). A "Request changes" review on any of these PRs starts a fix round; closing
 one without merging abandons the change. The maintain phase: an incident intent PR (head
-`sdlc/<id>/intent`, title `maintain(<id>): …`) carries `sdlc:maintain-ready` and `incident`; the owner's
-triage is the gate (merge = fix now, label `schedule` = later, close with a comment =
+`sdlc/<id>/intent`, title `maintain(<id>): …`) carries `sdlc:maintain-ready` and `sdlc:triage`; the owner's
+triage is the gate (merge = fix now, label `sdlc:schedule` = later, close with a comment =
 dismiss, recorded in `changes/.dismissed.json` through a dismissal PR); `sdlc:go` on it runs
 the runbook the diagnosis proposed when its route needs a person (read and removed once).
 The post-mortem of a shipped incident fix lives in `lessons/` and its eval in `evals/cases/`.

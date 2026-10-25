@@ -115,15 +115,15 @@ below, in a second file, `{brief}`, one section per item, its name exactly as li
 # Security & policy brief, gate (deploy)
 
 ## <item>
-- Word: continue
+- Verdict: continue
 - What the change does to it: <one or two sentences, with the files>
 - What could break: <one or two sentences>
 - How to undo it: <one or two sentences>
 ```
 
-Your word on an item is `continue` or `escalate`; you never accept a risk. Escalate on an
-item only for what is an Important finding anyway, and report that finding too: an
-escalation on a risk item parks the change for the owner and never goes to the review panel.
+Your verdict on an item is `continue` or `park`; you never accept a risk. Say park on an
+item only for what is an Important finding anyway, and report that finding too: a park on
+a risk item is the owner's and never goes to the review panel.
 
 {items}
 """

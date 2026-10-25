@@ -134,12 +134,12 @@ as at `intent`.
 — head `sdlc/<id>/intent`, title `maintain(<id>): <title>`, the summary (the finding, the
 proposed outcome, the route and its state, what needs the owner), labels `sdlc:maintain-ready` (or
 `sdlc:needs-human` with "What I need from you": Go requested, or a failed check) and
-`incident`. Nothing merges, nothing deploys, and you notify nobody (in CI the finish step
+`sdlc:triage` (`incident` on a PR an older plugin opened). Nothing merges, nothing deploys, and you notify nobody (in CI the finish step
 requests the owner's review on the PR, decision 31).
 
 ## 9. Report
 One line: the PR URL and "gate (maintain): merge = fix now (the design run starts); label
-`schedule` = later; close with a comment = dismiss (the comment is the reason, recorded by
+`sdlc:schedule` = later; close with a comment = dismiss (the comment is the reason, recorded by
 the abandon workflow in a dismissal PR)". When a route waits for Go, add "apply `sdlc:go`
 on the PR to run runbook <name>". Do not start the design phase.
 

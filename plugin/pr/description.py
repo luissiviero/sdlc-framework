@@ -115,7 +115,7 @@ GATE_CHECKLIST = {
     c.INTENT: "read, correct via review comments, merge = approve (gate (intent))",
     c.MAINTAIN: "triage (gate (maintain), decision 25): merge = fix now (gate (intent) of this "
     "intent); label "
-    "`schedule` = later; close with a comment = dismiss the finding (the comment is the "
+    "`sdlc:schedule` = later; close with a comment = dismiss the finding (the comment is the "
     "recorded reason)",
     c.DESIGN: "; ".join(STEP_23_CHECKLIST)
     + " Merge = approve; a review comment = change request (/sdlc-fix).",

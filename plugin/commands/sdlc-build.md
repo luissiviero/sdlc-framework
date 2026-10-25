@@ -141,7 +141,7 @@ First run
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" risk-hits --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase build`
 and pass its `hits` (each item with where it matched) and its `brief` path in the delegation
 prompt: the reviewer writes one brief per item there (decision 35: a hit is a line of the
-close-look banner, never a park; its escalation on an item parks and stays off the panel).
+close-look banner, never a park; its park on an item is the owner's and stays off the panel).
 Delegate to `sdlc:adversarial-reviewer` with the change id, phase `build`, the project root,
 the full HEAD sha, the path `changes/<id>-<slug>/evidence/diff-build.patch` and the risk-list
 hits, started with
@@ -155,10 +155,10 @@ on, R7); it writes `evidence/adversarial-review-build.json` for HEAD.
 python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase build
 ```
 It prints the items the gate would park on that belong to the panel's fixed list (an open
-flagged concern, a concern naming contradicting policies, the reviewer's `escalate`
+flagged concern, a concern naming contradicting policies, the reviewer's `park`
 verdict, an Important finding the run cannot fix, the verifier's "does not match the
 plan"), which of them the ledger already decides, and under `parks` what stays the owner's
-(an escalation on a risk-list item, a guardrail file, a run limit, an infrastructure
+(the reviewer's park on a risk-list item, a guardrail file, a run limit, an infrastructure
 failure; a risk-list hit itself parks nothing, decision 35). When `pending` is empty, go on
 to the gate. Otherwise, for each pending item `n` in
 order, three fresh contexts, each with the brief printed by
@@ -179,15 +179,15 @@ iteration; exit 3 at the cap: stop the panel, the gate parks); it appends the li
 in `spec.md` as `decided (by panel #<n>): <decision> — <concern>`, and commits the change
 folder itself (`build(<id>): panel decision <n>`), so the decision is in HEAD before anyone
 judges it. Do not reword a closed concern line: the gate matches it to the ledger by
-`#<n>`. Apply what the decision asks beyond that (an `escalate` decided `continue` needs
-nothing more; an `escalate` decided `park`: go straight to the gate, it parks; a fix the decision names is made now, `plan.md` in the same commit, committed
+`#<n>`. Apply what the decision asks beyond that (a `park` verdict decided `continue` needs
+nothing more; one decided `park`: go straight to the gate, it parks; a fix the decision names is made now, `plan.md` in the same commit, committed
 with `commit-phase ... --phase build --message "build(<id>): panel decision <n> applied"`).
 After the last item, re-run step 7 for the new HEAD, once (a verdict never
 outlives the diff it judged, and the diff file must be regenerated first); from then on
 nothing is committed before the gate except the gate evidence, and the verdict file never
 travels in a commit with content the reviewer did not see (the first deferred run,
 2026-09-24, committed each verdict beside the content it did not judge, three times, and
-needed four commits to land one). An `escalate` with new reasons is a new item: run
+needed four commits to land one). A `park` verdict with new reasons is a new item: run
 `items` once more. The panel never decides a park item, never raises a limit, never
 touches a guardrail file, and never asks the owner: the owner reads "Decisions taken for
 you" at the gate and overturns any line with a review comment.

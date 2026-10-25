@@ -154,8 +154,8 @@ def test_revert_of_a_plain_commit_opens_the_labelled_pr_and_comes_back(project, 
         f"Reverts {sha} (change the value). The review gate decides: merge to apply, "
         "close to drop. Nothing merges by itself (decision 14)."
     )
-    assert gh.named("ensure_label")[0][0][:2] == ("o/r", "incident")
-    assert gh.named("set_labels")[0][0] == ("o/r", 1, ["incident"], [])
+    assert gh.named("ensure_label")[0][0][:2] == ("o/r", "sdlc:triage")
+    assert gh.named("set_labels")[0][0] == ("o/r", 1, ["sdlc:triage"], [])
     # R22: the passing "not a build PR" check ruleset 2 requires, on the revert PR's head
     assert gh.named("post_not_build_check") == [(("o/r", "f" * 40), {"cwd": project})]
 
@@ -340,7 +340,7 @@ def run_quarantine(tmp_path: Path, gh: FakeGitHub, files: dict[str, str], name: 
     assert args[:4] == ("o/r", "main", out.branch, f"quarantine(0007): {NODE}")
     assert "https://x/pr/9" in args[4] and "p.45" in args[4]
     assert "the test file is untouched" in args[4].lower()
-    assert gh.named("set_labels")[0][0] == ("o/r", 1, ["incident"], [])
+    assert gh.named("set_labels")[0][0] == ("o/r", 1, ["sdlc:triage"], [])
     return remote_show(root, out.branch, name)
 
 

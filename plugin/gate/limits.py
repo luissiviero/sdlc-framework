@@ -106,7 +106,7 @@ def run_caps(gate_settings: Any, build: bool, less_minutes: int = 0) -> tuple[in
 
 
 # Change 0004 (spec R4): the largest ``gate.drive_timeout`` the test and build jobs hold. With
-# the R18 triage step's 5 minutes the test job is 190 + d <= 200 and the build and fix jobs
+# the R18 explain step's 5 minutes the test job is 190 + d <= 200 and the build and fix jobs
 # 250 + d <= 260, so the drive adds at most 10 minutes over its default 300 s. A larger value
 # is capped at build and test; at (deploy) the drive's minutes come off the session's wall clock
 # instead (``run_caps``' ``less_minutes``), never below the floor.
@@ -294,6 +294,9 @@ def record_spend_entry(
 # On the subscription token a run cannot be capped in dollars (NOTES §2), so its lines are
 # counted in runs and time.
 RUN_RECORD_RE = re.compile(r"^claude-(?P<run>[a-z]+)(?:-(?P<n>\d+))?\.json$")
+# R45's PR 2: the explain step's result was ``claude-triage[-<n>].json`` before it; read for
+# one release as the ``explain`` run's
+LEGACY_RUN_NAMES = {"triage": "explain"}
 RUN_META = "sdlc_run"
 CREDENTIAL_WORDS = {"oauth": "subscription token", "api_key": "API key"}
 
@@ -307,6 +310,12 @@ def run_record_paths(evidence_dir: Path) -> list[Path]:
     """The stored session results in ``evidence_dir``, ordered by run and number."""
     found = [p for p in Path(evidence_dir).glob("claude-*.json") if RUN_RECORD_RE.match(p.name)]
     return sorted(found, key=_record_order)
+
+
+def _run_name(run: str) -> str:
+    """The run a stored result's name says, under its current name (R45)."""
+    name = c.phase_name(run)
+    return LEGACY_RUN_NAMES.get(name, name)
 
 
 def run_lines(evidence_dir: Path) -> list[dict[str, Any]]:
@@ -333,8 +342,9 @@ def run_lines(evidence_dir: Path) -> list[dict[str, Any]]:
         lines.append(
             {
                 "source": path.name,
-                # R45: ``claude-c.json`` from an older plugin is the build run's
-                "run": c.phase_name(RUN_RECORD_RE.match(path.name).group("run")),
+                # R45: ``claude-c.json`` from an older plugin is the build run's, and
+                # ``claude-triage.json`` the explain step's
+                "run": _run_name(RUN_RECORD_RE.match(path.name).group("run")),
                 "usd": _spend(data.get("total_cost_usd")),
                 "credential": meta.get("credential"),
                 "seconds": round(seconds, 1) if seconds is not None else None,

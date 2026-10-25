@@ -13,10 +13,10 @@
 # applying the security-baseline skill and REVIEW.md's "What Important means here". Then
 # scan/cli.py route files every Important finding that you have not dismissed - at most three
 # a week, the rest return next week - as an incident intent change on sdlc/<id>/intent with the
-# intent PR labelled incident: a bounded finding (one file, one patch) as a fix whose
+# intent PR labelled sdlc:triage: a bounded finding (one file, one patch) as a fix whose
 # Proposed outcome is the patch, a wider one as a feature intent that describes the class.
 # The triage gate is your triage of that PR (decision 25): merge to fix it through the pipeline,
-# label `schedule` to keep it, or close it with a comment to dismiss it (the finding does not
+# label `sdlc:schedule` to keep it, or close it with a comment to dismiss it (the finding does not
 # return, article p.47 step 4). Last, scan/cli.py scanners runs pip-audit and bandit (Python)
 # or npm audit (Node): reports in the job summary and the artifacts, never a failed job.
 #

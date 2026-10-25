@@ -262,7 +262,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--out",
         default=None,
-        help="also write the JSON to this file, which the triage step reads (R18)",
+        help="also write the JSON to this file, which the explain step reads (R18)",
     )
     return p
 
@@ -281,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     if code == EXIT_FAILED:
         result["error_line"] = write_error_output(result)
     print(json.dumps(result, indent=2, sort_keys=True))
-    if args.out:  # R18: a failed setup is a file the triage step reads
+    if args.out:  # R18: a failed setup is a file the explain step reads
         try:
             text = json.dumps(result, indent=2, sort_keys=True) + "\n"
             Path(args.out).write_text(text, encoding="utf-8")

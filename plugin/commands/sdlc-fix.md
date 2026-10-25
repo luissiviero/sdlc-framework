@@ -180,8 +180,8 @@ with what you changed:
   Important one.
 A comment on a line of "Decisions taken for you" (decision 21) overturns that panel
 decision: apply the comment like any other (for a concern, rewrite the item as
-`decided <the owner's words>`; for a finding, fix it as the owner says; for an `escalate`
-the panel decided `park`, the overturn is the owner's `continue`: a verdict that escalates
+`decided <the owner's words>`; for a finding, fix it as the owner says; for a `park` verdict
+the panel decided `park`, the overturn is the owner's `continue`: a verdict that says park
 again on the same reasons passes the gate, one with new reasons is a new item), then mark the
 ledger line —
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" overturn --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --item <n> --comment "<the owner's words>"`
@@ -217,8 +217,9 @@ on, R7).
 
 ### Deferred review: the panel settles the judgment items (decision 21; build guide step 16a)
 A fix round is a phase run: the judgment items the gate would park on go to the panel
-here too, the reviewer's `escalate` on this round included (the first overturn round on the
-sample repository, 2026-09-24, parked on an `escalate` that the panel should have taken).
+here too, the reviewer's `park` on this round included (the first overturn round on the
+sample repository, 2026-09-24, parked on a reviewer's `escalate`, today's `park`, that the
+panel should have taken).
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>
 ```
@@ -234,11 +235,11 @@ conciliator: a general-purpose sub-agent that reads both), then
 gate parks); it writes the ledger line, closes a concern in `spec.md` as
 `decided (by panel #<n>): …` and commits the change folder itself. Do not reword a closed
 concern line. Apply what the decision asks beyond that (committed with
-`commit-phase ... --message "fix(<id>): panel decision <n> applied"`; an `escalate` decided
-`continue` needs nothing more; an `escalate` decided `park`: go straight to the gate, it parks). After the last item,
+`commit-phase ... --message "fix(<id>): panel decision <n> applied"`; a `park` verdict decided
+`continue` needs nothing more; one decided `park`: go straight to the gate, it parks). After the last item,
 regenerate the diff file and run the verdict once more for the new HEAD; from then on
 nothing is committed before the gate except the gate evidence, and the verdict file never
-travels in a commit with content the reviewer did not see. An `escalate` with new reasons
+travels in a commit with content the reviewer did not see. A `park` verdict with new reasons
 is a new item: run `items` once more. The panel never decides a park item, never raises a
 limit, never touches a guardrail file, and never asks the owner.
 

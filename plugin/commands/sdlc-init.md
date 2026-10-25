@@ -68,7 +68,7 @@ a by-hand run under `cmd.exe` writes `%SDLC_PROOF_DIR%`).
   project. The owner merges at the intent and design gates and approves at the deploy
   gate; the build and test gates are the confidence gate's. A judgment item inside a phase goes to a review panel in fresh contexts and the
   run continues; the owner reads "Decisions taken for you" at the next gate and overturns
-  any of them with a review comment (decisions 21 and 32). An escalation on a risk-list
+  any of them with a review comment (decisions 21 and 32). The reviewer's park on a risk-list
   item, a guardrail file change, a run limit, an infrastructure failure, a merge to main
   and a deploy still park; a risk-list hit itself parks nothing (decision 35: it is a line
   of the "Needs your close look" banner on the PR the owner merges, and the merge accepts

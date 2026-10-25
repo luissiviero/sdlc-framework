@@ -3,14 +3,16 @@ point 4).
 
 One line per red run of a framework workflow (``.github/workflows/sdlc-*.yml``) in the last
 seven days, oldest first, that did not park: a run that parked is in the queue already, and
-the triage step writes no record for it. Two sources, no model call:
+the explain step writes no record for it. Two sources, no model call:
 
 - the Actions API (``GET /repos/{repo}/actions/runs``, the digest's ``actions: read``) says
   which runs failed, were cancelled or timed out; its run object is the latest attempt, so a
   run whose re-run succeeded drops out. It is the only source for a lost runner, a cancelled
   job, a failed checkout and a failed digest, which show as the bare line;
-- the failed-run records on ``refs/sdlc/failed-runs/<run>-<attempt>`` (``ci/triage.py``) add
-  the runner's reason and the triage lines, labelled model-written. A record is data: the
+- the failed-run records on ``refs/sdlc/failed-runs/<run>-<attempt>`` (``ci/explain.py``) add
+  the runner's reason and the explain step's lines, labelled model-written (under the key
+  ``explanation``; a record written before R45's PR 2 keeps them under ``triage``, read for
+  one release). A record is data: the
   phase session holds ``Bash(git *)`` and could push such a ref, so a record shows only for
   a run the API lists as red, on one line, cut to ``TEXT_MAX`` characters, with its
   mentions and links made inert (the issue body would otherwise notify, against decision 31).
@@ -38,15 +40,17 @@ from pr.github import next_page_url  # noqa: E402
 WINDOW_DAYS = 7
 FAILED_CONCLUSIONS = ("failure", "cancelled", "timed_out")
 WORKFLOW_PREFIX = ".github/workflows/sdlc-"
-REF_PREFIX = "sdlc/failed-runs/"  # under refs/, as ``ci/triage.py FAILED_RUN_PREFIX``
+REF_PREFIX = "sdlc/failed-runs/"  # under refs/, as ``ci/explain.py FAILED_RUN_PREFIX``
 RECORD_FILE = "failed-run.json"
 MAX_RECORDS = 50  # records read per digest; older ones show as bare lines
 MAX_PAGES = 5  # pages of 100 runs: a busy repository's week, the project's own CI included
 TEXT_MAX = 400
 HEADING = "## Failed runs — the last {days} days, no park"
 UNREADABLE = "The failed runs could not be read: {reason}."
-NO_RECORD = "{conclusion}; no triage record (the job ended before its triage step, or no step ran)"
-TRIAGE_LABEL = "triage (model-written)"
+NO_RECORD = (
+    "{conclusion}; no failed-run record (the job ended before its explain step, or no step ran)"
+)
+EXPLANATION_LABEL = "explanation (model-written)"
 
 Get = Callable[[str], dict[str, Any]]
 
@@ -145,9 +149,9 @@ def line(entry: dict[str, Any]) -> str:
     if record.get("change_id"):
         parts.append(f"change {_inert(record['change_id'])}")
     parts.append(_inert(record.get("reason")))
-    triage = record.get("triage")
-    if isinstance(triage, list) and triage:
-        parts.append(f"{TRIAGE_LABEL}: " + _inert("; ".join(str(t) for t in triage)))
+    explanation = record.get("explanation", record.get("triage"))  # R45's PR 2: one release
+    if isinstance(explanation, list) and explanation:
+        parts.append(f"{EXPLANATION_LABEL}: " + _inert("; ".join(str(t) for t in explanation)))
     return " — ".join(parts)
 
 

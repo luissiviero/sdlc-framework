@@ -11,9 +11,9 @@ phase commands: deferred review is the only mode (decision 37).
 
 ``items`` runs the gate's checks without
 recording anything and lists what would park on a judgment item of the fixed list — an
-open flagged concern (``concern``, or ``policy`` when it names contradicting policies), an
-``escalate`` verdict of the adversarial reviewer (unless it is on a risk-list item, which
-stays the owner's: decision 35), an Important review finding (``finding``)
+open flagged concern (``concern``, or ``policy`` when it names contradicting policies), a
+``park`` verdict of the adversarial reviewer (``park``; unless it is on a risk-list item,
+which stays the owner's: decision 35), an Important review finding (``finding``)
 and the verifier's "does not match the plan" (``verifier``) — as the items the panel may
 settle, each with its stable key and whether the ledger already decides it; everything else
 that failed is listed under ``parks`` and stays the owner's. It writes the list to
@@ -109,14 +109,14 @@ def collect_items(
     ``evidence/verifier.md``."""
     items: list[dict[str, Any]] = []
     parks: list[dict[str, str]] = []
-    # decision 35: an escalation on a risk-list item parks for the owner and never goes to
-    # the panel; the gate's risk-hit checks name the escalated items
+    # decision 35: the reviewer's park on a risk-list item is the owner's and never goes to
+    # the panel; the gate's risk-hit checks name the items it parks on
     on_risk = sorted(
         {
             str(i)
             for ch in result.failed
             if ch.name in risk_mod.RISK_HIT_CHECKS
-            for i in ch.details.get("escalated") or []
+            for i in ch.details.get("parked_on") or []
         }
     )
     for check in result.failed:
@@ -128,7 +128,7 @@ def collect_items(
                     {"kind": ledger.kind_of_concern(body), "key": ledger.concern_key(body),
                      "item": body}
                 )  # fmt: skip
-        elif check.name == "adversarial_review" and "escalate" in check.reason and on_risk:
+        elif check.name == "adversarial_review" and check.details.get("verdict") == "park" and on_risk:
             parks.append(
                 {
                     "check": check.name,
@@ -138,13 +138,13 @@ def collect_items(
                     + ": the owner's, never the panel's, decision 35)",
                 }
             )
-        elif check.name == "adversarial_review" and "escalate" in check.reason:
+        elif check.name == "adversarial_review" and check.details.get("verdict") == "park":
             reasons = [str(r) for r in (check.details.get("reasons") or [])]
             items.append(
                 {
-                    "kind": "escalate",
-                    "key": ledger.escalate_key(reasons),
-                    "item": "adversarial reviewer says escalate: "
+                    "kind": "park",
+                    "key": ledger.park_key(reasons),
+                    "item": "adversarial reviewer says park: "
                     + ("; ".join(reasons) or "no reason given"),
                 }
             )
@@ -228,7 +228,8 @@ def _item(change_dir: Path, phase: str, n: int) -> dict[str, Any] | None:
         return None
     for item in data.get("items") or []:
         if isinstance(item, dict) and item.get("n") == n:
-            return item
+            # an items list an older plugin wrote says ``escalate`` (R45 row 62)
+            return ledger.normalize(item)
     return None
 
 

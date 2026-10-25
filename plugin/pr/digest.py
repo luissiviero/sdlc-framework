@@ -98,10 +98,21 @@ def labels_of(pr: dict[str, Any]) -> list[str]:
 
 
 def incident_prs(prs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Open PRs carrying ``incident`` and no gate label: the runbook PRs a 3σ route opened
-    (a revert, a quarantine) and the dismissal PRs of gate (maintain), which decision 20 lets the
-    owner find only here (the incident intent PRs carry a gate label and are queue items)."""
-    return [pr for pr in prs if c.INCIDENT_LABEL in labels_of(pr) and not sdlc_labels(pr)]
+    """Open PRs carrying ``sdlc:triage`` (or an older plugin's ``incident``) and no gate label:
+    the runbook PRs a 3σ route opened (a revert, a quarantine) and the dismissal PRs of gate
+    (maintain), which decision 20 lets the owner find only here (the incident intent PRs carry
+    a gate label and are queue items). R45 (row 37): since the label carries the ``sdlc:``
+    prefix, "no gate label" is no ``sdlc:`` label but the maintain queue's own two."""
+    return [pr for pr in prs if c.TRIAGE_LABELS & set(labels_of(pr)) and not gate_labels(pr)]
+
+
+# the maintain queue's labels, which say where a PR is, not which gate waits (R45, row 37)
+QUEUE_LABELS = frozenset({c.TRIAGE_LABEL, c.SCHEDULE_LABEL})
+
+
+def gate_labels(pr: dict[str, Any]) -> list[str]:
+    """The PR's ``sdlc:`` labels but the maintain queue's two: what puts it in the queue."""
+    return [lb for lb in sdlc_labels(pr) if lb not in QUEUE_LABELS]
 
 
 def sdlc_labels(pr: dict[str, Any]) -> list[str]:
@@ -199,7 +210,7 @@ def render_digest(
     (``unprotected_notice``), then parked, then the phase-ready queue in phase order, then
     the "Failed runs" section (R18, ``pr/failed_runs.py``), then the counters section (build
     guide step 42.2, ``pr/counters.py``) when the caller gives one."""
-    queue = [pr for pr in prs if sdlc_labels(pr)]
+    queue = [pr for pr in prs if gate_labels(pr)]
     parked = [pr for pr in queue if c.NEEDS_HUMAN_LABEL in sdlc_labels(pr)]
     # decision 29: a PR whose automatic fix round runs waits for nobody
     fixing = [pr for pr in queue if pr not in parked and c.FIXING_LABEL in sdlc_labels(pr)]
@@ -244,7 +255,7 @@ def render_digest(
         out += [_line(pr) for pr in fixing]
         out.append("")
     if incidents:
-        out += [f"## Maintain: runbook and dismissal PRs — `{c.INCIDENT_LABEL}`", ""]
+        out += [f"## Maintain: runbook and dismissal PRs — `{c.TRIAGE_LABEL}`", ""]
         out += [_line(pr) for pr in sorted(incidents, key=lambda pr: pr.get("number") or 0)]
         out.append("")
     if failed_runs:  # R18; R20 places it under "Worth knowing"
@@ -266,7 +277,7 @@ def list_queue_prs(repo: str) -> tuple[list[dict[str, Any]], str]:
     if result["error"]:
         return [], result["error"]
     items = result["data"] if isinstance(result["data"], list) else []
-    return [pr for pr in items if sdlc_labels(pr) or c.INCIDENT_LABEL in labels_of(pr)], ""
+    return [pr for pr in items if sdlc_labels(pr) or c.LEGACY_TRIAGE_LABEL in labels_of(pr)], ""
 
 
 def approval_of(
