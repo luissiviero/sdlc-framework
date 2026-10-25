@@ -1,8 +1,8 @@
-# Phase (f): the owner's "Go" on an incident intent PR runs the runbook the diagnosis
+# The maintain phase: the owner's "Go" on an incident intent PR runs the runbook the diagnosis
 # proposed (build guide step 37; decisions 14 and 26; article p.49-50: "The rollback was
 # rehearsed in staging this morning; shall I run it?" - "Go.").
 #
-# Contract: docs/OPERATING_MODEL.md sections 4 (gate (f)), 4.2 and 6, article p.43-44 (a
+# Contract: docs/OPERATING_MODEL.md sections 4 (the triage gate), 4.2 and 6, article p.43-44 (a
 # route that touches a running system waits for a person; "the runbooks the agent may
 # trigger were approved in advance"). Installed into this project by /sdlc-init from the
 # framework's template/.github/workflows/; edit it here, not in the framework.
@@ -12,7 +12,7 @@
 # is the Go: this job checks that a person applied it (never the workflow token or a
 # [bot]), runs the runbook once, records the actor in status.yaml (runbook_authorized_by),
 # removes the label (one application is one act, like the un-park labels of decision 24),
-# re-runs gate (f) and refreshes the PR. A pre-approved route never comes here: it ran in
+# re-runs the triage gate and refreshes the PR. A pre-approved route never comes here: it ran in
 # the detect workflow. Not a phase run: no claude starts and no model credential is read; a
 # project runbook with a command runs with the repository's own secrets (add them to the
 # env: of the Go step below).
@@ -49,11 +49,11 @@ concurrency:
 
 jobs:
   go:
-    # the incident PR's head only: a Go label on a build PR (sdlc/<id>/c) would fail the
+    # the incident PR's head only: a Go label on a build PR (sdlc/<id>/build) would fail the
     # setup step's outside-changes/ check every time and has no incident to park. A Go a
     # [bot] applied never runs (R49: the App's own labels start workflows); detect/cli.py go
     # checks the actor again.
-    if: ${{ github.event.label.name == 'sdlc:go' && !endsWith(github.event.sender.login, '[bot]') && startsWith(github.event.pull_request.head.ref, 'sdlc/') && endsWith(github.event.pull_request.head.ref, '/a') }}
+    if: ${{ github.event.label.name == 'sdlc:go' && !endsWith(github.event.sender.login, '[bot]') && startsWith(github.event.pull_request.head.ref, 'sdlc/') && (endsWith(github.event.pull_request.head.ref, '/a') || endsWith(github.event.pull_request.head.ref, '/intent')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -81,8 +81,8 @@ jobs:
         if: steps.app.outcome == 'success'
         run: python -c "import os, time; f = open(os.environ['GITHUB_ENV'], 'a'); f.write('SDLC_APP_TOKEN_MINTED_AT=%d\n' % time.time()); f.close()"
 
-      # The incident PR's head: sdlc/<id>/a, which carries the detection record, the
-      # proposal and status.yaml.
+      # The incident PR's head: sdlc/<id>/intent (or /a), which carries the detection record,
+      # the proposal and status.yaml.
       - name: Check out the pull request's head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
