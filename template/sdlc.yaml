@@ -90,7 +90,8 @@ deploy:
   # label sdlc:release-approved applied by a person on the build PR from GitHub, nothing
   # else: a run cannot approve itself (decision 5, the automation identity), so no signed
   # tag counts and the hook blocks any command that names the label. Until plugin 1.0.44
-  # the key was `production`, which is read for one release (R45, decision 39)
+  # the key was `production`, which is read for one release (R45, decision 39); a plugin
+  # before 1.0.45 reads only `production`, so rename it only with the pin at 1.0.45 or later
   production_gate: {{DEPLOY_PRODUCTION}}
   # the one command the release workflow (.github/workflows/sdlc-release.yml) runs after the
   # build PR's merge (and, when production_gate is true, after the release label): e.g.

@@ -12,7 +12,12 @@ This session ran on branch `claude/r45-3-config-values`, built on R45's second r
 One sub-agent built the three renames on this branch; this session merged `main`, bumped the version, regenerated `plugin/init/template_hashes.json` and ran the suite. Tests that asserted the old names assert the new ones; none was deleted or skipped; tests show each old name is still read and the two production keys disagreeing fail closed.
 
 ## The fresh-context review
-<!-- filled in after the review -->
+A fresh-context sub-agent reviewed the diff (report only). It found nothing blocking. It traced the production gate with the old key, the new key, both agreeing, both disagreeing and neither, and found it never fails open; no authorization value is compared without the normaliser, and an old `go` never becomes `allow`. Its findings and what was done:
+1. **Fixed:** `docs/OPERATING_MODEL.md` still said "a `go` here is stricter".
+2. **Fixed:** a project that renames `deploy.production` before its pin reads the new key (a pin below 1.0.45) turns the production gate off, since the older plugin reads only `production`. `/sdlc-init`'s `legacy_keys` line, its command text and `template/sdlc.yaml`'s comment now say the rename waits for the pin at 1.0.45 or later.
+3. **Fixed:** a project runbook's `authorization` that is neither `allow` nor `ask` (a typo, `Ask`) was ignored, so the bands' value stood; it now reads as `ask`, since a runbook entry may only tighten (`detect/routes.py`), with a test. This also keeps an entry still saying `go` strict once the sixth PR drops the old values.
+4. **Optional, taken:** `/sdlc-deploy`'s body and hand-over name the old key beside the new; `/sdlc-init` and the second opinion's note now give the same advice when both `external_review` and `second_opinion` are set ("remove it").
+5. **Optional, not taken:** a run-time note for the old production key (the release log prints the value it read; `/sdlc-init` reports the key); the second opinion's note on an "off" record that writes no file; three more compatibility tests whose logic the reviewer confirmed by reading; the ROADMAP proposal that still names `deploy.production` (a proposal's text, not this PR's).
 
 ## Port list
 This PR touches `plugin/detect/` and the detect and runbook workflow templates: it goes on the port list until the 1.0.0 read.

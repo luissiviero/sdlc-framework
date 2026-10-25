@@ -773,6 +773,12 @@ def test_the_old_authorization_values_route_as_allow_and_ask(tmp_path):
         "ask",
         "sdlc.yaml: maintain.runbooks (stricter)",
     )
+    # a project value that is neither allow nor ask can only tighten: it reads as ask
+    for odd in ("Ask", "asks", "auto"):
+        typo = {"maintain": {"runbooks": [{"name": "revert-pr", "authorization": odd}]}}
+        assert routes.authorization(route, legacy.route(route), typo, "python").authorization == (
+            "ask"
+        )
     assert routes.authorization_value("preapproved") == "allow"
     assert routes.authorization_value("go") == "ask"
     assert routes.authorization_value("auto") == "auto"

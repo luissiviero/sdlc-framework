@@ -170,6 +170,10 @@ def authorization(route: str, bands_route: Any, config: dict[str, Any], language
     builtin = name in BUILTIN_RUNBOOKS
     resolved = Resolved(route, auth, source, runbook=name, project_runbook=entry, builtin=builtin)
     stricter = authorization_value(str(entry.get("authorization") or "")) if entry else None
+    # a value the project set that is neither allow nor ask (a typo, "Ask") is read as the
+    # stricter one: a runbook entry can only tighten the bands' value, never loosen it
+    if stricter and stricter != ALLOW:
+        stricter = ASK
     if stricter == ASK and auth != ASK:
         resolved.authorization, resolved.source = ASK, "sdlc.yaml: maintain.runbooks (stricter)"
     if builtin:

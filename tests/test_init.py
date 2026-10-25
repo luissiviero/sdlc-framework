@@ -613,11 +613,20 @@ def test_init_upgrade_never_adds_production_gate_beside_the_old_key(tmp_path):
     assert "production_gate" not in yamlish.loads(new_text)["deploy"]
     assert "  production: true\n" in new_text
     assert production_gate(yamlish.loads(new_text)) is True
+    pin = sdlc_init.PIN_NOTE  # the rename waits for a pin that reads the new key
     assert report["legacy_keys"] == [
-        "deploy.production: rename it deploy.production_gate (R45; the old key is read for "
-        "one release)",
-        "external_review: rename it second_opinion (R45; the old key is read for one release)",
+        f"deploy.production: rename it deploy.production_gate (R45; the old key is read for "
+        f"one release{pin})",
+        f"external_review: rename it second_opinion (R45; the old key is read for one release"
+        f"{pin})",
     ]
+    assert "1.0.45" in pin and "production gate off" in pin
+    # with both external_review and second_opinion the advice matches the runtime's note
+    both = new_text + "\nsecond_opinion:\n  model: gemini-4-argon\n  phases: [design]\n"
+    (root / "sdlc.yaml").write_text(both, encoding="utf-8")
+    assert (
+        "external_review: remove it, second_opinion is read (R45)" in _run_init(root)["legacy_keys"]
+    )
 
 
 # --- the SDLC workflows /sdlc-init installs (build guide step 30, task 30.8) -----------------

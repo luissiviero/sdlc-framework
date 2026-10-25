@@ -253,13 +253,13 @@ approval = gate (deploy) passed (decision 36); the merge App then merges it (`sd
 and the release workflow runs `deploy.command`. An approval given before this run committed
 the deploy gate's record does not count: the owner approves again on the head (choice 250). Without
 a merge App the owner merges after approving (fallback C1). When `sdlc.yaml` says
-`deploy.production_gate: true`, the body also says: the release label `sdlc:release-approved` is
+`deploy.production_gate: true` (or the old `deploy.production: true`), the body also says: the release label `sdlc:release-approved` is
 the second act: apply it on this PR in the same visit; the release workflow waits for it.
 
 ## 6. Hand over
 Report the PR URL and "gate (deploy): an approving review = approve, and the merge App merges on
 it; a review comment is the change request (`/sdlc-fix <id>`)". When `sdlc.yaml` says
-`deploy.production_gate: true`, add "the release label `sdlc:release-approved` is the second
+`deploy.production_gate: true` (or the old `deploy.production: true`), add "the release label `sdlc:release-approved` is the second
 act: apply it on this PR in the same visit; the release workflow waits for it". Nothing
 else runs; the merge that follows the owner's approval is the trigger for the project's
 deploy adapter.

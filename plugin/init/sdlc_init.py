@@ -290,6 +290,14 @@ LEGACY_KEYS = {("deploy", "production"): "deploy.production_gate"}
 LEGACY_TOP_KEYS = {"external_review": "second_opinion"}
 
 
+# the pin the new name needs: a plugin before 1.0.45 reads only the old key, so a renamed
+# ``deploy.production`` there is read as false, the production gate off (the R45 PR 3 review)
+PIN_NOTE = (
+    "; rename it only with the pin at 1.0.45 or later: an older plugin does not read the new "
+    "key, and for deploy.production that turns the production gate off"
+)
+
+
 def keep_legacy_keys(existing: dict, fresh: dict) -> tuple[dict, list[str]]:
     """``fresh`` without the new name of a key ``existing`` still holds under its old name,
     and one line per such key for the report."""
@@ -302,10 +310,17 @@ def keep_legacy_keys(existing: dict, fresh: dict) -> tuple[dict, list[str]]:
         new_key = new.split(".", 1)[1]
         if isinstance(out.get(top), dict) and new_key not in block:
             out[top] = {k: v for k, v in out[top].items() if k != new_key}
-        notes.append(f"{top}.{old}: rename it {new} (R45; the old key is read for one release)")
+        notes.append(
+            f"{top}.{old}: rename it {new} (R45; the old key is read for one release{PIN_NOTE})"
+        )
     for old, new in LEGACY_TOP_KEYS.items():
         if old in existing:
-            notes.append(f"{old}: rename it {new} (R45; the old key is read for one release)")
+            if new in existing:  # both: the new one is read, the old one only reported
+                notes.append(f"{old}: remove it, {new} is read (R45)")
+            else:
+                notes.append(
+                    f"{old}: rename it {new} (R45; the old key is read for one release{PIN_NOTE})"
+                )
     return out, notes
 
 
