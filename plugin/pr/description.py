@@ -43,7 +43,7 @@ Layout of the body, in order:
      its headings demoted one level so they nest, else the intent's proposed outcome, in the
      owner's words.
 
-At phase deploy, when ``sdlc.yaml: deploy.production`` is true, one more line follows the
+At phase deploy, when ``sdlc.yaml: deploy.production_gate`` is true, one more line follows the
 bullets (like the counters line, not a sixth bullet): the release approval, the second act
 of gate (deploy) (decision 13). On the fast lane (decision 30) a line of the same kind says what
 this PR carries and which earlier PR it superseded: the design PR carries the owner's
@@ -70,7 +70,7 @@ from gate import diff as diffmod  # noqa: E402
 from gate import risk as risk_mod  # noqa: E402
 from gate.checks import CheckResult  # noqa: E402
 from gate.gate import GateResult  # noqa: E402
-from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
+from hooks._common import ConfigError, load_sdlc_config, production_gate  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops  # noqa: E402
 from state import status as status_mod  # noqa: E402
@@ -712,10 +712,10 @@ def _links_line(root: Path, change_dir: Path, change_id: str, phase: str) -> str
 
 
 def production_declared(root: Path) -> bool:
-    """``sdlc.yaml: deploy.production`` is true. An unreadable or absent file declares
+    """``sdlc.yaml: deploy.production_gate`` is true. An unreadable or absent file declares
     nothing (the gate, not the PR body, is where a broken sdlc.yaml parks)."""
     try:
-        return config_flag(load_sdlc_config(str(root)), "deploy", "production")
+        return production_gate(load_sdlc_config(str(root)))
     except ConfigError:
         return False
 

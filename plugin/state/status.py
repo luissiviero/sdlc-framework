@@ -417,7 +417,7 @@ MERGED_AT_GATE_E_REASON = (
     "merged at gate (deploy): the owner's approval, or the owner's merge (decision 13, as amended "
     "by decision 36)"
 )
-# With ``sdlc.yaml: deploy.production`` true the phase gate is still passed by the merge (the
+# With ``sdlc.yaml: deploy.production_gate`` true the phase gate is still passed by the merge (the
 # change is done and merged), but the release needs a second act the release workflow checks.
 MERGED_AT_GATE_E_PRODUCTION_REASON = (
     MERGED_AT_GATE_E_REASON + "; the release approval sdlc:release-approved is the release "
@@ -444,7 +444,7 @@ def merged_at_gate_e(st: Status, production: bool = False) -> Status:
     the merge, reads as the merge reason (changes 0002, 0003 and 0005 of this repository read
     "waiting" on ``main`` after their merges). Another phase, or another reason, comes back as
     an unchanged copy. ``production`` is
-    ``sdlc.yaml: deploy.production``: when true the gate still reads passed (the change is
+    ``sdlc.yaml: deploy.production_gate``: when true the gate still reads passed (the change is
     done and merged), but the reason says the release label is the second act, which is the
     release workflow's to check, not this function's.
     """
@@ -482,7 +482,7 @@ def read_status(
     """``status.yaml`` of the change. ``on_default_branch`` says the file was read from a
     checkout of the default branch: a change at phase e there was merged on the owner's
     approving review (decision 36: by the merge App, or by the owner), so gate (e) reads
-    passed (``merged_at_gate_e``; ``production`` is ``sdlc.yaml: deploy.production`` and
+    passed (``merged_at_gate_e``; ``production`` is ``sdlc.yaml: deploy.production_gate`` and
     only changes the derived reason). The derivation happens in
     memory only; the file on disk is never rewritten by it (the default branch is read-only
     for automation, and only the owner's reviewed PRs reach it)."""

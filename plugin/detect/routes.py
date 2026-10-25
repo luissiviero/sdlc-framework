@@ -8,7 +8,7 @@ Every route is one of two authorization models, written per route in ``bands.yam
 PR, quarantining a flaky test, a revert PR) runs with no human in the path; ``go`` (anything
 that touches a running system: a rollback, a config change) parks the incident PR with "Go"
 requested, and the owner's ``sdlc:go`` label runs it (``sdlc-runbook.yml``). Decision 26
-amends one case: on a project with ``deploy.production: true``, a rollback runbook the owner
+amends one case: on a project with ``deploy.production_gate: true``, a rollback runbook the owner
 has rehearsed (``sdlc.yaml: maintain.runbooks[].rehearsed_at`` set to a date) is
 pre-approved - the p.49 figure makes the rehearsal the precondition, and a "Go" that waits
 silently in the queue brings back the missed alert the loop exists to remove.
@@ -113,12 +113,12 @@ def project_runbooks(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def production_declared(config: dict[str, Any]) -> bool:
-    """``sdlc.yaml: deploy.production`` is true; a value that is not a boolean declares
+    """``sdlc.yaml: deploy.production_gate`` is true; a value that is not a boolean declares
     nothing here (the rollback keeps its ``go``; the gate and the hook refuse it)."""
-    from hooks._common import ConfigError, config_flag  # noqa: PLC0415
+    from hooks._common import ConfigError, production_gate  # noqa: PLC0415
 
     try:
-        return config_flag(config, "deploy", "production")
+        return production_gate(config)
     except ConfigError:
         return False
 

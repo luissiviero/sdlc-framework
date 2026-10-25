@@ -83,7 +83,7 @@ OWNER_FIELDS_PARK_PREFIX = "status.yaml: the session wrote owner-only field(s): 
 # The detect step's snapshot of the detection record (0.2.27): ``detect/cli.py run`` prints
 # the digest of evidence/detection.json before the maintain session, ``finish`` compares.
 DETECTION_SNAPSHOT_PARK_PREFIX = "evidence/detection.json changed after the detection step: "
-# The second act at gate (e) when `sdlc.yaml: deploy.production` is true (decision 13; build
+# The second act at gate (e) when `sdlc.yaml: deploy.production_gate` is true (decision 13; build
 # guide step 29): the owner applies it on the build PR; the production-gate hook and the
 # release workflow read it through the PR, never from an environment variable.
 RELEASE_APPROVED_LABEL = "sdlc:release-approved"

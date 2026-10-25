@@ -928,7 +928,7 @@ def test_cli_waits_for_the_label_on_a_parked_merge_whatever_production_says(tmp_
     assert f"release: parked: gate (deploy) parked change 0001: {reason}" in lines
     waiting = [line for line in lines if line.startswith("release: waiting: ")]
     assert waiting and f"merged while parked ({reason})" in waiting[0]
-    assert "whatever deploy.production says" in waiting[0]
+    assert "whatever deploy.production_gate says" in waiting[0]
     assert "release: route: apply sdlc:release-approved on #7" in lines
     assert not any(line.startswith("release: run:") for line in lines)
     assert "released" not in capfd.readouterr().out

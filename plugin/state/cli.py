@@ -40,7 +40,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hooks import plan_sync  # noqa: E402
-from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
+from hooks._common import ConfigError, load_sdlc_config, production_gate  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops, status, unpark  # noqa: E402
 
@@ -434,11 +434,11 @@ def _default_branch_checkout(root: Path) -> str | None:
 
 
 def _production(root: Path) -> bool:
-    """``sdlc.yaml: deploy.production`` of the project; False when the file or the key is
+    """``sdlc.yaml: deploy.production_gate`` of the project; False when the file or the key is
     missing or unreadable. It only words the derived gate (deploy) reason (decision 13): the
     release approval itself is the release workflow's to check."""
     try:
-        return config_flag(load_sdlc_config(str(root)), "deploy", "production")
+        return production_gate(load_sdlc_config(str(root)))
     except (ConfigError, OSError):
         return False
 

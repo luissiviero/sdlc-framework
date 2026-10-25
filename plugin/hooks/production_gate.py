@@ -28,7 +28,8 @@ hook keeps that trigger and its exit-2 contract and changes three things:
   the route to approval (p.36 step 4: "A block should explain itself"), and nobody is
   notified.
 
-It is inert unless ``sdlc.yaml: deploy.production`` is ``true``: then it returns allow without
+It is inert unless ``sdlc.yaml: deploy.production_gate`` (until plugin 1.0.44
+``deploy.production``, read for one release) is ``true``: then it returns allow without
 logging anything. With production declared, every allow and block is appended as one
 timestamped JSON line to the hook log (``_common.log_decision``; p.37: "Allow and block
 decisions are logged with a timestamp"). An unreadable ``sdlc.yaml`` fails closed (exit 2).
@@ -56,9 +57,9 @@ from _common import (  # noqa: E402
     HOOK_LOG_EVIDENCE,
     ConfigError,
     Decision,
-    config_flag,
     load_sdlc_config,
     log_decision,
+    production_gate,
     project_dir,
     run_hook,
 )
@@ -407,7 +408,7 @@ def decide(
         deploy = config.get("deploy") or {}
         if not isinstance(deploy, dict):
             raise ConfigError("sdlc.yaml: deploy must be a mapping")
-        if not config_flag(config, "deploy", "production"):
+        if not production_gate(config):
             return Decision.allow()  # inert: no production declared, nothing logged
         action = str(deploy.get("action") or "none").strip().lower()
         patterns = guarded_patterns(action, deploy)

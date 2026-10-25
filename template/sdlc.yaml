@@ -88,10 +88,11 @@ deploy:
   # check of the release workflow (build guide step 29; decision 13). The approval is the
   # label sdlc:release-approved applied by a person on the build PR from GitHub, nothing
   # else: a run cannot approve itself (decision 5, the automation identity), so no signed
-  # tag counts and the hook blocks any command that names the label
-  production: {{DEPLOY_PRODUCTION}}
+  # tag counts and the hook blocks any command that names the label. Until plugin 1.0.44
+  # the key was `production`, which is read for one release (R45, decision 39)
+  production_gate: {{DEPLOY_PRODUCTION}}
   # the one command the release workflow (.github/workflows/sdlc-release.yml) runs after the
-  # build PR's merge (and, when production is true, after the release label): e.g.
+  # build PR's merge (and, when production_gate is true, after the release label): e.g.
   # `python -m build && twine upload dist/*`, `python scripts/regenerate_report.py`.
   # Empty = the release is prepared in the PR and nothing runs. Runs on the GitHub runner
   # with the repository's secrets only.
@@ -103,7 +104,7 @@ deploy:
   # (plugin/hooks/production_gate.py DEFAULT_GUARDED) and to the article's own trigger, a
   # command containing both `deploy` and `production` (p.36). `promote to paper trading` has
   # no default: a paper-trading project lists its own promotion command here (e.g.
-  # "python scripts/promote.py"). Only read when production is true.
+  # "python scripts/promote.py"). Only read when production_gate is true.
   guarded_commands: []
 maintain:
   # the watched metric and where the detection script reads it (default: CI test failure
@@ -118,7 +119,7 @@ maintain:
   # quarantine-flaky-test and revert-pr; an entry here adds a `command` (no shell; steps
   # joined by &&, run on the runner with the repository's own secrets) under that name.
   # A `go` here is stricter than the bands' value and wins. Decision 26: on a project with
-  # deploy.production: true, a runbook whose name contains "rollback" and whose
+  # deploy.production_gate: true, a runbook whose name contains "rollback" and whose
   # rehearsed_at is a date the owner set after a staging rehearsal is pre-approved.
   # Since plugin 1.0.27 (R44) a runbook on the runner runs in a fresh tree of the default
   # branch's commit (with changes/ copied in), never in the checkout the diagnosis session
