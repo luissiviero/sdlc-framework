@@ -135,6 +135,16 @@ jobs:
     # 1.0.3 (decision 29): + 10 for the judge at the iteration cap; 1.0.8 (decision 32): the
     # build run and every fix round take gate.build_max_wall_clock_minutes (180 by default),
     # so 185 + 50 + 10, with room
+    # Change 0004: a set commands.drive adds gate.drive_timeout to the commands step (300 s by
+    # default: 185 + 55 + 10 = 250 of 260; at most 600 s at (c) and (d): 255). Not counted here:
+    # commands.setup (up to 15 minutes, more with Playwright's browser install) and the R18 triage
+    # step after a park (5 minutes). The worst case is a fix round at (e): R51's merge and re-check
+    # of the targets (45 minutes, only when the default branch moved) come before the session, so 45
+    # + 185 + 50 + 10 = 290 of 260 without a drive, and 45 + 180 + 55 + 10 = 290 of 260 with one
+    # (the drive's minutes come off that session's cap). A job past 260 is cancelled by GitHub, and
+    # the park steps run only on a failed step, so such a round ends with no park; raise
+    # timeout-minutes together with SDLC_JOB_TIMEOUT_MINUTES, or amend the build caps, in a reviewed
+    # PR
     timeout-minutes: 260
     env:
       # the runner gives the build caps only to a job that says it allows them (decision 32);

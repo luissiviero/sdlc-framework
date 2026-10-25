@@ -56,6 +56,10 @@ jobs:
     # 5 of grace) and then the gate's commands step, which runs the three targets after
     # the session at gate.command_timeout each (900 s by default): 125 + 50 minutes;
     # 1.0.3 (decision 29): + 10 for the judge at the iteration cap
+    # Change 0004: a set commands.drive adds gate.drive_timeout to the commands step (300 s by
+    # default: 125 + 55 + 10 = 190 of 200; at most 600 s: 195). Not counted here: commands.setup (up
+    # to 15 minutes, more with Playwright's browser install) and the R18 triage step after a park (5
+    # minutes)
     timeout-minutes: 200
     steps:
       # Decision 33: the automation pushes and opens pull requests as the project's GitHub

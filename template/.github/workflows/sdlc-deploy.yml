@@ -68,6 +68,12 @@ jobs:
     # job's, which records nothing; R51 adds the targets on a merged tree before a session
     # (45, once: the second step merges only when the default branch moved in between):
     # 125 + 185 + 45 = 355, five under the 360 a GitHub-hosted job may run
+    # Change 0004: a set commands.drive adds gate.drive_timeout to the commands step and takes its
+    # minutes off the (e) session's wall clock, so the job stays at 355 (115 + 5 + 55 + 10 + 125 +
+    # 45 with the default 300 s); a cap already under 30 gives up nothing, and a drive that would
+    # take a cap of 30 or more below 30 parks the change before the session starts. Not counted
+    # here: commands.setup (up to 15 minutes, more with Playwright's browser install) and the R18
+    # triage step after a park (5 minutes; 360 with it, the most a GitHub-hosted job may run)
     timeout-minutes: 355
     steps:
       # Decision 33: the automation pushes and opens pull requests as the project's GitHub
