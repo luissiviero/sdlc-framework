@@ -108,7 +108,7 @@ Risk 6 (the phone owner) is the sixth: covered by R21 at rank 27, which should m
 
 ## Verdict
 
-**Not yet; ready after those five**, under the assumptions above (deploy by hand on the trial, ranks 8 to 20 landing as ordered). Risks 1 to 3 are small code changes with a test each, risk 5 is an `/sdlc-init` proposal, and risk 4 is two keys and one documentation line; none reopens a decision. Without risk 1 the trial on a non-Python, non-Node project is a trial of the gate only, not of the loop; without risk 3 the first thing phase (f) says about the real project will be wrong.
+**Not yet; ready after those five**, under the assumptions above (deploy by hand on the trial, ranks 8 to 20 landing as ordered). Risks 1 to 3 are small code changes with a test each, risk 5 is an `/sdlc-init` proposal, and risk 4 is two keys and one documentation line; none reopens a decision. Without risk 1 the trial on a non-Python, non-Node project is a trial of the gate only, not of the loop; without risk 3 the first thing phase (f) says about the real project will be wrong. *[2026-10-25: re-checked against `main` at `7ac4131` (plugin 1.0.44) in `docs/reviews/2026-10-25-trial-readiness-recheck.md`: R61 (#350, 1.0.29; #355, 1.0.32) built a mechanism for each of the five; risks 2, 3 and 5 are closed for the seven languages detection counts, risks 1 and 4 partly closed, risk 6 closed for the trial by R21 part 1 (#357). What is still needed before `/sdlc-init` is listed there, in order.]*
 
 ## Checks
 
