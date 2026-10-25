@@ -1,8 +1,8 @@
-"""Deterministic check behind the ux-conventions skill: which UI files the change touches and
+"""Deterministic check behind the ux-and-brand skill (``ux-conventions`` before plugin 1.0.46): which UI files the change touches and
 whether the change folder holds the mock and the screenshots the visual loop needs (article
 p.28 step 5). Advisory.
 
-    python "${CLAUDE_PLUGIN_ROOT}/plugin/skills/ux-conventions/check.py" --root . [--id 0001]
+    python "${CLAUDE_PLUGIN_ROOT}/plugin/skills/ux-and-brand/check.py" --root . [--id 0001]
 """
 
 from __future__ import annotations
@@ -36,8 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     notes: list[str] = [ch.note] if ch.note else []
     ui_files = [f for f in ch.files if is_ui(f)]
     if not ui_files:
-        notes.append("no UI file in the diff; the UX conventions do not apply to this change")
-        return policy.report("ux-conventions check", findings, notes)
+        notes.append("no UI file in the diff; the UX and brand rules do not apply to this change")
+        return policy.report("ux-and-brand check", findings, notes)
     notes.append(f"UI files changed: {', '.join(ui_files[:10])}")
     for rel, lines in ch.added.items():
         if rel in ui_files and Path(rel).suffix.lower() in {
@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
                 notes.append(f"screenshots in evidence/: {', '.join(images[:10])}")
     else:
         notes.append("pass --id <change id> to check the screenshots in evidence/")
-    return policy.report("ux-conventions check", findings, notes)
+    return policy.report("ux-and-brand check", findings, notes)
 
 
 if __name__ == "__main__":

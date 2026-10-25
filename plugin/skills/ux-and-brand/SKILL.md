@@ -1,9 +1,9 @@
 ---
-name: ux-conventions
+name: ux-and-brand
 description: The organization's UX and brand conventions for user-facing interfaces. Use whenever designing, building or reviewing a screen, page, component, form, CLI output or error message that a person sees — the spec.md design pass, UI work in the build phase and the visual loop in the test phase ("follow the UX conventions", "design the form", "match the mock", "write the error message").
 ---
 
-# UX conventions
+# UX and brand
 
 ## Source
 - Article p.12–14 (design phase: "brand, security, compliance, and UX policies written as
@@ -41,12 +41,12 @@ description: The organization's UX and brand conventions for user-facing interfa
 ## Check
 Run the deterministic check and include its output in your summary (article p.22 pattern):
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/skills/ux-conventions/check.py" --root "${CLAUDE_PROJECT_DIR}" --id <change id>
+python "${CLAUDE_PLUGIN_ROOT}/plugin/skills/ux-and-brand/check.py" --root "${CLAUDE_PROJECT_DIR}" --id <change id>
 ```
 It lists the UI files in the diff, flags copy hard-coded in markup, and reports whether
 `evidence/proof/` or `evidence/screenshots/` holds a screenshot. Example output:
 ```
-## ux-conventions check
+## ux-and-brand check
 - UI changed but evidence/proof/ and evidence/screenshots/ hold no screenshot: run the visual loop (implement, screenshot, compare with the mock) and save the result
 - note: UI files changed: src/components/Form.tsx
 ```

@@ -3829,6 +3829,22 @@ def test_a_quick_intent_s_spec_must_state_what_it_assumed(tmp_path):
     assert checks.check_artifacts(ctx).ok
 
 
+def test_the_intent_header_needs_no_status_line_and_an_old_one_is_accepted(tmp_path):
+    """R45 row 77: ``Status:`` left the intent template and the gate's required fields; an
+    intent written before plugin 1.0.46 keeps the line as history and still passes."""
+    assert "Status:" not in art.INTENT_HEADER_FIELDS
+    ctx = _ctx(tmp_path, phase="intent")
+    new = INTENT.replace(" Status: accepted.", "", 1)
+    assert "Status:" not in new
+    write(ctx.change_dir / "intent.md", new)
+    assert checks.check_artifacts(ctx).ok
+    write(ctx.change_dir / "intent.md", INTENT)  # the old header, kept as history
+    assert checks.check_artifacts(ctx).ok
+    write(ctx.change_dir / "intent.md", new.replace(" Change id: 0001.", "", 1))
+    result = checks.check_artifacts(ctx)
+    assert not result.ok and "intent.md header lacks Change id:" in result.reason
+
+
 # --- change 0004 (ROADMAP R14): the drive target and the proof items -------------------------
 DRIVE_SCRIPT = """import json
 import os

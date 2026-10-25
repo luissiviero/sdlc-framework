@@ -274,7 +274,8 @@ FIX_WORKFLOW = "sdlc-fix.yml"  # decisions 22 and 24 (plugin 0.2.13)
 ABANDON_WORKFLOW = "sdlc-abandon.yml"  # decision 25 (plugin 0.2.13)
 DETECT_WORKFLOW = "sdlc-detect.yml"  # build guide step 37, decisions 14/15/26 (plugin 0.2.19)
 RUNBOOK_WORKFLOW = "sdlc-runbook.yml"  # the owner's Go on a runbook (plugin 0.2.19)
-EVALS_WORKFLOW = "sdlc-evals.yml"  # build guide step 35 (plugin 0.2.19)
+# build guide step 35 (plugin 0.2.19); sdlc-evals.yml before plugin 1.0.46 (R45 row 78)
+EVALS_WORKFLOW = "sdlc-agent-evals.yml"
 SCAN_WORKFLOW = "sdlc-scan.yml"  # build guide step 38, decision 16 (plugin 0.2.19)
 COMMENT_WORKFLOW = "sdlc-comment.yml"  # the owner's @claude comment (decision 34, R17)
 MERGE_WORKFLOW = "sdlc-merge.yml"  # the deploy gate is the owner's approval (decision 36, R22)
@@ -917,6 +918,9 @@ def test_evals_workflow_runs_on_configuration_changes_and_nightly():
     """Build guide step 35 (article p.30 step 3: "on any change to CLAUDE.md, skills or
     hooks" and on a schedule; step 4: the pass rate gates the change)."""
     data = _workflow_yaml(EVALS_WORKFLOW)
+    # R45 row 78: named after the article's .github/workflows/agent-evals.yml (p.30)
+    assert data["name"] == "SDLC agent evals"
+    assert not (WORKFLOW_DIR / "sdlc-evals.yml").exists()
     on = _triggers(data)
     assert on["pull_request"]["paths"] == ["CLAUDE.md", ".claude/**", "evals/**"]
     assert on["pull_request"]["branches"] == ["main"] and "schedule" in on
@@ -933,7 +937,7 @@ def test_evals_workflow_runs_on_configuration_changes_and_nightly():
     assert job["steps"][-1]["name"] == "Keep the report"
 
 
-@pytest.mark.parametrize("name", ["sdlc-evals.yml", "sdlc-fix.yml"])
+@pytest.mark.parametrize("name", [EVALS_WORKFLOW, "sdlc-fix.yml"])
 def test_a_head_s_setup_command_is_the_default_branch_s_and_the_framework_is_fetched_again(name):
     """R44 (the head's own setup command): where a session's head reaches the setup step,
     the command comes from the default branch's sdlc.yaml and the framework the install could

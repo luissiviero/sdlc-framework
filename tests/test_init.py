@@ -654,7 +654,8 @@ WORKFLOWS = (
     ".github/workflows/sdlc-abandon.yml",  # decision 25 (plugin 0.2.13)
     ".github/workflows/sdlc-detect.yml",  # build guide step 37 (plugin 0.2.19)
     ".github/workflows/sdlc-runbook.yml",  # the owner's Go on a runbook (plugin 0.2.19)
-    ".github/workflows/sdlc-evals.yml",  # build guide step 35 (plugin 0.2.19)
+    # build guide step 35 (plugin 0.2.19); sdlc-evals.yml before 1.0.46 (R45 row 78)
+    ".github/workflows/sdlc-agent-evals.yml",
     ".github/workflows/sdlc-scan.yml",  # build guide step 38 (plugin 0.2.19)
 )
 PIN_SCRIPT = ".github/scripts/sdlc_pin.py"

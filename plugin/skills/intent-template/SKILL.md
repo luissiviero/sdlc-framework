@@ -15,7 +15,7 @@ in this order, then Examples/References; add the Evidence section only for incid
 
 ```markdown
 # Intent: <short title>
-Author: <name> (<role>). Status: draft | proposed | accepted. Change id: <id>. Entry route: idea | ticket <number> | incident <reference>.
+Author: <name> (<role>). Change id: <id>. Entry route: idea | ticket <number> | incident <reference>.
 
 ## Problem
 <the situation in the originator's own words: who is affected, what happens today, cost>
@@ -43,8 +43,10 @@ CI run); what was ruled out>
 
 Rules
 - Plain language, no formal notation (p.10 step 1). Short paragraphs or bullets.
-- `Status` moves draft → proposed (owner has corrected it) → accepted (the intent PR merged).
-  The merge is the record of acceptance; do not add approval lines to the file.
+- The header carries no status: `status.yaml` holds where the change is (R45 row 77). An
+  intent written before plugin 1.0.46 keeps its `Status:` line as history; leave it, and the
+  gate neither requires nor refuses it. The intent PR's merge is the record of acceptance; do
+  not add approval lines to the file.
 - `Change id` is allocated by `plugin/state` (four digits); never invent one.
 - Ticket route: put the ticket number in the header and in `status.yaml: external_ref`
   (decision 9: the repo is the source of truth, the tracker holds the link).

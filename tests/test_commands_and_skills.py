@@ -147,9 +147,10 @@ def test_intent_skill_sections_in_article_order():
     ]
     positions = [body.index(h) for h in order]
     assert positions == sorted(positions)
-    assert (
-        "Author:" in body and "Status:" in body and "Change id:" in body and "Entry route:" in body
-    )
+    assert "Author:" in body and "Change id:" in body and "Entry route:" in body
+    # R45 row 77: the header carries no status line; an old intent keeps its line as history
+    header = next(line for line in body.splitlines() if line.startswith("Author:"))
+    assert "Status:" not in header and "keeps its `Status:` line as history" in body
     assert "idea | ticket" in body and "incident" in body
 
 

@@ -1,4 +1,6 @@
-# The project's eval suite (build guide step 35; decision 17; article p.29-31: "a suite that
+# The project's eval suite of the agent's configuration, named after the article's
+# .github/workflows/agent-evals.yml (p.30; R45 row 78: sdlc-evals.yml before plugin 1.0.46)
+# (build guide step 35; decision 17; article p.29-31: "a suite that
 # runs whenever the agent's configuration changes ... non-interactively in CI on a schedule
 # and on any change to CLAUDE.md, skills or hooks"; p.30 step 4 "Gate configuration changes
 # on the results").
@@ -24,7 +26,7 @@
 #
 # /sdlc-init rewrote `branches: [main]` below to this project's default branch and filled
 # in the framework repository. The Claude Code version is read from sdlc.yaml at run time.
-name: SDLC evals
+name: SDLC agent evals
 
 on:
   pull_request:
@@ -41,7 +43,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: "sdlc-evals-${{ github.event.pull_request.head.ref || github.ref }}"
+  group: "sdlc-agent-evals-${{ github.event.pull_request.head.ref || github.ref }}"
   cancel-in-progress: false
 
 jobs:
@@ -121,6 +123,6 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: sdlc-evals-report-${{ github.run_id }}
+          name: sdlc-agent-evals-report-${{ github.run_id }}
           path: evals-report.json
           if-no-files-found: ignore

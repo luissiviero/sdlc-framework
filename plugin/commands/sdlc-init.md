@@ -124,6 +124,12 @@ the template of every release (`plugin/init/template_hashes.json`):
   `policies/README.md`) is replaced with this version's and reported
   `refreshed (was <version>)`, the first release that shipped the text it had; the report's
   `refreshed` map lists them;
+- a copy the template renamed (`sdlc-evals.yml`, now `sdlc-agent-evals.yml` after the
+  article's `agent-evals.yml`, p.30; R45 row 78, plugin 1.0.46) is removed when an older
+  release wrote it and nobody changed it since, reported `removed (was <version>): …`, and
+  the new file is installed in its place; an edited one is kept and reported `kept; renamed
+  (edited): …`, and the new file is reported `not installed: …` until the owner moves the
+  edits and deletes the old copy, so the suite never runs twice;
 - an edited copy is kept, and so is one rendered with values the project no longer has
   (another framework repository, a renamed default branch, changed `commands.env` names): a
   workflow is reported `outdated: …`, a README or `evals/check.py` `kept; outdated (edited):

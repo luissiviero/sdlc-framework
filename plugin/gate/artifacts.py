@@ -31,7 +31,10 @@ INTENT_SECTIONS = (
 # Incidents only (article p.44 step 5: "the anomaly and its evidence"): required by gate (maintain)
 # when ``status.yaml: entry_route`` is ``incident``.
 INTENT_EVIDENCE_SECTION = "## Evidence"
-INTENT_HEADER_FIELDS = ("Author:", "Status:", "Change id:", "Entry route:")
+# R45 row 77: the header no longer carries ``Status:`` (``status.yaml`` holds the phase, and a
+# frozen header line disagreed with it); an intent written before plugin 1.0.46 keeps its
+# ``Status:`` line as history, and the gate neither requires nor refuses it.
+INTENT_HEADER_FIELDS = ("Author:", "Change id:", "Entry route:")
 # R29 part 1: the section for the owner's examples and references (skill ``intent-template``).
 # Not in INTENT_SECTIONS: the gate does not require it, so changes in flight and the
 # detection's incident intents never park on it (docs/proposals/intent-home.md).

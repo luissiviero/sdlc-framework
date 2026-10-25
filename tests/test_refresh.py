@@ -163,7 +163,7 @@ def test_an_env_edit_is_never_taken_for_the_markers():
 
 def test_a_main_filter_on_a_trunk_project_is_an_edit():
     """The install rewrote every filter to the default branch, so one set back is an edit."""
-    rel = ".github/workflows/sdlc-evals.yml"
+    rel = ".github/workflows/sdlc-agent-evals.yml"
     template = (TEMPLATE / rel).read_text(encoding="utf-8")
     copy = _render(rel, template, [], "trunk")
     assert "branches: [trunk]" in copy
@@ -229,6 +229,57 @@ def test_a_guardrail_file_is_never_written_even_when_pristine(project, monkeypat
     assert _init(project)["files"]["REVIEW.md"] == "kept"  # the owner's content: no noise
 
 
+OLD_EVALS = ".github/workflows/sdlc-evals.yml"
+NEW_EVALS = ".github/workflows/sdlc-agent-evals.yml"
+
+
+def _old_evals() -> str:
+    """The evals workflow as a release before 1.0.46 had it, under its old name."""
+    text = (TEMPLATE / NEW_EVALS).read_text(encoding="utf-8")
+    return text.replace("name: SDLC agent evals\n", "name: SDLC evals\n") + OLDER_YAML
+
+
+def test_the_renamed_evals_workflow_is_known_by_its_old_name():
+    """R45 row 78: the old name stays readable for one release, beside the new one."""
+    assert sdlc_init.RENAMED_COPIES == {OLD_EVALS: NEW_EVALS}
+    assert NEW_EVALS in sdlc_init.WORKFLOW_FILES and OLD_EVALS not in sdlc_init.WORKFLOW_FILES
+    assert not (TEMPLATE / OLD_EVALS).exists()
+
+
+def test_an_upgrade_replaces_a_pristine_old_evals_workflow_with_the_new_one(project, monkeypatch):
+    """R45 row 78: /sdlc-init's upgrade removes a pristine sdlc-evals.yml and installs
+    sdlc-agent-evals.yml in its place; a second re-run moves nothing."""
+    _manifest_with(monkeypatch, {OLD_EVALS: _old_evals()})
+    (project / NEW_EVALS).unlink()
+    (project / OLD_EVALS).write_text(_render(OLD_EVALS, _old_evals()), encoding="utf-8")
+    report = _init(project)
+    assert report["files"][OLD_EVALS].startswith("removed (was 1.0.10)")
+    assert "sdlc-agent-evals.yml" in report["files"][OLD_EVALS]
+    assert report["files"][NEW_EVALS] == "created"
+    assert not (project / OLD_EVALS).exists()
+    text = (project / NEW_EVALS).read_text(encoding="utf-8")
+    assert "name: SDLC agent evals" in text
+    again = _init(project)
+    assert OLD_EVALS not in again["files"] and again["files"][NEW_EVALS] == "unchanged"
+
+
+def test_an_upgrade_keeps_an_edited_old_evals_workflow_and_reports_it(project, monkeypatch):
+    """R45 row 78: an edited sdlc-evals.yml is the owner's: kept, reported, and the new file
+    waits for it to go, so the suite never runs twice; once it is gone the new file comes."""
+    _manifest_with(monkeypatch, {OLD_EVALS: _old_evals()})
+    (project / NEW_EVALS).unlink()
+    edited = _render(OLD_EVALS, _old_evals()) + "# ours\n"
+    (project / OLD_EVALS).write_text(edited, encoding="utf-8")
+    report = _init(project)
+    assert report["files"][OLD_EVALS].startswith("kept; renamed (edited)")
+    assert "sdlc-agent-evals.yml" in report["files"][OLD_EVALS]
+    assert report["files"][NEW_EVALS].startswith("not installed: the edited sdlc-evals.yml")
+    assert (project / OLD_EVALS).read_text(encoding="utf-8") == edited
+    assert not (project / NEW_EVALS).exists()
+    (project / OLD_EVALS).unlink()  # the owner moved the edits, or dropped them
+    assert _init(project)["files"][NEW_EVALS] == "created"
+
+
 def test_the_check_script_is_refreshed_like_the_readmes(project, monkeypatch):
     rel = "evals/check.py"
     _manifest_with(monkeypatch, {rel: _older(rel)})
@@ -239,7 +290,8 @@ def test_the_check_script_is_refreshed_like_the_readmes(project, monkeypatch):
 def test_the_shipped_manifest_is_well_formed():
     data = json.loads(refresh.MANIFEST.read_text(encoding="utf-8"))
     assert data["schema"] == refresh.SCHEMA
-    rels = {*sdlc_init.REFRESHED_COPIES, *sdlc_init.REPORTED_COPIES}
+    # R45 row 78: an old name keeps its released hashes for one release
+    rels = {*sdlc_init.REFRESHED_COPIES, *sdlc_init.REPORTED_COPIES, *sdlc_init.RENAMED_COPIES}
     for key in ("files", "files_marked"):
         assert set(data[key]) == rels
         for known in data[key].values():
@@ -278,6 +330,8 @@ def test_template_hashes_keeps_the_first_version_and_refuses_a_clone_without_tag
     tasks = _tasks()
     monkeypatch.setattr(sdlc_init, "REFRESHED_COPIES", (README,))
     monkeypatch.setattr(sdlc_init, "REPORTED_COPIES", ("REVIEW.md",))
+    old_name = "changes/OLD.md"  # R45 row 78: a name the template no longer has
+    monkeypatch.setattr(sdlc_init, "RENAMED_COPIES", {old_name: README})
     root = tmp_path / "fw"
     (root / ".claude-plugin").mkdir(parents=True)
     (root / "template" / "changes").mkdir(parents=True)
@@ -292,13 +346,15 @@ def test_template_hashes_keeps_the_first_version_and_refuses_a_clone_without_tag
 
     _git(tmp_path, "init", "-q", str(root))
     ship("1.0.0", "one\n", None)
+    (root / "template" / old_name).write_text("old\n", encoding="utf-8")
     _git(root, "add", ".")
     _git(root, "commit", "-q", "-m", "1.0.0")
     with pytest.raises(tasks.NoTagsError):
         tasks.template_hashes(root)
     _git(root, "tag", "v1.0.0")
     ship("1.0.1", "two\n", "review\n")
-    _git(root, "add", ".")
+    (root / "template" / old_name).unlink()  # renamed: gone from the working tree
+    _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "1.0.1")
     _git(root, "tag", "v1.0.1")
     ship("1.0.2", "one\n", "review\n")  # the first text, back in the working tree
@@ -306,3 +362,5 @@ def test_template_hashes_keeps_the_first_version_and_refuses_a_clone_without_tag
     readme = maps["files"][README]
     assert readme == {refresh.digest("one\n"): "1.0.0", refresh.digest("two\n"): "1.0.1"}
     assert maps["files"]["REVIEW.md"] == {refresh.digest("review\n"): "1.0.1"}
+    # the old name keeps the texts its tags shipped, though the working tree has none
+    assert maps["files"][old_name] == {refresh.digest("old\n"): "1.0.0"}
