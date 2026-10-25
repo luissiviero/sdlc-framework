@@ -1191,8 +1191,8 @@ def test_phase_file_reads_the_letter_s_file_only_when_the_name_s_is_missing(tmp_
     assert c.phase_file(tmp_path, "{phase}-{n}-reviewer.md", "b", n=2) == (
         tmp_path / "design-2-reviewer.md"
     )
-    with pytest.raises(ValueError):
-        c.phase_file(tmp_path, pattern, "review")
+    # a run that is not a phase has one name: its file comes back as it is
+    assert c.phase_file(tmp_path, pattern, "review") == tmp_path / "gate-review.json"
 
 
 def test_existing_branch_keeps_a_change_in_flight_on_its_letter_branch(repo):
