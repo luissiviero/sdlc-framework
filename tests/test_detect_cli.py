@@ -452,7 +452,7 @@ def test_run_spike_with_file_opens_the_incident_change(tmp_path, src, gh, capsys
     assert out["outcome"] == f"filed change {change_id}"
     change = incident_dir(root, change_id)
     st = status_mod.read_status(change)
-    assert (st.entry_route, st.change_type, st.phase) == ("incident", "fix", "f")
+    assert (st.entry_route, st.change_type, st.phase) == ("incident", "fix", "maintain")
 
     record = json.loads((change / "evidence" / "detection.json").read_text(encoding="utf-8"))
     assert finding.validate(record) == []
@@ -919,7 +919,8 @@ def test_park_records_the_failed_setup_step_where_the_owner_looks(
     assert st.parked_reason == reason and st.phase == "maintain"
     assert st.runbook_authorized_by is None
     gate = json.loads((change / "evidence" / "gate-maintain.json").read_text(encoding="utf-8"))
-    assert gate["result"] == "park" and gate["phase"] == "f" and gate["label"] == "sdlc:needs-human"
+    assert gate["result"] == "park" and gate["phase"] == "maintain"
+    assert gate["label"] == "sdlc:needs-human"
     [check] = gate["checks"]
     assert check == {
         "name": "setup",
@@ -1144,6 +1145,32 @@ def test_open_incidents_finds_the_filed_one_for_its_metric_only(incident):
     assert (found["change_id"], found["ref"]) == ("0001", "origin/sdlc/0001/intent")
     assert found["signature"] == finding.signature(METRIC, "we1")
     assert detect_cli.open_incidents(root, "p95_latency") == []
+
+
+def test_open_incidents_reads_the_letter_branch_of_an_older_plugin_for_good(incident):
+    """R45, choice 273: remote branches are never renamed, so an incident an older plugin
+    filed on ``sdlc/0001/a`` is found there, once per change even beside a name branch, and
+    a letter ``phase: e`` on the default branch still reads as shipped."""
+    root, change = incident
+    letter = "sdlc/0001/" + "a"
+    git(root, "push", "-q", "origin", f"origin/sdlc/0001/intent:refs/heads/{letter}")
+    git(root, "fetch", "-q", "origin")
+    [found] = detect_cli.open_incidents(root, METRIC)
+    assert found["ref"] == "origin/sdlc/0001/intent"  # the name's branch first
+    git(root, "push", "-q", "origin", "--delete", "sdlc/0001/intent")
+    git(root, "fetch", "-q", "--prune", "origin")
+    [found] = detect_cli.open_incidents(root, METRIC)
+    assert found["ref"] == f"origin/{letter}" and found["change_id"] == "0001"
+    rel = f"changes/{change.name}"
+    git(root, "checkout", "-q", "main")
+    git(root, "checkout", f"origin/{letter}", "--", rel)
+    path = root / rel / "status.yaml"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("phase: maintain", "phase: " + "e"), encoding="utf-8")
+    git(root, "add", "--", rel)
+    git(root, "commit", "-q", "-m", "shipped by an older plugin")
+    git(root, "push", "-q", "origin", "main")
+    assert detect_cli.open_incidents(root, METRIC) == []
 
 
 def test_open_incidents_ignores_an_abandoned_incident(incident):

@@ -166,7 +166,7 @@ def drive_floor_refusal(config: Any, build: bool) -> str | None:
     if not less or whole < RUN_CAP_FLOOR_MINUTES or whole - less >= RUN_CAP_FLOOR_MINUTES:
         return None
     return (
-        f"gate.drive_timeout takes {less} min off the (deploy) session's {whole} min, below the "
+        f"gate.drive_timeout takes {less} min off the deploy session's {whole} min, below the "
         f"floor of {RUN_CAP_FLOOR_MINUTES} min"
     )
 

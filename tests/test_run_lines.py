@@ -66,9 +66,9 @@ def test_each_line_names_its_credential_and_time_and_a_timeout_has_no_figure(tmp
     result(ev, "claude-deploy.json", sdlc_run=meta("oauth", 7500, timed_out=True), raw="")
     lines = limits.run_lines(ev)
     assert [(ln["credential"], ln["usd"], ln["seconds"], ln["stop"]) for ln in lines] == [
-        ("oauth", 3.0, 3600.0, None),
-        (None, 0.5, 90.0, "error_max_turns"),
-        ("oauth", None, 7500.0, "timeout"),
+        ("oauth", 3.0, 3600.0, None),  # claude-build.json; the records sort by run name
+        ("oauth", None, 7500.0, "timeout"),  # claude-deploy.json
+        (None, 0.5, 90.0, "error_max_turns"),  # claude-test.json
     ]
     spent = limits.spend_from_runs(ev)
     assert spent["unknown"] == 1 and spent["total_usd"] == 3.5

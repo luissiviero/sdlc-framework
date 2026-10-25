@@ -237,7 +237,7 @@ def test_the_round_s_request_names_each_item_with_expected_and_seen():
         "status.code == 200, seen 500"
     ) in body
     assert request["targets"][0]["items"][0]["seen"] == 500
-    prompt = auto_round.judge_prompt("0004", "changes/0004-x", "c", 2, 2, targets)
+    prompt = auto_round.judge_prompt("0004", "changes/0004-x", "build", 2, 2, targets)
     assert "drive.log" in prompt and "the record's `proof` entry" in prompt
 
 
@@ -365,7 +365,7 @@ def test_a_red_target_below_the_cap_dispatches_the_next_fix_round(
     # the round goes through the only start the workflow token's events allow
     assert sent == [("owner/name", "sdlc-fix.yml", "main", "0001", "sdlc/0001/build")]
     data = json.loads((change / "evidence" / c.AUTO_ROUND_FILE).read_text(encoding="utf-8"))
-    assert data["round"] == 1 and data["cap"] == 3 and data["phase"] == "c"
+    assert data["round"] == 1 and data["cap"] == 3 and data["phase"] == "build"
     assert data["status"] == "dispatched" and data["after_reset"] is False
     assert data["head"] == git(root, "rev-parse", "HEAD").strip()
     assert data["run"]["url"] == "https://github.com/owner/name/actions/runs/777"
@@ -600,26 +600,42 @@ def test_the_runner_enforces_the_count_a_session_did_not_bump(project, monkeypat
     the round this run took counts one from the count it started from (raised, never
     lowered); at the cap reached that way the judge is asked."""
     root, change = project
-    write(change / "evidence" / "gate-build.json", json.dumps(red_record("c")))
+    write(change / "evidence" / "gate-build.json", json.dumps(red_record("build")))
     set_state(change, "build", gate_phase="build", gate_result="parked", parked="red")
     args = Args(root=str(root), dry_run=False)
     took = {"round": 2, "iterations_at_take": 1}
     st = status_mod.read_status(change)
     st.iterations = 1
     status_mod.write_status(change, st)
-    got = run_phase.auto_fix_round(args, ROOT, root, change, "0001", "c", {}, {}, took=took)
+    got = run_phase.auto_fix_round(args, ROOT, root, change, "0001", "build", {}, {}, took=took)
     assert got["count_enforced"] == {"from": 1, "to": 2} and got["round"] == 3
     assert status_mod.read_status(change).iterations == 2
     # a session that did bump is not counted twice
     got = run_phase.auto_fix_round(
-        args, ROOT, root, change, "0001", "c", {}, {}, took={"round": 3, "iterations_at_take": 1}
+        args,
+        ROOT,
+        root,
+        change,
+        "0001",
+        "build",
+        {},
+        {},
+        took={"round": 3, "iterations_at_take": 1},
     )
     assert "count_enforced" not in got and status_mod.read_status(change).iterations == 2
     # round 3 from a count of 2, not bumped: the automatic rounds reach the cap -> the judge
     judge_calls: list = []
     judge(monkeypatch, {"ok": True, "reset": False, "reasons": "no progress"}, judge_calls)
     got = run_phase.auto_fix_round(
-        args, ROOT, root, change, "0001", "c", {}, {}, took={"round": 3, "iterations_at_take": 2}
+        args,
+        ROOT,
+        root,
+        change,
+        "0001",
+        "build",
+        {},
+        {},
+        took={"round": 3, "iterations_at_take": 2},
     )
     assert got["action"] == "park" and len(judge_calls) == 1
     assert status_mod.read_status(change).iterations == 3
@@ -638,15 +654,15 @@ def test_an_owner_s_reset_by_hand_is_not_undone(project, monkeypatch):
     assert (
         gate_cli.main(["set-iterations", "--root", str(root), "--id", "0001", "--count", "0"]) == 0
     )
-    write(change / "evidence" / "gate-build.json", json.dumps(red_record("c")))
+    write(change / "evidence" / "gate-build.json", json.dumps(red_record("build")))
     judge(monkeypatch, None)  # raises if called
     args = Args(root=str(root), dry_run=False)
-    got = run_phase.auto_fix_round(args, ROOT, root, change, "0001", "c", {}, RUN_ENV)
+    got = run_phase.auto_fix_round(args, ROOT, root, change, "0001", "build", {}, RUN_ENV)
     assert "count_enforced" not in got and got["action"] == "round" and got["round"] == 1
     assert status_mod.read_status(change).iterations == 0
     # the owner's round that took a pending round after the reset counts from 0
     got = run_phase.auto_fix_round(
-        args, ROOT, root, change, "0001", "c", {}, RUN_ENV,
+        args, ROOT, root, change, "0001", "build", {}, RUN_ENV,
         took={"round": 1, "iterations_at_take": 0},
     )  # fmt: skip
     assert got["count_enforced"] == {"from": 0, "to": 1} and got["round"] == 2
@@ -680,7 +696,7 @@ def test_the_judge_is_read_only_on_the_advocate_s_model(project, monkeypatch):
     monkeypatch.setattr(run_phase, "invoke", fake_invoke)
     targets = auto_round.red_targets(red_record())
     got = run_phase.run_reset_judge(
-        Args(root=str(root)), ROOT, root, change, "0001", "c",
+        Args(root=str(root)), ROOT, root, change, "0001", "build",
         {"panel_advocate_model": "opus"}, {**KEY_ENV, "GITHUB_TOKEN": FAKE_TOKEN,
         "GH_TOKEN": FAKE_TOKEN}, 3, 3, targets,
     )  # fmt: skip
@@ -704,14 +720,24 @@ def test_the_judge_is_read_only_on_the_advocate_s_model(project, monkeypatch):
     monkeypatch.setattr(run_phase, "invoke", lambda *a, **k: ({"result": "maybe"}, "", "", 0))
     assert (
         run_phase.run_reset_judge(
-            Args(root=str(root)), ROOT, root, change, "0001", "c", {}, dict(KEY_ENV), 3, 3, targets
+            Args(root=str(root)),
+            ROOT,
+            root,
+            change,
+            "0001",
+            "build",
+            {},
+            dict(KEY_ENV),
+            3,
+            3,
+            targets,
         )["ok"]
         is False
     )
     # R7: the judge runs on the adversarial reviewer's model when sdlc.yaml names one
     monkeypatch.setattr(run_phase, "invoke", fake_invoke)
     run_phase.run_reset_judge(
-        Args(root=str(root)), ROOT, root, change, "0001", "c",
+        Args(root=str(root)), ROOT, root, change, "0001", "build",
         {"adversarial_model": "claude-opus-5-5", "panel_advocate_model": "claude-fable-5-1"},
         dict(KEY_ENV), 3, 3, targets,
     )  # fmt: skip
@@ -720,7 +746,17 @@ def test_the_judge_is_read_only_on_the_advocate_s_model(project, monkeypatch):
     assert (
         "claude exited 1"
         in run_phase.run_reset_judge(
-            Args(root=str(root)), ROOT, root, change, "0001", "c", {}, dict(KEY_ENV), 3, 3, targets
+            Args(root=str(root)),
+            ROOT,
+            root,
+            change,
+            "0001",
+            "build",
+            {},
+            dict(KEY_ENV),
+            3,
+            3,
+            targets,
         )["reason"]
     )
 
@@ -733,7 +769,7 @@ def pending_round(root: Path, change: Path, iterations: int = 0) -> dict:
     targets = auto_round.red_targets(red_record())
     data = auto_round.start_round(change, "build", iterations, 3, targets, head, {})
     git(root, "add", ".")
-    git(root, "commit", "-q", "-m", "run(c): spend recorded; automatic fix round 1 of 3")
+    git(root, "commit", "-q", "-m", "run(build): spend recorded; automatic fix round 1 of 3")
     return data
 
 
@@ -876,17 +912,17 @@ def test_the_pr_summary_names_the_run_its_evidence_came_from(project):
     set_state(change, "build", gate_phase="build", gate_result="passed")
     write(change / "evidence" / "gate-build.json", json.dumps({**GATE_FILE, "phase": "build"}))
     assert "Run:" not in desc.build_description(root, "0001", "build")  # by hand: no line
-    assert run_phase.stamp_run_record(change, "c", RUN_ENV) is None  # no record to stamp
+    assert run_phase.stamp_run_record(change, "build", RUN_ENV) is None  # no record to stamp
     assert not (change / "evidence" / "run-build.json").exists()
     write(change / "evidence" / "run-build.json", json.dumps({"phase": "build", "spend_usd": 1.0}))
-    run_phase.stamp_run_record(change, "c", {})
+    run_phase.stamp_run_record(change, "build", {})
     assert "Run:" not in desc.build_description(root, "0001", "build")
-    assert run_phase.stamp_run_record(change, "c", RUN_ENV)["id"] == "777"
+    assert run_phase.stamp_run_record(change, "build", RUN_ENV)["id"] == "777"
     run_file = json.loads((change / "evidence" / "run-build.json").read_text(encoding="utf-8"))
     assert run_file["spend_usd"] == 1.0  # the run record keeps what it carried
     body = desc.build_description(root, "0001", "build")
     assert (
-        "Run: the evidence and the gate record of phase (c) come from "
+        "Run: the evidence and the gate record of phase (build) come from "
         "[workflow run 777](https://github.com/owner/name/actions/runs/777)."
     ) in body
 
@@ -907,7 +943,7 @@ def test_the_verifier_names_the_tree_it_read_and_what_it_did_not_exercise():
     body = " ".join((ROOT / "plugin" / "agents" / "verifier.md").read_text("utf-8").split())
     assert "**Say which tree you read** (decision 29)" in body
     assert "name the record you quoted by its phase and its commit" in body
-    assert "the final tree's result is the runner's" in body and "check run `sdlc/d`" in body
+    assert "the final tree's result is the runner's" in body and "check run `sdlc/test`" in body
     assert "**Not exercised**" in body
     assert "the paths, platforms and inputs this verdict says nothing about" in body
 
@@ -931,9 +967,9 @@ def test_a_red_target_at_a_gate_whose_round_cannot_change_the_code_parks(project
     args = Args(root=str(root), dry_run=False)
     assert run_phase.auto_fix_round(args, ROOT, root, change, "0001", phase, {}, {}) is None
     assert not (change / "evidence" / c.AUTO_ROUND_FILE).exists()
-    write(change / "evidence" / "gate-build.json", json.dumps(red_record("c")))
+    write(change / "evidence" / "gate-build.json", json.dumps(red_record("build")))
     set_state(change, "build", gate_phase="build", gate_result="parked", parked="red")
-    got = run_phase.auto_fix_round(args, ROOT, root, change, "0001", "c", {}, {})
+    got = run_phase.auto_fix_round(args, ROOT, root, change, "0001", "build", {}, {})
     assert got["action"] == "round" and got["round"] == 1
 
 
@@ -991,13 +1027,13 @@ def fix_run(project, fake_claude, monkeypatch, tmp_path, iterations=0):
     data = pending_round(root, change, iterations)
     auto_round.mark_fixing(change, "build", data)
     git(root, "add", ".")
-    git(root, "commit", "-q", "-m", "run(c): automatic fix round 1 of 3")
+    git(root, "commit", "-q", "-m", "run(build): automatic fix round 1 of 3")
     seen = tmp_path / "seen-requests.json"
     monkeypatch.setenv(
         "FAKE_CLAUDE_WATCH", "changes/0001-percent-helper/evidence/fix-requests.json"
     )
     monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(seen))
-    session_gate(monkeypatch, "c")  # the round's own gate writes its record (gap 4)
+    session_gate(monkeypatch, "build")  # the round's own gate writes its record (gap 4)
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN, **RUN_ENV)
     args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/build", dry_run=False,
@@ -1121,7 +1157,7 @@ def test_the_runner_re_runs_a_commands_step_that_failed_once(
     set_state(change, "design", gate_phase="design", gate_result="passed")
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     capsys.readouterr()
-    assert calls == ["c"]
+    assert calls == ["build"]
 
 
 def test_a_re_run_of_the_commands_step_needs_half_its_budget_left(project):
@@ -1130,8 +1166,30 @@ def test_a_re_run_of_the_commands_step_needs_half_its_budget_left(project):
     root, change = project
     write(change / "evidence" / "gate-build.json", json.dumps(DEFERRED_GATE_FILE))
     failed = {"ok": False, "reason": "gate: boom"}
-    assert run_phase.commands_retryable(failed, change, "c", 2000, 3000) is True
-    assert run_phase.commands_retryable(failed, change, "c", 1400, 3000) is False
-    assert run_phase.commands_retryable({"ok": False, "reason": "timed out"}, change, "c") is False
+    assert run_phase.commands_retryable(failed, change, "build", 2000, 3000) is True
+    assert run_phase.commands_retryable(failed, change, "build", 1400, 3000) is False
+    assert (
+        run_phase.commands_retryable({"ok": False, "reason": "timed out"}, change, "build") is False
+    )
     write(change / "evidence" / "gate-build.json", json.dumps({**GATE_FILE, "phase": "build"}))
-    assert run_phase.commands_retryable(failed, change, "c", 2000, 3000) is False  # rewritten
+    assert run_phase.commands_retryable(failed, change, "build", 2000, 3000) is False  # rewritten
+
+
+def test_a_gate_record_an_older_plugin_wrote_is_read_and_the_name_s_written(project):
+    """R45: a change in flight carries ``evidence/gate-c.json``; the round's mark is read
+    from it and written as ``gate-build.json``, and the round's phase is the name."""
+    _root, change = project
+    letter = "c"
+    path = change / "evidence" / f"gate-{letter}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(red_record(letter)), encoding="utf-8")
+    assert auto_round.gate_path(change, letter) == path
+    assert auto_round.gate_path(change, "build") == path
+    assert auto_round.gate_write_path(change, letter).name == "gate-build.json"
+    record = auto_round.mark_fixing(change, letter, {"round": 1, "cap": 3})
+    written = change / "evidence" / "gate-build.json"
+    assert json.loads(written.read_text(encoding="utf-8"))["label"] == c.FIXING_LABEL
+    assert record["label"] == c.FIXING_LABEL
+    assert auto_round.gate_path(change, "build") == written  # the name's from now on
+    assert status_mod.read_status(change).gate.phase == "build"
+    assert auto_round.AUTO_ROUND_PHASES == ("build", "test", "deploy")

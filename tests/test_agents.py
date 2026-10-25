@@ -66,7 +66,8 @@ def test_the_verifier_reads_the_drive_s_images_and_the_reviewer_reads_the_drive(
     _fm, verifier = frontmatter(AGENTS / "verifier.md")
     flat = " ".join(verifier.split())
     for words in (
-        "open the build run's images under `changes/<id>-<slug>/evidence/proof/` with the Read tool",
+        "open the build run's images under `changes/<id>-<slug>/evidence/proof/` with the Read "
+        "tool",
         "compare each with the mock the spec's `Mock:` line names",
         "(`matches`, `differs` with what you saw, or `not produced`)",
         "the commit `evidence/proof/manifest.json` names, not the final tree",

@@ -518,7 +518,7 @@ def validate_decision_file(data: Any) -> list[str]:
 def render_md(phase: str, entries: list[dict[str, Any]]) -> str:
     """The ledger for a person: one line per decision, in the order they were taken."""
     lines = [
-        f"# Decisions taken for you — phase ({phase})",
+        f"# Decisions taken for you — the {phase} phase",
         "",
         "One line per panel decision (decision 21): the item, the reviewer's and the devil's "
         "advocate's verdicts, the conciliator's decision and rationale, the cost. A review "

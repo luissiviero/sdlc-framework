@@ -617,3 +617,11 @@ def test_each_phase_workflow_triages_after_a_fresh_framework_checkout(name):
         if "project_setup.py" in line:
             assert '--out "$RUNNER_TEMP/sdlc-setup.json"' in line, line
     assert "        id: setup\n" in text
+
+
+def test_a_run_file_an_older_plugin_wrote_names_its_phase(tmp_path):
+    """R45: ``phase: c`` in a run's out file reads as the build in the failed-run record."""
+    record = triage.failed_run_record("red", {"phase": "c", "exit_code": 1}, None, [], {})
+    assert record["phase"] == "build"
+    record = triage.failed_run_record("red", {"phase": "review", "exit_code": 1}, None, [], {})
+    assert record["phase"] == "review"

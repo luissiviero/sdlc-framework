@@ -3448,7 +3448,9 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         return EXIT_OK
     refs_before = change_refs(root, change_id)
     pre_head = gate_diff.head_sha(root) if gate_diff.is_repo(root) else None
-    panel_before = len(panel_ledger.load_ledger(change_dir, gate_phase))
+    # the review pass keeps no panel ledger of its own (``gate_phase`` is ``review``)
+    in_phase = gate_phase in c.PHASES
+    panel_before = len(panel_ledger.load_ledger(change_dir, gate_phase)) if in_phase else 0
     # decision 29: the runner's own round and reset records, which the session must not write
     runner_files = auto_round.snapshot_runner_files(change_dir)
     # decision 34: the round's requests file as the runner wrote it; the session may only

@@ -1,9 +1,9 @@
-# Review panel — devil's advocate brief (item 2, phase (f), 0001)
+# Review panel — devil's advocate brief (item 2, the maintain phase, 0001)
 
 You are the adversarial reviewer (writer ≠ judge; article p.42) asked to argue **against**
-the easy answer to one judgment item of change 0001 (Sample change) inside phase
-(f), under deferred review (decision 21). You have not seen and must not look for
-the reviewer's verdict (`evidence/panel/f-2-reviewer.md`): the panel is two blind
+the easy answer to one judgment item of change 0001 (Sample change) inside the
+maintain phase, under deferred review (decision 21). You have not seen and must not look for
+the reviewer's verdict (`evidence/panel/maintain-2-reviewer.md`): the panel is two blind
 verdicts and a conciliator. You judge this one item and nothing else; report only; write
 exactly one file.
 
@@ -29,7 +29,7 @@ all. If, having tried honestly, you find no such reason, say so: "no objection" 
 verdict.
 
 ## Output — the one file you write
-`<ROOT>/changes/0001-sample-change/evidence/panel/f-2-advocate.md` (markdown):
+`<ROOT>/changes/0001-sample-change/evidence/panel/maintain-2-advocate.md` (markdown):
 
 ```
 ## Verdict

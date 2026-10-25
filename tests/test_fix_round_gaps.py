@@ -56,26 +56,26 @@ def _preflight_park(root: Path, change: Path, reason: str = PREFLIGHT_REASON) ->
     st.set_phase("build")
     st.park("preflight: " + reason)
     status_mod.write_status(change, st)
-    run_phase.write_park_result(root, change, st, "c", "preflight", reason)
+    run_phase.write_park_result(root, change, st, "build", "preflight", reason)
 
 
 def test_an_open_pr_does_not_stop_the_restart_of_a_pre_run_preflight_park(project, monkeypatch):
     root, change = project
     _preflight_park(root, change)
     ci_tests._pr_lookup(monkeypatch, 12)
-    assert run_phase.rerun_reason(root, "0001", "c", "owner/name", {}) is None
-    assert run_phase.pre_run_park(root, "0001", "c") is True
+    assert run_phase.rerun_reason(root, "0001", "build", "owner/name", {}) is None
+    assert run_phase.pre_run_park(root, "0001", "build") is True
     # the guard clears the park and puts back the passed gate (design) the preflight followed;
     # the run writes it only after the restart's merge (restart_record), so the guard
     # leaves the committed tree clean
-    _dir, st, _cfg, reason = run_phase.guard(root, "0001", "c", "owner/name", {})
+    _dir, st, _cfg, reason = run_phase.guard(root, "0001", "build", "owner/name", {})
     assert reason is None
     assert st.phase == "build" and st.parked_reason is None
-    assert (st.gate.phase, st.gate.result) == ("b", "passed")
+    assert (st.gate.phase, st.gate.result) == ("design", "passed")
     assert status_mod.read_status(change).parked_reason.startswith("preflight: ")
-    st = run_phase.restart_record(change, "c")
+    st = run_phase.restart_record(change, "build")
     assert st.phase == "build" and st.parked_reason is None
-    assert (st.gate.phase, st.gate.result) == ("b", "passed")
+    assert (st.gate.phase, st.gate.result) == ("design", "passed")
     assert status_mod.read_status(change).parked_reason is None
     # a fix round and the other phases are untouched
     assert run_phase.pre_run_park(root, "0001", "fix") is False
@@ -84,28 +84,28 @@ def test_an_open_pr_does_not_stop_the_restart_of_a_pre_run_preflight_park(projec
 def test_a_preflight_park_after_a_session_is_not_a_restart(project, monkeypatch):
     root, change = project
     _preflight_park(root, change)
-    write(change / "evidence" / "claude-c.json", json.dumps(FAKE_RESULT))
+    write(change / "evidence" / "claude-build.json", json.dumps(FAKE_RESULT))
     ci_tests._pr_lookup(monkeypatch, 12)
-    assert run_phase.pre_run_park(root, "0001", "c") is False
-    reason = run_phase.rerun_reason(root, "0001", "c", "owner/name", {})
+    assert run_phase.pre_run_park(root, "0001", "build") is False
+    reason = run_phase.rerun_reason(root, "0001", "build", "owner/name", {})
     assert reason == (
-        "change 0001 is already at phase c on sdlc/0001/build; pull request #12 carries it (review "
-        "comments go through /sdlc-fix, not a second run)"
+        "change 0001 is already at phase build on sdlc/0001/build; pull request #12 carries it "
+        "(review comments go through /sdlc-fix, not a second run)"
     )
     # a fix round's record the branch added counts as a session too
-    (change / "evidence" / "claude-c.json").unlink()
+    (change / "evidence" / "claude-build.json").unlink()
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "the branch so far")
     git(root, "checkout", "-q", "-b", "sdlc/0001/build")
     write(change / "evidence" / "claude-fix-2.json", json.dumps(FAKE_RESULT))
-    assert run_phase.pre_run_park(root, "0001", "c") is False
+    assert run_phase.pre_run_park(root, "0001", "build") is False
     # one the merge base already carries (a fix round of the design) does not
     git(root, "checkout", "-q", "main")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "a fix round at (b)")
     git(root, "checkout", "-q", "sdlc/0001/build")
     git(root, "merge", "-q", "main")
-    assert run_phase.pre_run_park(root, "0001", "c") is True
+    assert run_phase.pre_run_park(root, "0001", "build") is True
 
 
 def test_a_park_that_is_not_the_preflight_s_is_refused_with_its_pr_open(project, monkeypatch):
@@ -119,13 +119,15 @@ def test_a_park_that_is_not_the_preflight_s_is_refused_with_its_pr_open(project,
         st.set_phase("build")
         st.park(f"{check}: {reason}")
         status_mod.write_status(change, st)
-        run_phase.write_park_result(root, change, st, "c", check, reason)
-        assert run_phase.pre_run_park(root, "0001", "c") is False
-        assert "pull request #12 carries it" in skip_reason(root, "c")
+        run_phase.write_park_result(root, change, st, "build", check, reason)
+        assert run_phase.pre_run_park(root, "0001", "build") is False
+        assert "pull request #12 carries it" in skip_reason(root, "build")
     # a preflight reason over a record whose failed check is another one is refused too
     _preflight_park(root, change)
-    run_phase.write_park_result(root, change, status_mod.read_status(change), "c", "limits", "x")
-    assert "pull request #12 carries it" in skip_reason(root, "c")
+    run_phase.write_park_result(
+        root, change, status_mod.read_status(change), "build", "limits", "x"
+    )
+    assert "pull request #12 carries it" in skip_reason(root, "build")
 
 
 def _pr_upsert_only(monkeypatch, number: int | None) -> list:
@@ -184,7 +186,7 @@ def _build_parked_at_the_preflight(project, tmp_path, fake_claude, monkeypatch, 
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert out["parked"] == [PREFLIGHT_REASON]
-    assert not (change / "evidence" / "claude-c.json").exists()  # no session ran
+    assert not (change / "evidence" / "claude-build.json").exists()  # no session ran
     record = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     [check] = record["checks"]
     assert check["need"] == (
@@ -222,10 +224,10 @@ def test_a_build_parked_at_the_preflight_restarts_on_the_owner_s_fix_from_main(
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert "parked" not in out and "skipped" not in out, out
-    assert (change / "evidence" / "claude-c.json").exists()  # the session ran
+    assert (change / "evidence" / "claude-build.json").exists()  # the session ran
     assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/build"
     merges = git(root, "log", "--merges", "--format=%s", "HEAD").splitlines()
-    assert merges == ["run(c): origin/main merged before the restarted preflight (gap 2)"]
+    assert merges == ["run(build): origin/main merged before the restarted preflight (gap 2)"]
     assert git(root, "merge-base", "--is-ancestor", "origin/main", "HEAD") == ""
     assert lint in (root / "CLAUDE.md").read_text(encoding="utf-8")
     assert status_mod.read_status(change).parked_reason is None
@@ -262,7 +264,7 @@ def test_a_restart_whose_merge_conflicts_parks_again_and_leaves_no_merge(
     record = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     assert '"Update branch"' in record["checks"][0]["need"]
     # the park is a pre-run preflight park again: the next dispatch may restart it
-    assert run_phase.pre_run_park(root, "0001", "c") is True
+    assert run_phase.pre_run_park(root, "0001", "build") is True
 
 
 # --- gaps 3 and 4: an unfinished fix round keeps its work and parks ----------------------------
@@ -468,11 +470,11 @@ def test_a_fix_session_that_writes_its_gate_record_proceeds_as_before(
     commands = _commands_recorder(monkeypatch)
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
-    assert "parked" not in out and commands == ["c"] and out["result"] == "continue"
+    assert "parked" not in out and commands == ["build"] and out["result"] == "continue"
 
 
 def test_no_unattended_session_may_ask_a_question():
-    for phase in ("fix", "b", "c", "d", "e"):
+    for phase in ("fix", "design", "build", "test", "deploy"):
         argv = run_phase.compose(
             claude="claude", plugin_dir=ROOT, phase=phase, prompt="/sdlc:sdlc-fix 0001",
             permission_mode="acceptEdits", config={}, env=dict(KEY_ENV),

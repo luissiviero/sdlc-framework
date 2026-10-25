@@ -204,7 +204,7 @@ def test_classification_reported_for_a_change(project):
         "verdict_file": "adversarial-review-design.json",
     }
     # R45: the verdict a plugin before 1.0.43 wrote under the letter is still read
-    verdict = project / "changes" / "0001-x" / "evidence" / "adversarial-review-b.json"
+    verdict = project / "changes" / "0001-x" / "evidence" / "adversarial-review-design.json"
     verdict.write_text(
         json.dumps({"verdict": "continue", "classification": "non-routine", "head": "abc1234"})
     )
@@ -225,12 +225,12 @@ def _new_change(project: Path) -> Path:
 
 def test_refuses_a_parked_change(project):
     """The park is the owner's item and the run must not start under it. The check lives
-    here, not in the command's prose: the ninth live run (2026-09-22, phase (c)) had the CI
+    here, not in the command's prose: the ninth live run (2026-09-22, the build phase) had the CI
     guard let a change through and the session refuse it on its own reading of status.yaml.
     Nothing is run under a park, the test target included."""
     change = _new_change(project)
     st = status.read_status(change)
-    st.set_phase("b")
+    st.set_phase("design")
     st.park("open_concerns: 1 open")
     status.write_status(change, st)
     report = preflight.run_preflight(project, ROOT, "0001")
@@ -242,10 +242,10 @@ def test_refuses_a_parked_change(project):
 
 
 def test_a_park_that_a_later_gate_result_lifted_does_not_refuse(project):
-    """status.yaml as plugins before 0.2.6 wrote it: gate (b) passed, the reason kept."""
+    """status.yaml as plugins before 0.2.6 wrote it: gate (design) passed, the reason kept."""
     change = _new_change(project)
     st = status.read_status(change)
-    st.set_phase("b")
+    st.set_phase("design")
     st.park("open_concerns: stale")
     st.gate.result = "passed"
     status.write_status(change, st)
@@ -269,7 +269,7 @@ def test_phases_test_and_deploy_skip_the_test_target(project, monkeypatch):
         report = preflight.run_preflight(project, ROOT, phase=phase)
         assert report["allow"] is True and report["phase"] == name
         assert "test_target" not in [ch["name"] for ch in report["checks"]]
-    report = preflight.run_preflight(project, ROOT, phase="c")
+    report = preflight.run_preflight(project, ROOT, phase="build")
     assert report["allow"] is False and _names(report, False) == ["test_target"]
 
 
@@ -311,13 +311,13 @@ def test_inside_a_ci_session_the_preflight_leaves_the_test_target_to_the_runner(
 
     monkeypatch.setenv("SAMPLE_FAIL", "1")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
-    report = preflight.run_preflight(project, ROOT, phase="c")
+    report = preflight.run_preflight(project, ROOT, phase="build")
     assert report["allow"] is True, report["reasons"]
     check = report["checks"][-1]
     assert check["name"] == "test_target" and check["details"] == {"ran_by": "runner"}
     assert check["reason"].startswith("not run inside this session")
     assert "SAMPLE_FAIL" not in json.dumps(report)  # the target was never started
     monkeypatch.delenv(checks.COMMANDS_RUNNER_ENV)
-    report = preflight.run_preflight(project, ROOT, phase="c")
+    report = preflight.run_preflight(project, ROOT, phase="build")
     assert report["allow"] is False and "not green (exit 1)" in report["reasons"][0]
     assert "ran_by" not in report["checks"][-1]["details"]

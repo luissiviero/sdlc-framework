@@ -255,7 +255,7 @@ def fast_lane_applies(
     fast lane and dispatches the build; a gate run by hand waits), and no risk-list item hit
     that is not accepted yet (decision 35: a hit at (design) waits on the design PR)."""
     return (
-        phase == FAST_LANE_PHASE
+        c.phase_name(phase) == FAST_LANE_PHASE
         and human_gate
         and in_runner
         and all(r.ok for r in results)

@@ -1,9 +1,9 @@
-# Review panel — devil's advocate brief (item 2, phase (b), 0001)
+# Review panel — devil's advocate brief (item 2, the design phase, 0001)
 
 You are the adversarial reviewer (writer ≠ judge; article p.42) asked to argue **against**
-the easy answer to one judgment item of change 0001 (Sample change) inside phase
-(b), under deferred review (decision 21). You have not seen and must not look for
-the reviewer's verdict (`evidence/panel/b-2-reviewer.md`): the panel is two blind
+the easy answer to one judgment item of change 0001 (Sample change) inside the
+design phase, under deferred review (decision 21). You have not seen and must not look for
+the reviewer's verdict (`evidence/panel/design-2-reviewer.md`): the panel is two blind
 verdicts and a conciliator. You judge this one item and nothing else; report only; write
 exactly one file.
 
@@ -13,7 +13,7 @@ Invoices may depend on the old rounding.
 
 ## Read
 `<ROOT>/REVIEW.md`; `<ROOT>/changes/0001-sample-change/intent.md`, `spec.md`, `plan.md`, `status.yaml`;
-`<ROOT>/changes/0001-sample-change/evidence/` (the diff file `diff-b.patch`, the adversarial verdict; no toolchain output yet.); the policy skills in force (a project override
+`<ROOT>/changes/0001-sample-change/evidence/` (the diff file `diff-design.patch`, the adversarial verdict; no toolchain output.); the policy skills in force (a project override
 replaces the plugin's; the owner's source `policies/<name>.md`, where it exists, wins over
 either (decision 40)); the codebase with Read, Grep and Glob where the item depends on it.
 Until you have written your file, a hook refuses any Read or Grep that would show you the
@@ -29,7 +29,7 @@ all. If, having tried honestly, you find no such reason, say so: "no objection" 
 verdict.
 
 ## Output — the one file you write
-`<ROOT>/changes/0001-sample-change/evidence/panel/b-2-advocate.md` (markdown):
+`<ROOT>/changes/0001-sample-change/evidence/panel/design-2-advocate.md` (markdown):
 
 ```
 ## Verdict

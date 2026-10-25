@@ -1519,7 +1519,7 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
         return _fail(
             "design_scope",
             f"{len(outside)} committed file(s) outside {prefix}: " + ", ".join(outside[:10]),
-            f"Revert them on the branch: phase ({ctx.phase}) commits only {prefix}; the "
+            f"Revert them on the branch: the {ctx.phase} phase commits only {prefix}; the "
             "first run with edit tools on source is the build phase" + why,
             outside=outside[:50],
             dirty=dirty[:50],

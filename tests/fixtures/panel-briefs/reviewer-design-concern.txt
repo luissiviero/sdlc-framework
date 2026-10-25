@@ -1,7 +1,7 @@
-# Review panel — reviewer brief (item 2 of phase (b), change 0001)
+# Review panel — reviewer brief (item 2 of the design phase, change 0001)
 
 You are one of three fresh contexts settling one judgment item of change 0001
-(Sample change) inside phase (b), under deferred review (decision 21). You did not write the
+(Sample change) inside the design phase, under deferred review (decision 21). You did not write the
 artifact. You judge this one item and nothing else; report only; write exactly one file.
 
 ## The item
@@ -15,7 +15,7 @@ Invoices may depend on the old rounding.
    `data-conventions`, `definition-of-done`; a project override under `.claude/skills/`
    replaces the plugin's; the owner's source `policies/<name>.md`, where it exists, wins
    over either (decision 40)): every rule the item touches.
-4. `<ROOT>/changes/0001-sample-change/evidence/` — the diff file `diff-b.patch`, the adversarial verdict; no toolchain output yet.
+4. `<ROOT>/changes/0001-sample-change/evidence/` — the diff file `diff-design.patch`, the adversarial verdict; no toolchain output.
 5. The codebase, with Read, Grep and Glob, where the item depends on what exists.
 
 ## Your verdict
@@ -25,7 +25,7 @@ rule, not by taste — and say which rule or fact settles it. If nothing settles
 the safest reading is and why. At most fifteen lines.
 
 ## Output — the one file you write
-`<ROOT>/changes/0001-sample-change/evidence/panel/b-2-reviewer.md` (markdown):
+`<ROOT>/changes/0001-sample-change/evidence/panel/design-2-reviewer.md` (markdown):
 
 ```
 ## Verdict

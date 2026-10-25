@@ -157,9 +157,9 @@ def test_a_restart_merges_a_default_branch_that_changed_the_change_s_status(
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert "parked" not in out and "skipped" not in out, out
-    assert (change / "evidence" / "claude-c.json").exists()  # the session ran
+    assert (change / "evidence" / "claude-build.json").exists()  # the session ran
     merges = git(root, "log", "--merges", "--format=%s", "HEAD").splitlines()
-    assert merges == ["run(c): origin/main merged before the restarted preflight (gap 2)"]
+    assert merges == ["run(build): origin/main merged before the restarted preflight (gap 2)"]
     st = status_mod.read_status(change)
     assert st.phase == "build" and st.parked_reason is None
     assert st.external_ref == "#42"  # the owner's change is kept
@@ -194,7 +194,7 @@ def _stacked_build_parked(project, tmp_path, fake_claude, monkeypatch, intent_on
     git(root, "checkout", "-q", "-b", "sdlc/0001/build")  # stacked on the design
     gaps._preflight_park(root, change)
     git(root, "add", rel)
-    git(root, "commit", "-q", "-m", "run(c): parked at the preflight")
+    git(root, "commit", "-q", "-m", "run(build): parked at the preflight")
     git(root, "push", "-q", "-u", "origin", "sdlc/0001/build")
     git(root, "checkout", "-q", "main")
     gaps._pr_upsert_only(monkeypatch, 7)
@@ -229,9 +229,9 @@ def test_a_stacked_build_after_a_merged_intent_keeps_its_counters_on_restart(
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert "parked" not in out and "skipped" not in out, out
-    assert (change / "evidence" / "claude-c.json").exists()  # the session ran
+    assert (change / "evidence" / "claude-build.json").exists()  # the session ran
     merges = git(root, "log", "--merges", "--format=%s", "HEAD").splitlines()
-    assert merges == ["run(c): origin/main merged before the restarted preflight (gap 2)"]
+    assert merges == ["run(build): origin/main merged before the restarted preflight (gap 2)"]
     st = status_mod.read_status(change)
     assert (st.panel_calls, st.iterations) == (2, 1)
     assert st.phase == "build" and st.parked_reason is None
@@ -259,7 +259,7 @@ def test_a_restart_whose_status_yaml_conflicts_parks_and_settles_nothing(
         "changes/0001-percent-helper/status.yaml"
     )
     assert out["parked"] == expected
-    assert not (change / "evidence" / "claude-c.json").exists()  # no session
+    assert not (change / "evidence" / "claude-build.json").exists()  # no session
     assert not (root / ".git" / "MERGE_HEAD").exists()
     assert git(root, "log", "--merges", "--format=%s", "HEAD") == ""
     assert status_mod.read_status(change).parked_reason == expected
@@ -561,7 +561,7 @@ def test_an_unfinished_round_keeps_the_risk_hits_the_banner_shows(
     assert "- **risk_list**: risk-list hit: auth" in record["what_i_need"]
     assert risk.recorded_hits(record) == {"auth": ["src/x.py"]}
     entries = risk.banner_entries(change, "build", status_mod.read_status(change))
-    assert [(e["item"], e["first"], e["accepted"]) for e in entries] == [("auth", "c", None)]
+    assert [(e["item"], e["first"], e["accepted"]) for e in entries] == [("auth", "build", None)]
 
 
 def test_an_unfinished_round_keeps_a_reported_risk_hit_too(
@@ -660,7 +660,7 @@ def test_a_restart_keeps_an_owner_change_on_main_the_branch_record_predates(
     st = status_mod.read_status(change)
     assert st.risk_accepted == []  # the owner's revocation stands
     assert st.phase == "build" and st.parked_reason is None
-    assert (st.gate.phase, st.gate.result) == ("b", "passed")
+    assert (st.gate.phase, st.gate.result) == ("design", "passed")
 
 
 # --- round 3, item 2: only the risk hits outlive the park they were in ------------------------

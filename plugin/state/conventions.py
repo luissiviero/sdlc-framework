@@ -225,10 +225,11 @@ def phase_file(directory: Path | str, pattern: str, phase: str, **fields: Any) -
     """The file ``pattern`` names for ``phase`` in ``directory`` (``gate-{phase}.json``,
     ``{phase}-{n}-reviewer.md``): the name's (``gate-build.json``), unless only the letter's
     exists (``gate-c.json``, written by a plugin before R45), which is then read. A writer
-    takes the name's always: ``Path(directory) / pattern.format(phase=name)``."""
-    name = _check_phase(phase)
+    takes the name's always: ``Path(directory) / pattern.format(phase=name)``. A run that is
+    not a phase (``review``, ``fix``) has one name and its file is returned as it is."""
+    name = phase_name(phase)
     path = Path(directory) / pattern.format(phase=name, **fields)
-    if path.exists():
+    if path.exists() or name not in PHASES:
         return path
     legacy = Path(directory) / pattern.format(phase=PHASE_LETTERS[name], **fields)
     return legacy if legacy.exists() else path

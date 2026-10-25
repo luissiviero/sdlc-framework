@@ -3,7 +3,7 @@
 a bare remote. The model's work (brainstorm, writing intent.md, spec.md, plan.md, the
 implementation, the verifier and review reports) is replaced by recorded text; the PR step is
 not exercised (needs GitHub), and every gate is reached through the gate CLI. Phases (c), (d)
-and (e) share one branch, sdlc/<id>/c (OPERATING_MODEL section 8)."""
+and (e) share one branch, sdlc/<id>/build (OPERATING_MODEL section 8)."""
 
 from __future__ import annotations
 
@@ -164,7 +164,7 @@ def test_sdlc_init_then_first_pr_branch(project):
     report = py(
         str(INIT), "--root", str(root), "--profile", "standard", "--deploy-action", "none", cwd=root
     )
-    assert report["change"]["branch"] == "sdlc/0000/a"
+    assert report["change"]["branch"] == "sdlc/0000/intent"
     paths = ["sdlc.yaml", ".claude/settings.json", "REVIEW.md", "CLAUDE.md", "changes"]
     out = py(
         str(CLI),
@@ -174,7 +174,7 @@ def test_sdlc_init_then_first_pr_branch(project):
         "--id",
         "0000",
         "--phase",
-        "a",
+        "intent",
         "--message",
         "sdlc-init: connect the SDLC framework",
         "--paths",
@@ -184,10 +184,10 @@ def test_sdlc_init_then_first_pr_branch(project):
         "--push",
         cwd=root,
     )
-    assert out["branch"] == "sdlc/0000/a" and out["commit"] and out["pushed"] is True
+    assert out["branch"] == "sdlc/0000/intent" and out["commit"] and out["pushed"] is True
     assert out["base"] == "main"
-    assert "sdlc/0000/a" in git(bare, "branch", "--list", "sdlc/0000/a")
-    tracked = git(root, "ls-tree", "-r", "--name-only", "sdlc/0000/a").split()
+    assert "sdlc/0000/intent" in git(bare, "branch", "--list", "sdlc/0000/intent")
+    tracked = git(root, "ls-tree", "-r", "--name-only", "sdlc/0000/intent").split()
     for rel in [
         "sdlc.yaml",
         ".claude/settings.json",
@@ -205,7 +205,7 @@ def test_sdlc_init_then_first_pr_branch(project):
 
 def run_plan_half(root: Path) -> tuple[dict, dict]:
     """The Python half of /sdlc-init (merged) and /sdlc-plan: change 0001 with its intent
-    committed on sdlc/0001/a and pushed. Returns the two CLI reports."""
+    committed on sdlc/0001/intent and pushed. Returns the two CLI reports."""
     py(str(INIT), "--root", str(root), cwd=root)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "init (simulating the merged 0000 PR)")
@@ -232,7 +232,7 @@ def run_plan_half(root: Path) -> tuple[dict, dict]:
         "--id",
         "0001",
         "--phase",
-        "a",
+        "intent",
         "--message",
         "intent(0001): Percent helper",
         "--start-point",
@@ -247,14 +247,14 @@ def test_sdlc_plan_python_half_produces_intent_on_phase_branch(project):
     root, bare = project
     alloc, out = run_plan_half(root)
     assert alloc["id"] == "0001" and alloc["dir"] == "changes/0001-percent-helper"
-    assert out["branch"] == "sdlc/0001/a" and out["pushed"]
-    assert "sdlc/0001/a" in git(bare, "branch", "--list", "sdlc/0001/a")
+    assert out["branch"] == "sdlc/0001/intent" and out["pushed"]
+    assert "sdlc/0001/intent" in git(bare, "branch", "--list", "sdlc/0001/intent")
     assert (
         "changes/0001-percent-helper/intent.md"
-        in git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/a").split()
+        in git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/intent").split()
     )
     shown = py(str(CLI), "show", "--root", str(root), "--id", "0001", cwd=root)
-    assert shown["status"]["phase"] == "a" and shown["status"]["change_type"] == "feature"
+    assert shown["status"]["phase"] == "intent" and shown["status"]["change_type"] == "feature"
     # re-running the same command is a no-op commit (idempotent)
     again = py(
         str(CLI),
@@ -264,7 +264,7 @@ def test_sdlc_plan_python_half_produces_intent_on_phase_branch(project):
         "--id",
         "0001",
         "--phase",
-        "a",
+        "intent",
         "--message",
         "intent(0001): Percent helper",
         "--push",
@@ -279,12 +279,22 @@ def test_sdlc_design_python_half_produces_spec_and_plan_and_gate_b_waits(project
     change = root / alloc["dir"]
     # gate (a): the owner merges the intent PR
     git(root, "checkout", "-q", "main")
-    git(root, "merge", "-q", "--no-edit", "sdlc/0001/a")
+    git(root, "merge", "-q", "--no-edit", "sdlc/0001/intent")
     git(root, "push", "-q", "origin", "main")
 
     # --- the design half, exactly as /sdlc-design runs it ---------------------------------
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b", "main")
-    py(str(GATE_CLI), "start-run", "--root", str(root), "--id", "0001", "--phase", "b", cwd=root)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design", "main")
+    py(
+        str(GATE_CLI),
+        "start-run",
+        "--root",
+        str(root),
+        "--id",
+        "0001",
+        "--phase",
+        "design",
+        cwd=root,
+    )
     header = py(str(GATE_CLI), "spec-header", "--root", str(root), "--id", "0001", cwd=root)
     pinned = yamlish.load_file(root / "sdlc.yaml")["plugin"]["version"]
     assert header["title"] == "percent helper"  # from intent.md, not the status.yaml title
@@ -305,26 +315,26 @@ def test_sdlc_design_python_half_produces_spec_and_plan_and_gate_b_waits(project
         "--id",
         "0001",
         "--phase",
-        "b",
+        "design",
         "--message",
         "design(0001): percent helper",
         "--push",
         cwd=root,
     )
-    assert out["branch"] == "sdlc/0001/b" and out["pushed"] is True
+    assert out["branch"] == "sdlc/0001/design" and out["pushed"] is True
 
     # --- gate (b): Standard waits for the owner -------------------------------------------
-    write_verdict(change, "b", git(root, "rev-parse", "HEAD").strip())
+    write_verdict(change, "design", git(root, "rev-parse", "HEAD").strip())
     proc = py_raw(
-        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "b", cwd=root
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "design", cwd=root
     )
     assert proc.returncode == 3, proc.stdout + proc.stderr
     result = json.loads(proc.stdout)
-    assert result["result"] == "wait" and result["label"] == "sdlc:b-ready"
+    assert result["result"] == "wait" and result["label"] == "sdlc:design-ready"
     assert (
         result["what_i_need"] == "" and [c["name"] for c in result["checks"] if not c["ok"]] == []
     )
-    assert (change / "evidence" / "gate-b.json").is_file()
+    assert (change / "evidence" / "gate-design.json").is_file()
     assert status_mod.read_status(change).gate.result == "passed"
     py(
         str(CLI),
@@ -334,15 +344,15 @@ def test_sdlc_design_python_half_produces_spec_and_plan_and_gate_b_waits(project
         "--id",
         "0001",
         "--phase",
-        "b",
+        "design",
         "--message",
-        "evidence(0001): gate (b)",
+        "evidence(0001): gate (design)",
         "--push",
         cwd=root,
     )
-    assert "sdlc/0001/b" in git(bare, "branch", "--list", "sdlc/0001/b")
-    tracked = git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/b").split()
-    for rel in ("spec.md", "plan.md", "evidence/gate-b.json"):
+    assert "sdlc/0001/design" in git(bare, "branch", "--list", "sdlc/0001/design")
+    tracked = git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/design").split()
+    for rel in ("spec.md", "plan.md", "evidence/gate-design.json"):
         assert f"{alloc['dir']}/{rel}" in tracked, rel
 
 
@@ -353,12 +363,12 @@ def test_labels_are_the_documented_set():
         ).stdout
     )
     assert out == [
-        "sdlc:a-ready",
-        "sdlc:b-ready",
-        "sdlc:c-ready",
-        "sdlc:d-ready",
-        "sdlc:e-ready",
-        "sdlc:f-ready",
+        "sdlc:intent-ready",
+        "sdlc:design-ready",
+        "sdlc:build-ready",
+        "sdlc:test-ready",
+        "sdlc:deploy-ready",
+        "sdlc:maintain-ready",
         "sdlc:release-approved",
         # the owner's un-park verbs (decision 24, plugin 0.2.13); sdlc:accept-risk retired
         # with decision 35 (plugin 1.0.15)
@@ -377,10 +387,20 @@ def run_design_half(root: Path) -> Path:
     alloc, _ = run_plan_half(root)
     change = root / alloc["dir"]
     git(root, "checkout", "-q", "main")
-    git(root, "merge", "-q", "--no-edit", "sdlc/0001/a")  # gate (a): the owner's merge
+    git(root, "merge", "-q", "--no-edit", "sdlc/0001/intent")  # gate (a): the owner's merge
     git(root, "push", "-q", "origin", "main")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b", "main")
-    py(str(GATE_CLI), "start-run", "--root", str(root), "--id", "0001", "--phase", "b", cwd=root)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design", "main")
+    py(
+        str(GATE_CLI),
+        "start-run",
+        "--root",
+        str(root),
+        "--id",
+        "0001",
+        "--phase",
+        "design",
+        cwd=root,
+    )
     header = py(str(GATE_CLI), "spec-header", "--root", str(root), "--id", "0001", cwd=root)
     (change / "spec.md").write_text(
         header["header"] + "\n" + RECORDED_SPEC_BODY, encoding="utf-8", newline="\n"
@@ -394,15 +414,15 @@ def run_design_half(root: Path) -> Path:
         "--id",
         "0001",
         "--phase",
-        "b",
+        "design",
         "--message",
         "design(0001): percent helper",
         "--push",
         cwd=root,
     )
-    write_verdict(change, "b", git(root, "rev-parse", "HEAD").strip())
+    write_verdict(change, "design", git(root, "rev-parse", "HEAD").strip())
     proc = py_raw(
-        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "b", cwd=root
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "design", cwd=root
     )
     assert proc.returncode == 3, proc.stdout + proc.stderr  # Standard waits for the owner
     py(
@@ -413,14 +433,14 @@ def run_design_half(root: Path) -> Path:
         "--id",
         "0001",
         "--phase",
-        "b",
+        "design",
         "--message",
-        "design(0001): gate (b) evidence",
+        "design(0001): gate (design) evidence",
         "--push",
         cwd=root,
     )
     git(root, "checkout", "-q", "main")  # the owner's merge is gate (b)
-    git(root, "merge", "-q", "--no-edit", "sdlc/0001/b")
+    git(root, "merge", "-q", "--no-edit", "sdlc/0001/design")
     git(root, "push", "-q", "origin", "main")
     return change
 
@@ -445,16 +465,26 @@ def commit_phase(root: Path, phase: str, message: str, *paths: str) -> dict:
 
 def test_build_test_and_deploy_halves_run_on_the_single_build_branch(project):
     """The Python halves of /sdlc-build, /sdlc-test and /sdlc-deploy (OPERATING_MODEL section
-    4.1): three runs, three gates, one branch — sdlc/0001/c carries the build PR through (d)
+    4.1): three runs, three gates, one branch — sdlc/0001/build carries the build PR through (d)
     and (e). The model's work (the implementation, the verifier and review reports) is
     replaced by the recorded text; everything deterministic is the real command."""
     root, bare = project
     change = run_design_half(root)
 
     # --- /sdlc-build: phase (c) -----------------------------------------------------------
-    git(root, "switch", "-q", "-c", "sdlc/0001/c", "main")
-    py(str(GATE_CLI), "start-run", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root)
-    py(str(CLI), "set-phase", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root)
+    git(root, "switch", "-q", "-c", "sdlc/0001/build", "main")
+    py(
+        str(GATE_CLI),
+        "start-run",
+        "--root",
+        str(root),
+        "--id",
+        "0001",
+        "--phase",
+        "build",
+        cwd=root,
+    )
+    py(str(CLI), "set-phase", "--root", str(root), "--id", "0001", "--phase", "build", cwd=root)
     (root / "sample_pkg" / "percent.py").write_text(PERCENT, encoding="utf-8", newline="\n")
     (root / "tests" / "test_percent.py").write_text(TEST_PERCENT, encoding="utf-8", newline="\n")
     init_py = root / "sample_pkg" / "__init__.py"
@@ -469,31 +499,31 @@ def test_build_test_and_deploy_halves_run_on_the_single_build_branch(project):
     )
     out = commit_phase(
         root,
-        "c",
+        "build",
         "build(0001): percent helper",
         "sample_pkg/percent.py",
         "tests/test_percent.py",
         "sample_pkg/__init__.py",
     )
-    assert out["branch"] == "sdlc/0001/c" and out["work_branch"] == "sdlc/0001/c"
+    assert out["branch"] == "sdlc/0001/build" and out["work_branch"] == "sdlc/0001/build"
     (change / "evidence" / "verifier.md").write_text(
         "# Verifier\nRan percent(1, 3) -> 33.3 and the two nearest flows; both behave.\n",
         encoding="utf-8",
         newline="\n",
     )
-    write_verdict(change, "c", git(root, "rev-parse", "HEAD").strip())
+    write_verdict(change, "build", git(root, "rev-parse", "HEAD").strip())
     proc = py_raw(
-        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "build", cwd=root
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     result = json.loads(proc.stdout)
     assert result["result"] == "continue" and result["label"] is None
     assert "profile" not in result and [c for c in result["checks"] if not c["ok"]] == []
-    commit_phase(root, "c", "build(0001): gate (c) evidence")
+    commit_phase(root, "build", "build(0001): gate (build) evidence")
 
     # --- /sdlc-test: phase (d), same branch -----------------------------------------------
-    py(str(GATE_CLI), "start-run", "--root", str(root), "--id", "0001", "--phase", "d", cwd=root)
-    py(str(CLI), "set-phase", "--root", str(root), "--id", "0001", "--phase", "d", cwd=root)
+    py(str(GATE_CLI), "start-run", "--root", str(root), "--id", "0001", "--phase", "test", cwd=root)
+    py(str(CLI), "set-phase", "--root", str(root), "--id", "0001", "--phase", "test", cwd=root)
     collected = py(str(COLLECT), "--root", str(root), "--id", "0001", cwd=root)
     assert collected["all_green"] is True, collected
     for name in ("test.log", "build.log", "lint.log"):
@@ -504,19 +534,29 @@ def test_build_test_and_deploy_halves_run_on_the_single_build_branch(project):
         encoding="utf-8",
         newline="\n",
     )
-    out = commit_phase(root, "d", "test(0001): evidence")
-    assert out["branch"] == "sdlc/0001/c"  # (d) commits on the build branch, not sdlc/0001/d
-    write_verdict(change, "d", git(root, "rev-parse", "HEAD").strip())
+    out = commit_phase(root, "test", "test(0001): evidence")
+    assert out["branch"] == "sdlc/0001/build"  # (d) commits on the build branch, not sdlc/0001/d
+    write_verdict(change, "test", git(root, "rev-parse", "HEAD").strip())
     proc = py_raw(
-        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "d", cwd=root
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "test", cwd=root
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert json.loads(proc.stdout)["result"] == "continue"
-    commit_phase(root, "d", "test(0001): gate (d) evidence")
+    commit_phase(root, "test", "test(0001): gate (test) evidence")
 
     # --- /sdlc-deploy: phase (e), same branch, always human -------------------------------
-    py(str(GATE_CLI), "start-run", "--root", str(root), "--id", "0001", "--phase", "e", cwd=root)
-    py(str(CLI), "set-phase", "--root", str(root), "--id", "0001", "--phase", "e", cwd=root)
+    py(
+        str(GATE_CLI),
+        "start-run",
+        "--root",
+        str(root),
+        "--id",
+        "0001",
+        "--phase",
+        "deploy",
+        cwd=root,
+    )
+    py(str(CLI), "set-phase", "--root", str(root), "--id", "0001", "--phase", "deploy", cwd=root)
     (change / "evidence" / "review-findings.json").write_text(
         json.dumps(
             {
@@ -530,30 +570,30 @@ def test_build_test_and_deploy_halves_run_on_the_single_build_branch(project):
         newline="\n",
     )
     proc = py_raw(
-        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "e", cwd=root
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "deploy", cwd=root
     )
     assert proc.returncode == 3, proc.stdout + proc.stderr
     result = json.loads(proc.stdout)
-    assert result["result"] == "wait" and result["label"] == "sdlc:e-ready"
+    assert result["result"] == "wait" and result["label"] == "sdlc:deploy-ready"
     assert result["what_i_need"] == ""
-    out = commit_phase(root, "e", "review(0001): gate (e) evidence")
-    assert out["branch"] == "sdlc/0001/c"
+    out = commit_phase(root, "deploy", "review(0001): gate (deploy) evidence")
+    assert out["branch"] == "sdlc/0001/build"
 
     # --- one branch, one PR: every phase commit landed on sdlc/0001/c ----------------------
-    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/build"
     branches = set(git(root, "branch", "--format=%(refname:short)").split())
-    assert branches == {"main", "sdlc/0001/a", "sdlc/0001/b", "sdlc/0001/c"}
-    subjects = git(root, "log", "--format=%s", "main..sdlc/0001/c").split("\n")
+    assert branches == {"main", "sdlc/0001/intent", "sdlc/0001/design", "sdlc/0001/build"}
+    subjects = git(root, "log", "--format=%s", "main..sdlc/0001/build").split("\n")
     assert [s for s in subjects if s.startswith("test(0001)")], subjects
     assert [s for s in subjects if s.startswith("review(0001)")], subjects
-    assert "sdlc/0001/c" in git(bare, "branch", "--list", "sdlc/0001/c")
-    tracked = git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/c").split()
+    assert "sdlc/0001/build" in git(bare, "branch", "--list", "sdlc/0001/build")
+    tracked = git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/build").split()
     for rel in (
         "sample_pkg/percent.py",
         "tests/test_percent.py",
         "changes/0001-percent-helper/evidence/test.log",
         "changes/0001-percent-helper/evidence/verifier.md",
-        "changes/0001-percent-helper/evidence/gate-d.json",
+        "changes/0001-percent-helper/evidence/gate-test.json",
         "changes/0001-percent-helper/evidence/screenshots/.gitkeep",
     ):
         assert rel in tracked, rel
