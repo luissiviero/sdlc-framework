@@ -159,8 +159,10 @@ the template of every release (`plugin/init/template_hashes.json`):
   lines to the owner as they are: each rename is the owner's edit in a reviewed PR.
 
 Read its JSON report and show the owner the file-by-file result, the `outdated` ones first,
-then the `refreshed` ones; the refreshed copies ride in the same PR as the pin, so the two
-move together, and the PR body lists them. Whenever a copy is `outdated`, say so to the owner
+then the `refreshed` ones, then any `removed (was <version>)` (a renamed copy nobody edited,
+replaced by its new name, as `sdlc-evals.yml` by `sdlc-agent-evals.yml`), `kept; renamed
+(edited)` and `not installed` lines; the refreshed and removed copies ride in the same PR as
+the pin, so the two move together, and the PR body lists them. Whenever a copy is `outdated`, say so to the owner
 and name the template copy to diff by hand; the framework never rewrites an edited one. For an outdated `sdlc-build.yml` or `sdlc-fix.yml`, also say:
 replace sdlc-build.yml and sdlc-fix.yml to get the build caps (decision 32; an older copy
 keeps the build and every fix round on the general caps). The report's `maintain.observation` line

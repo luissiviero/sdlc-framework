@@ -586,7 +586,8 @@ RENAMED_KEPT = (
 )
 RENAMED_WAITS = (
     "not installed: the edited {old} is kept and still runs this suite; delete it (or rename "
-    "it to this name) and re-run /sdlc-init, so the project never runs the suite twice"
+    "it to this name, where it then reads as outdated and keeps your edits) and re-run "
+    "/sdlc-init, so the project never runs the suite twice"
 )
 
 
@@ -1014,6 +1015,14 @@ def run(args) -> dict:
         for rel, state in report["files"].items()
         if state.startswith("refreshed (was ")
     }
+    # R45 (row 78): a renamed copy nobody edited, removed for its new name in the same PR
+    removed = {
+        rel: state[len("removed (was ") : state.index(")")]
+        for rel, state in report["files"].items()
+        if state.startswith("removed (was ")
+    }
+    if removed:
+        report["removed"] = removed
     legacy = legacy_skill_paths(root)
     if legacy:
         report["legacy_paths"] = legacy

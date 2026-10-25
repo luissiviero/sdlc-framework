@@ -7,14 +7,21 @@ This session ran on branch `claude/r45-4-files`, built on R45's third rename PR 
 2. **`sdlc-evals.yml` is `sdlc-agent-evals.yml`** (row 78, the article's `agent-evals.yml`, p.30), named "SDLC agent evals". `/sdlc-init`'s upgrade installs the new file and removes an old copy nobody edited (`RENAMED_COPIES`, `retire_renamed_copies`, by R64's hashes: `removed (was <version>)`); an edited old copy is kept and reported `kept; renamed (edited)`, and the new file waits until it is gone, so the suite never runs twice. `tasks.py template-hashes` keeps the old name's hashes from the tags. This repository runs `framework-evals.yml` and installs neither.
 3. **`ux-conventions` is `ux-and-brand`** (row 80, with N35's `policies/ux-and-brand.md`): the skill's folder and name, its eval cases, the commands, the reviewer's brief and `template/policies/README.md`. For one release the gate and the skill still read `policies/ux-conventions.md` when the new file is missing, and still count a project override in `.claude/skills/ux-conventions/` (`gate/policy.py RENAMED_SKILLS`); `/sdlc-init` reports each old path in `legacy_paths`, and a `.claude/settings.json` rule that names `sdlc:ux-conventions` as not honoured, since a permission rule cannot be aliased.
 4. **The merge workflow's `doorbell` is `on-approval`** (N5): the job id, `merge_step.py on-approval` (with `doorbell` still accepted, so an old copy keeps working) and its log prefix.
-5. **"fallback C1" is "no merge App"** (N7), in the merge workflow, the digest's reason ("no merge App: merge it yourself"), `/sdlc-init`, `/sdlc-deploy` and `docs/OPERATING_MODEL.md`.
+5. **"fallback C1" is "no merge App"** (N7), in the merge workflow, the digest's reason ("no merge App: merge it yourself"), `/sdlc-init`, `/sdlc-deploy` and `docs/OPERATING_MODEL.md` (its gate table and its merge-workflow row, which also name the job `on-approval`).
 6. **The decision it renames, annotated** (choice 126): decision 36's point 7, beside its C1 sentence.
 
 ## How it was built
 One sub-agent built the renames on this branch; this session merged `main`, bumped the version, regenerated `plugin/init/template_hashes.json` and ran the suite. Tests that asserted the old names assert the new ones; none was deleted or skipped; tests show each old name is still read.
 
 ## The fresh-context review
-<!-- filled in after the review -->
+A fresh-context sub-agent reviewed the diff (report only). It found nothing blocking, and ran `/sdlc-init`'s upgrade end to end from v1.0.45's install: a pristine `sdlc-evals.yml` (LF and CRLF) is `removed (was 1.0.27)` and the new file created, an edited one is kept and the new one waits, a second run changes nothing, and the shipped manifest equals a fresh `template_hashes()`. Its findings and what was done:
+1. **Fixed:** `docs/OPERATING_MODEL.md` still named "fallback C1" and the `doorbell` job in two rows; `README.md` still listed `ux-conventions`.
+2. **Fixed:** the record left out this repository's pin window (below).
+3. **Optional, taken:** `/sdlc-init`'s report lists the removed copies (`report["removed"]`, with a test) and its command text names the new states; the "not installed" line says a renamed edited copy then reads as outdated and keeps its edits.
+4. **Optional, not taken:** the settings check matches any mention of `ux-conventions` in `.claude/settings.json`, not only a rule (the message is advice either way); the old copy is removed before the new one is written (a failure in between leaves neither; the next run installs the new one).
+
+## In this repository until the pin moves
+Once the owner commits this PR's merge workflow copy, its `on-approval` job runs `merge_step.py on-approval` against the pinned plugin, and a pin below 1.0.46 has no such subcommand: the job exits 2 and no merge is dispatched. So, until this repository's pin moves to 1.0.46 or later, an approved build PR here is merged by the owner (none is open; no change is in flight). The single pin move the owner chose comes next, after this PR.
 
 ## Port list
 This PR touches none of `plugin/detect/` or the detect, runbook and fix workflow templates; its docstring edit in `plugin/ci/run_phase.py` (the "no merge App" wording) puts it on the port list until the 1.0.0 read.

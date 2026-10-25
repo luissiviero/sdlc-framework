@@ -254,6 +254,7 @@ def test_an_upgrade_replaces_a_pristine_old_evals_workflow_with_the_new_one(proj
     (project / OLD_EVALS).write_text(_render(OLD_EVALS, _old_evals()), encoding="utf-8")
     report = _init(project)
     assert report["files"][OLD_EVALS].startswith("removed (was 1.0.10)")
+    assert report["removed"] == {OLD_EVALS: "1.0.10"}  # listed for the upgrade PR's body
     assert "sdlc-agent-evals.yml" in report["files"][OLD_EVALS]
     assert report["files"][NEW_EVALS] == "created"
     assert not (project / OLD_EVALS).exists()
