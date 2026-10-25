@@ -42,12 +42,14 @@ The sample's guardrail lines (`sdlc.yaml`, `CLAUDE.md`, `REVIEW.md`, `bands.yaml
 ## What the owner does
 | When | Act |
 |---|---|
-| Now | Commit the workflow copies on `claude/r45-1-phase-names` (the PR body's table), then merge the PR when `Framework checks` is green on its final head. |
+| Now | Write and commit the workflow copies on `claude/r45-1-phase-names` with `python tasks.py workflow-copies` (the PR body's commands; the tables below are the fallback), then merge the PR when `Framework checks` is green on its final head. |
 | Before merging | Check whether any ruleset of this repository or the sample requires a check run by its old name (`sdlc/c`, `sdlc/e`): the check run is now `sdlc/build`, `sdlc/deploy` (section 12, PR 1). |
 | Until this repository's pin moves past 1.0.42 | Start no change here. |
 
 ## The workflow copies for the owner
-One table per copy under `.github/workflows/`, generated from a line diff between the copy on `main` and the template rendered as `tests/test_templates.py` renders it; each cell is the exact line, indentation included (`&nbsp;` is a space). `sdlc-evals.yml`, `sdlc-comment.yml` and `sdlc-digest.yml` do not change.
+**The task.** `python tasks.py workflow-copies` (new in this PR, at the central session's request; `tasks.py` is not under `plugin/` or `template/`, so it bumps nothing) writes each copy under `.github/workflows/` exactly as `test_this_repository_s_workflow_copies_match_the_template` expects it, `sdlc_init.apply_env_markers(render.render_file(WORKFLOW_DIR / name, VALUES), [])` from that test's own module, `sdlc-evals.yml` aside, with LF line endings. It is the owner's to run: a session never writes a workflow. Proved in a scratch copy of the branch outside the clone: the task wrote 11 copies, the two copy tests then passed (`2 passed`), and a second run wrote nothing.
+
+**The fallback.** One table per copy under `.github/workflows/`, generated from a line diff between the copy on `main` and the template rendered as `tests/test_templates.py` renders it; each cell is the exact line, indentation included (`&nbsp;` is a space). `sdlc-evals.yml`, `sdlc-comment.yml` and `sdlc-digest.yml` do not change.
 
 **[`.github/workflows/sdlc-abandon.yml`](https://github.com/luissiviero/sdlc-framework/blob/claude/r45-1-phase-names/.github/workflows/sdlc-abandon.yml)** (3 rows)
 
