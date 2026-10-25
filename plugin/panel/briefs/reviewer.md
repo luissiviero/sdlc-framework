@@ -11,7 +11,7 @@ Kind: {kind}
 ## Read, in this order
 1. `{root}/REVIEW.md` — what Important means in this project and the framework rules.
 2. `{change_dir}/intent.md`, `spec.md`, `plan.md`, `status.yaml`.
-3. The policy skills in force (`coding-standards`, `security-baseline`, `ux-conventions`,
+3. The policy skills in force (`coding-standards`, `security-baseline`, `ux-and-brand`,
    `data-conventions`, `definition-of-done`; a project override under `.claude/skills/`
    replaces the plugin's; the owner's source `policies/<name>.md`, where it exists, wins
    over either (decision 40)): every rule the item touches.

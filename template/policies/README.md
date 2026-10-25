@@ -12,8 +12,12 @@ no required headings:
 | `policies/coding-standards.md` | `coding-standards` |
 | `policies/security-baseline.md` | `security-baseline` |
 | `policies/data-conventions.md` | `data-conventions` |
-| `policies/ux-conventions.md` | `ux-conventions` |
+| `policies/ux-and-brand.md` | `ux-and-brand` |
 | `policies/definition-of-done.md` | `definition-of-done` |
+
+The UX file was `policies/ux-conventions.md`, read by the skill `ux-conventions`, before
+plugin 1.0.46 (R45 row 80): for one release, the skill reads the old file when the new one
+is missing; rename it in a commit of your own.
 
 **How a run reads them.** Each skill reads its file first. Where the file and the skill
 differ, the file wins, over a project override in `.claude/skills/<name>/` too; a rule of the

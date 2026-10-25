@@ -251,8 +251,8 @@ approving review = the deploy gate, review comments = `/sdlc-fix`), the two coun
 or `sdlc:needs-human` when parked. The PR is waiting for the owner's approving review: the
 approval = gate (deploy) passed (decision 36); the merge App then merges it (`sdlc-merge.yml`),
 and the release workflow runs `deploy.command`. An approval given before this run committed
-the deploy gate's record does not count: the owner approves again on the head (choice 250). Without
-a merge App the owner merges after approving (fallback C1). When `sdlc.yaml` says
+the deploy gate's record does not count: the owner approves again on the head (choice 250). No merge
+App: the owner merges it after approving. When `sdlc.yaml` says
 `deploy.production_gate: true` (or the old `deploy.production: true`), the body also says: the release label `sdlc:release-approved` is
 the second act: apply it on this PR in the same visit; the release workflow waits for it.
 

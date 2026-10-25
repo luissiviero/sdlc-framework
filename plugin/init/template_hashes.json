@@ -20,6 +20,9 @@
       "d3b8305ee6c9fa997df34422389643fab0882e2a02a60a691f00b2dc1806cb53": "0.2.20",
       "de95d320db7239bad9383962ed50cddf5e49f82d64513ad7dcfa69c574598bd3": "0.2.22"
     },
+    ".github/workflows/sdlc-agent-evals.yml": {
+      "41c7597672f7cef6d19cd40daf9dadd47f656c10196e8be7195d6bc36e75d038": "1.0.46"
+    },
     ".github/workflows/sdlc-build.yml": {
       "014ad116c412ac75c48b1e5a35c7bc2a3995ee6aecb5228fff7151d3395db9bf": "1.0.21",
       "26fb0405ed626f549caa1882806496921b167ba263ebc9c8d2d73bfeb2b6a18e": "1.0.43",
@@ -162,6 +165,7 @@
     ".github/workflows/sdlc-merge.yml": {
       "12ef1b666f3be55f579140e82426ccd0b085838e783f07a0a3995b635c42a6d5": "1.0.27",
       "34001c9dbec5b189bf06c2319579078cb875d8509ec2b0e83faf126d3c02b4df": "1.0.18",
+      "3b86b20a7901b233a468128735c17cb4c152e69e28a767827b02ec1f7178e16e": "1.0.46",
       "9a004c2f09fbcc7c262166ff645f885b9479063e23e3a13d66a68c5324172927": "1.0.43",
       "c06ce88db80541b116f3e0257cafa1757779cd6f93179f8d8700986555bf9808": "1.0.22"
     },
@@ -252,7 +256,8 @@
       "c405cd666c46ee589252deb5046aa0a51dcc2d98dc080d4ab4f099a4de2b604d": "1.0.20",
       "c8a8872634bdfce1ea33a1488a74b5388dbfdefee6f8f3146c2a498c25696381": "0.2.0",
       "d13a7920d18311571cc846abcc18d51a580039da653419a78398f77f7950cf03": "1.0.43",
-      "db020db0b3f614fac32a0db56d0c3a7fb291a530d5f80c21eecd7366cbd36a63": "0.2.28"
+      "db020db0b3f614fac32a0db56d0c3a7fb291a530d5f80c21eecd7366cbd36a63": "0.2.28",
+      "f9bc253e0acfb1a60e920aa7d4e9e14e55d50d035487d54c13faed05fabd4c95": "1.0.46"
     },
     "evals/check.py": {
       "6cd2e1820f634373ff224ed9293a86a93b7d4a78f3a801ae427e906b20adc77e": "0.2.19"
@@ -263,6 +268,7 @@
       "e5dc5f9e26c1f331d72f437dbab6368d06d4e302517b86dd9adb748824261ba3": "0.3.6"
     },
     "policies/README.md": {
+      "3a949c6e90ad3da419a8bcfcd7a6eeaba6188a001422d74d7b4aafe883c60e9d": "1.0.46",
       "677dcff450b6fd642e02b3d2e56919285e3ef610c65f5eff0c6ade30e484dca0": "1.0.35"
     }
   },
@@ -286,6 +292,9 @@
       "cdde91f67d2eb72ff20b0ee9a73ad563f959c9088414dea777c8e249e83a108e": "0.2.19",
       "d3b8305ee6c9fa997df34422389643fab0882e2a02a60a691f00b2dc1806cb53": "0.2.20",
       "de95d320db7239bad9383962ed50cddf5e49f82d64513ad7dcfa69c574598bd3": "0.2.22"
+    },
+    ".github/workflows/sdlc-agent-evals.yml": {
+      "41c7597672f7cef6d19cd40daf9dadd47f656c10196e8be7195d6bc36e75d038": "1.0.46"
     },
     ".github/workflows/sdlc-build.yml": {
       "014ad116c412ac75c48b1e5a35c7bc2a3995ee6aecb5228fff7151d3395db9bf": "1.0.21",
@@ -434,6 +443,7 @@
     ".github/workflows/sdlc-merge.yml": {
       "12ef1b666f3be55f579140e82426ccd0b085838e783f07a0a3995b635c42a6d5": "1.0.27",
       "34001c9dbec5b189bf06c2319579078cb875d8509ec2b0e83faf126d3c02b4df": "1.0.18",
+      "3b86b20a7901b233a468128735c17cb4c152e69e28a767827b02ec1f7178e16e": "1.0.46",
       "9a004c2f09fbcc7c262166ff645f885b9479063e23e3a13d66a68c5324172927": "1.0.43",
       "c06ce88db80541b116f3e0257cafa1757779cd6f93179f8d8700986555bf9808": "1.0.22"
     },
@@ -525,7 +535,8 @@
       "c405cd666c46ee589252deb5046aa0a51dcc2d98dc080d4ab4f099a4de2b604d": "1.0.20",
       "c8a8872634bdfce1ea33a1488a74b5388dbfdefee6f8f3146c2a498c25696381": "0.2.0",
       "d13a7920d18311571cc846abcc18d51a580039da653419a78398f77f7950cf03": "1.0.43",
-      "db020db0b3f614fac32a0db56d0c3a7fb291a530d5f80c21eecd7366cbd36a63": "0.2.28"
+      "db020db0b3f614fac32a0db56d0c3a7fb291a530d5f80c21eecd7366cbd36a63": "0.2.28",
+      "f9bc253e0acfb1a60e920aa7d4e9e14e55d50d035487d54c13faed05fabd4c95": "1.0.46"
     },
     "evals/check.py": {
       "6cd2e1820f634373ff224ed9293a86a93b7d4a78f3a801ae427e906b20adc77e": "0.2.19"
@@ -536,6 +547,7 @@
       "e5dc5f9e26c1f331d72f437dbab6368d06d4e302517b86dd9adb748824261ba3": "0.3.6"
     },
     "policies/README.md": {
+      "3a949c6e90ad3da419a8bcfcd7a6eeaba6188a001422d74d7b4aafe883c60e9d": "1.0.46",
       "677dcff450b6fd642e02b3d2e56919285e3ef610c65f5eff0c6ade30e484dca0": "1.0.35"
     }
   },

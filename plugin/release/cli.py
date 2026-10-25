@@ -523,7 +523,7 @@ def merge_acceptance(
     gate records (the items no earlier act accepted, ``risk.banner_entries``) and GitHub's
     record of the act (who, when, the body it showed); (None, why) when no act of the
     owner's account accepted (``unpark.is_owner_actor``, decision 34's one rule), None when
-    nothing was asked. The owner's own merge accepts, as before R22 (fallback C1, or a merge
+    nothing was asked. The owner's own merge accepts, as before R22 (no merge App, or a merge
     through the bypass). Since R22 a merge by anyone else - the merge App is a ``[bot]`` and
     never accepts a risk - is accepted by the owner's approving review, on which the merge
     App merged (choice 242, point 2): ``reviews`` reads the pull request's reviews, and the

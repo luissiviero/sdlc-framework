@@ -1,14 +1,14 @@
 # The deploy gate is the owner's approving review; the merge App merges on it (decision 36; ROADMAP
 # R22). Three jobs, no model:
 #
-# - doorbell, on the owner's approving review of a build PR: it dispatches this workflow on
-#   the default branch with the pull request's number. It holds no key: a review-triggered
-#   run may use the pull request's copy of this file, so it only rings.
+# - on-approval, on the owner's approving review of a build PR: it dispatches this workflow
+#   on the default branch with the pull request's number. It holds no key: a review-triggered
+#   run may use the pull request's copy of this file, so it only dispatches.
 # - not-a-build-pr, on every pull request whose head is not sdlc/<id>/build (or /c): it
 #   posts a passing sdlc/review check ("not a build PR") on the head, so ruleset 2, which requires that
 #   check, holds only build PRs (decision 36, point 5). pr/cli.py upsert posts the same check
 #   on the pull requests the workflow token opens or updates, whose events start no run.
-# - merge, on the dispatch (the doorbell's, or the deploy run's when the review turned green
+# - merge, on the dispatch (on-approval's, or the deploy run's when the review turned green
 #   after an early approval): in the sdlc-merge environment, which only the default branch
 #   may use, it mints the merge App's token and runs plugin/ci/merge_step.py, which re-checks
 #   everything from the API (the owner's approval, the build PR at sdlc:deploy-ready, the deploy gate's
@@ -21,7 +21,7 @@
 # GitHub grants a bypass to an actor, not to a job, and the phase runners hold that App's
 # token, so only the merge App is a bypass actor of ruleset 1 (choice 242, point 4). Its key
 # is a secret of the sdlc-merge environment, read here only. Without vars.SDLC_MERGE_APP_ID
-# the merge job says so and stops: the owner merges after approving (fallback C1).
+# the merge job says so and stops: no merge App, so the owner merges after approving.
 #
 # Contract: docs/OPERATING_MODEL.md sections 3 and 4.2, decision 36, article p.33-35
 # ("Approval comes from a human through branch protection, informed by the findings").
@@ -56,8 +56,8 @@ permissions:
   pull-requests: read
 
 jobs:
-  doorbell:
-    # A coarse filter; merge_step.py doorbell checks the owner's account (decision 34).
+  on-approval:
+    # A coarse filter; merge_step.py on-approval checks the owner's account (decision 34).
     if: >-
       ${{ github.event_name == 'pull_request_review' &&
       github.event.review.state == 'approved' &&
@@ -96,7 +96,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: python framework/plugin/ci/merge_step.py doorbell --root . --repo "$REPO"
+        run: python framework/plugin/ci/merge_step.py on-approval --root . --repo "$REPO"
 
   not-a-build-pr:
     if: >-
@@ -153,9 +153,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Say that no merge App is set up (fallback C1)
+      - name: Say that no merge App is set up (merge it yourself)
         if: ${{ vars.SDLC_MERGE_APP_ID == '' }}
-        run: python -c "print('merge - wait - no merge App, vars.SDLC_MERGE_APP_ID is not set in the sdlc-merge environment - merge the build PR yourself after approving it (decision 36, fallback C1; /sdlc-init step 6)')"
+        run: python -c "print('merge - wait - no merge App, vars.SDLC_MERGE_APP_ID is not set in the sdlc-merge environment - merge it yourself after approving the build PR (decision 36; /sdlc-init step 6)')"
 
       - name: Mint the merge App's token (decision 36)
         id: app

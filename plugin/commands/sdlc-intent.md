@@ -57,11 +57,12 @@ It prints the id, slug, folder and branch. Read them from the JSON; never invent
 
 ## 3. Write intent.md
 Use the `intent-template` skill (it defines the exact sections and header). Write
-`changes/<id>-<slug>/intent.md`. Status in the header is `draft`.
+`changes/<id>-<slug>/intent.md`. The header carries no status line (`status.yaml` holds the
+phase).
 
 ## 4. The owner corrects (article p.11 step 4)
 Show the draft in full and ask the owner what you misunderstood. Apply every correction.
-Repeat until the owner says it is right. Then set the header status to `proposed`.
+Repeat until the owner says it is right.
 
 ## 5. Commit on the phase branch (article p.11 step 5)
 ```

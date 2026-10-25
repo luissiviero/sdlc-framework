@@ -72,8 +72,8 @@ not determine is an open question.
 
 ## 3. Write the incident intent (skill `intent-template`)
 `changes/<id>-<slug>/intent.md` with `Entry route: incident <signature>` (the signature is
-in the record), `Status: proposed` (there is no owner to correct it here; the intent PR's
-review comments are the correction, `/sdlc-fix`), the five sections and `## Evidence` — the
+in the record; there is no owner to correct it here: the intent PR's review comments are
+the correction, `/sdlc-fix`), the five sections and `## Evidence` — the
 anomaly (metric, tier, rule, the numbers), when it started, where the evidence lives (the
 run URLs, the log lines you read), what was ruled out, the lesson you relied on. The
 Proposed outcome is the fix or the mitigation, not the diagnosis (the skill's rule); an

@@ -274,7 +274,8 @@ FIX_WORKFLOW = "sdlc-fix.yml"  # decisions 22 and 24 (plugin 0.2.13)
 ABANDON_WORKFLOW = "sdlc-abandon.yml"  # decision 25 (plugin 0.2.13)
 DETECT_WORKFLOW = "sdlc-detect.yml"  # build guide step 37, decisions 14/15/26 (plugin 0.2.19)
 RUNBOOK_WORKFLOW = "sdlc-runbook.yml"  # the owner's Go on a runbook (plugin 0.2.19)
-EVALS_WORKFLOW = "sdlc-evals.yml"  # build guide step 35 (plugin 0.2.19)
+# build guide step 35 (plugin 0.2.19); sdlc-evals.yml before plugin 1.0.46 (R45 row 78)
+EVALS_WORKFLOW = "sdlc-agent-evals.yml"
 SCAN_WORKFLOW = "sdlc-scan.yml"  # build guide step 38, decision 16 (plugin 0.2.19)
 COMMENT_WORKFLOW = "sdlc-comment.yml"  # the owner's @claude comment (decision 34, R17)
 MERGE_WORKFLOW = "sdlc-merge.yml"  # the deploy gate is the owner's approval (decision 36, R22)
@@ -917,6 +918,9 @@ def test_evals_workflow_runs_on_configuration_changes_and_nightly():
     """Build guide step 35 (article p.30 step 3: "on any change to CLAUDE.md, skills or
     hooks" and on a schedule; step 4: the pass rate gates the change)."""
     data = _workflow_yaml(EVALS_WORKFLOW)
+    # R45 row 78: named after the article's .github/workflows/agent-evals.yml (p.30)
+    assert data["name"] == "SDLC agent evals"
+    assert not (WORKFLOW_DIR / "sdlc-evals.yml").exists()
     on = _triggers(data)
     assert on["pull_request"]["paths"] == ["CLAUDE.md", ".claude/**", "evals/**"]
     assert on["pull_request"]["branches"] == ["main"] and "schedule" in on
@@ -933,7 +937,7 @@ def test_evals_workflow_runs_on_configuration_changes_and_nightly():
     assert job["steps"][-1]["name"] == "Keep the report"
 
 
-@pytest.mark.parametrize("name", ["sdlc-evals.yml", "sdlc-fix.yml"])
+@pytest.mark.parametrize("name", [EVALS_WORKFLOW, "sdlc-fix.yml"])
 def test_a_head_s_setup_command_is_the_default_branch_s_and_the_framework_is_fetched_again(name):
     """R44 (the head's own setup command): where a session's head reaches the setup step,
     the command comes from the default branch's sdlc.yaml and the framework the install could
@@ -1090,7 +1094,7 @@ def test_every_workflow_either_mints_the_app_token_or_keeps_the_workflow_token()
     assert sorted((*APP_WORKFLOWS, *TOKEN_WORKFLOWS, MERGE_WORKFLOW)) == sorted(ALL_WORKFLOWS)
 
 
-def test_the_merge_workflow_rings_posts_and_merges_with_the_merge_app_only():
+def test_the_merge_workflow_dispatches_posts_and_merges_with_the_merge_app_only():
     """R22 (decision 36): the review-triggered job holds no key and only dispatches; the
     pull_request job posts "not a build PR"; the dispatched job alone reads the merge App's
     key, in the sdlc-merge environment, never decision 33's App's key."""
@@ -1103,20 +1107,22 @@ def test_the_merge_workflow_rings_posts_and_merges_with_the_merge_app_only():
         "actions": "write", "checks": "write", "contents": "read", "pull-requests": "read",
     }  # fmt: skip
     jobs = data["jobs"]
-    assert list(jobs) == ["doorbell", "not-a-build-pr", "merge"]
+    # R45 row N5: the review-triggered job is on-approval (doorbell before plugin 1.0.46)
+    assert list(jobs) == ["on-approval", "not-a-build-pr", "merge"]
     text = (WORKFLOW_DIR / MERGE_WORKFLOW).read_text(encoding="utf-8")
     assert "SDLC_APP_PRIVATE_KEY" not in text and "vars.SDLC_APP_ID" not in text
     assert re.findall(r"secrets\.\w+", text) == ["secrets.SDLC_MERGE_APP_PRIVATE_KEY"]
-    for name in ("doorbell", "not-a-build-pr"):
+    for name in ("on-approval", "not-a-build-pr"):
         job = jobs[name]
         assert "environment" not in job
         assert "SDLC_MERGE" not in json.dumps(job)
         assert job["steps"][0]["with"]["ref"] == DEFAULT_BRANCH_EXPR
-    doorbell = _condition(MERGE_WORKFLOW, "doorbell")
-    assert "github.event.review.state == 'approved'" in doorbell
-    assert jobs["doorbell"]["steps"][-1]["run"].startswith(
-        "python framework/plugin/ci/merge_step.py doorbell "
+    on_approval = _condition(MERGE_WORKFLOW, "on-approval")
+    assert "github.event.review.state == 'approved'" in on_approval
+    assert jobs["on-approval"]["steps"][-1]["run"].startswith(
+        "python framework/plugin/ci/merge_step.py on-approval "
     )
+    assert "doorbell" not in text and "C1" not in text  # R45 rows N5 and N7
     assert "!(startsWith(github.event.pull_request.head.ref, 'sdlc/')" in (
         _condition(MERGE_WORKFLOW, "not-a-build-pr")
     )
@@ -1126,7 +1132,7 @@ def test_the_merge_workflow_rings_posts_and_merges_with_the_merge_app_only():
         "(endsWith(github.event.pull_request.head.ref, '/c') || "
         "endsWith(github.event.pull_request.head.ref, '/build'))"
     )
-    assert both in doorbell and both in _condition(MERGE_WORKFLOW, "not-a-build-pr")
+    assert both in on_approval and both in _condition(MERGE_WORKFLOW, "not-a-build-pr")
     assert data["name"] == "SDLC merge (deploy)"
     assert "Check gate (deploy) and merge" in [s.get("name") for s in jobs["merge"]["steps"]]
     merge = jobs["merge"]
@@ -1150,8 +1156,9 @@ def test_the_merge_workflow_rings_posts_and_merges_with_the_merge_app_only():
     assert last["env"]["SDLC_MERGE_TOKEN"] == "${{ steps.app.outputs.token }}"
     assert last["env"]["GITHUB_TOKEN"] == WORKFLOW_TOKEN  # the reads; the merge App merges only
     assert "SDLC_MERGE_TOKEN" not in json.dumps(merge["steps"][:-1])
-    # without the merge App the job says so and stops: the owner merges (fallback C1)
+    # without the merge App the job says so and stops: no merge App, the owner merges (R45 N7)
     assert merge["steps"][0]["if"] == "${{ vars.SDLC_MERGE_APP_ID == '' }}"
+    assert merge["steps"][0]["name"] == "Say that no merge App is set up (merge it yourself)"
     assert all(s.get("if") == "${{ vars.SDLC_MERGE_APP_ID != '' }}" for s in merge["steps"][1:])
 
 
@@ -1301,9 +1308,9 @@ def test_the_app_s_own_events_start_nothing_they_should_not():
     assert "!endsWith(github.event.comment.user.login, '[bot]')" in (
         _condition(COMMENT_WORKFLOW, "dispatch")
     )
-    # an approval by a [bot] rings no merge (decision 36)
+    # an approval by a [bot] dispatches no merge (decision 36)
     assert "!endsWith(github.event.review.user.login, '[bot]')" in (
-        _condition(MERGE_WORKFLOW, "doorbell")
+        _condition(MERGE_WORKFLOW, "on-approval")
     )
     # the release label counts only on a merged PR (decision 33's App never merges, decision
     # 4; the merge App merges only on the owner's approval, decision 36)

@@ -1,9 +1,9 @@
 ---
-name: ux-conventions
+name: ux-and-brand
 description: The organization's UX and brand conventions for user-facing interfaces. Use whenever designing, building or reviewing a screen, page, component, form, CLI output or error message that a person sees — the spec.md design pass, UI work in the build phase and the visual loop in the test phase ("follow the UX conventions", "design the form", "match the mock", "write the error message").
 ---
 
-# UX conventions
+# UX and brand
 
 ## Source
 - Article p.12–14 (design phase: "brand, security, compliance, and UX policies written as
@@ -13,13 +13,20 @@ description: The organization's UX and brand conventions for user-facing interfa
   browser or screenshot tool, give it the mock, and let it iterate. Implement, screenshot,
   compare, and adjust. Two or three rounds is normal").
 - Owner's brand and UX guidelines (colors, type, spacing, tone of voice, component
-  library): the project's `policies/ux-conventions.md`, written by the owner in their own
+  library): the project's `policies/ux-and-brand.md`, written by the owner in their own
   words (ROADMAP R27). Read it first when it exists: where it and this skill differ, the
   source wins, over a project override too; a rule here it does not mention still
   applies. No file means these rules alone. It is a guardrail path (decision 40): never
   edit it in a run.
-- Project override: `.claude/skills/ux-conventions/SKILL.md`. Projects without a user
+- Project override: `.claude/skills/ux-and-brand/SKILL.md`. Projects without a user
   interface leave this skill unused; the check says so.
+- The old name (R45 row 80): this skill was `ux-conventions` before plugin 1.0.46. For one
+  release, when `policies/ux-and-brand.md` is missing, read the owner's old source
+  `policies/ux-conventions.md` in its place; when `.claude/skills/ux-and-brand/` is missing,
+  an override at `.claude/skills/ux-conventions/SKILL.md` is still honoured: read it and
+  follow it as the override (the gate's preflight and the spec header count it too). Never
+  rename either in a run: both are guardrail paths, renamed by the owner in a commit of
+  their own; the check's note says which source is in force.
 
 ## Rules
 1. Start from the mock or the existing screen; a new pattern is a flagged concern in
@@ -41,12 +48,12 @@ description: The organization's UX and brand conventions for user-facing interfa
 ## Check
 Run the deterministic check and include its output in your summary (article p.22 pattern):
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/skills/ux-conventions/check.py" --root "${CLAUDE_PROJECT_DIR}" --id <change id>
+python "${CLAUDE_PLUGIN_ROOT}/plugin/skills/ux-and-brand/check.py" --root "${CLAUDE_PROJECT_DIR}" --id <change id>
 ```
 It lists the UI files in the diff, flags copy hard-coded in markup, and reports whether
 `evidence/proof/` or `evidence/screenshots/` holds a screenshot. Example output:
 ```
-## ux-conventions check
+## ux-and-brand check
 - UI changed but evidence/proof/ and evidence/screenshots/ hold no screenshot: run the visual loop (implement, screenshot, compare with the mock) and save the result
 - note: UI files changed: src/components/Form.tsx
 ```

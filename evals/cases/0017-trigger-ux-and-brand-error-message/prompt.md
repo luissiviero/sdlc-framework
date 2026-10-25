@@ -1,0 +1,2 @@
+<!-- R27, the trigger eval of the ux-and-brand policy skill, prompt 1 of 3 (article p.22 step 4: "Ask Claude to do the relevant task in different ways and confirm the skill loads each time"). The prompt never names the skill. -->
+Write the error message a person sees when the percentage calculation is given a total of zero. Give the exact text and say why it reads that way. Do not edit any file.

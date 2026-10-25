@@ -210,8 +210,7 @@ def intent_text(finding: dict[str, Any], change_id: str, head: str, repo: str | 
     short_head = head[:12] if head else "unknown"
     lines = [
         f"# Intent: {title_for(finding)}",
-        f"Author: {AUTHOR}. Status: proposed. Change id: {change_id}. "
-        f"Entry route: incident scan:{sig}.",
+        f"Author: {AUTHOR}. Change id: {change_id}. Entry route: incident scan:{sig}.",
         "",
         art.INTENT_SECTIONS[0],  # Problem
         f"The weekly security review of the codebase at commit `{short_head}` found an "

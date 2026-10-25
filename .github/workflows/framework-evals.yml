@@ -1,7 +1,7 @@
 # The framework-level eval suite (build guide step 35; article p.30: a suite "that runs
 # whenever the agent's configuration changes"): this repository's evals/cases/ run against a
 # fixture project initialised with the plugin of the checkout, on every pull request that
-# changes the plugin and nightly. Not a template: a project gets sdlc-evals.yml instead.
+# changes the plugin and nightly. Not a template: a project gets sdlc-agent-evals.yml instead.
 #
 # plugin/evals/run.py --fixture copies tests/fixtures/sample-python-project to a temporary
 # directory, runs /sdlc-init on it with this checkout as the plugin, and runs each case there

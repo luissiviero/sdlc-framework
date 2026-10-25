@@ -76,7 +76,7 @@ UI, the metric and its threshold; for a change that touches a screen, the Mock: 
 - **Requirements, not implementation.** Files, order of work, risks and proof go to plan.md
   (skill `plan-template`), written by the planning run that follows the spec.
 - **Apply the policies as constraints** (p.14 governance): write the spec with the policy
-  skills loaded (`coding-standards`, `security-baseline`, `ux-conventions`,
+  skills loaded (`coding-standards`, `security-baseline`, `ux-and-brand`,
   `data-conventions`, `definition-of-done`) and say in Requirements which rules apply.
   Where two policies contradict, or a policy cannot be met, that is a flagged concern, not a
   silent choice.

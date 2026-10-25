@@ -1,14 +1,16 @@
 """Gate (deploy) is the owner's approving review; the merge App merges on it (decision 36; R22).
 
-    python framework/plugin/ci/merge_step.py doorbell --root . --repo owner/name
+    python framework/plugin/ci/merge_step.py on-approval --root . --repo owner/name
     python framework/plugin/ci/merge_step.py not-build --root . --repo owner/name
     python framework/plugin/ci/merge_step.py merge --root . --repo owner/name --pr N
 
 Run by ``template/.github/workflows/sdlc-merge.yml`` on a checkout of the default branch, so
 the owner's ``sdlc.yaml`` (never the pull request's) names the owner. No model runs here.
 
-**doorbell** (``pull_request_review`` ``submitted``): an approving review by the owner's
-account (``state/unpark.py is_owner_actor``, decision 34) on an open build PR (head
+**on-approval** (``pull_request_review`` ``submitted``; ``doorbell`` before plugin 1.0.46,
+still accepted for one release because an older workflow copy calls it, R45 row N5): an
+approving review by the owner's account (``state/unpark.py is_owner_actor``, decision 34)
+on an open build PR (head
 ``sdlc/<id>/build``, or ``sdlc/<id>/c`` of a change in flight before R45, in this
 repository) dispatches ``sdlc-merge.yml`` on the default branch with the pull request's
 number. It holds no key and judges nothing else: the dispatched job
@@ -89,7 +91,10 @@ E_READY_LABELS = c.ready_labels(c.DEPLOY)
 # R45: the build head is ``sdlc/<id>/build``, or ``sdlc/<id>/c`` for a change in flight
 BUILD_HEAD_RE = re.compile(rf"^sdlc/(?P<id>\d{{4}})/(?:{c.BUILD}|{c.PHASE_LETTERS[c.BUILD]})$")
 DECISIVE = ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
-LINES = {"doorbell": "merge-doorbell", "not-build": "review-check", "merge": "merge"}
+# R45 row N5: the subcommand and its log prefix were ``doorbell`` and ``merge-doorbell``
+ON_APPROVAL = "on-approval"
+SUBCOMMAND_ALIASES = {"doorbell": ON_APPROVAL}  # an older sdlc-merge.yml copy calls it
+LINES = {ON_APPROVAL: "on-approval", "not-build": "review-check", "merge": "merge"}
 
 
 class StepError(RuntimeError):
@@ -187,8 +192,8 @@ def owner_approval(
     return latest
 
 
-# --- doorbell ---------------------------------------------------------------------------------
-def doorbell(
+# --- on-approval ------------------------------------------------------------------------------
+def on_approval(
     root: Path, repo: str, env: Mapping[str, str], github: Any = None, send: Any = None
 ) -> int:
     github = github if github is not None else _github()
@@ -199,28 +204,30 @@ def doorbell(
     try:
         payload = read_payload(env)
         if env.get("GITHUB_EVENT_NAME") != "pull_request_review":
-            _say("doorbell", f"skipped: the event is {env.get('GITHUB_EVENT_NAME')}", env)
+            _say(ON_APPROVAL, f"skipped: the event is {env.get('GITHUB_EVENT_NAME')}", env)
             return EXIT_OK
         review = _dict(payload.get("review"))
         if str(review.get("state") or "").lower() != "approved":
-            _say("doorbell", "skipped: the review does not approve", env)
+            _say(ON_APPROVAL, "skipped: the review does not approve", env)
             return EXIT_OK
         config = _config(root)
         login = str(_dict(review.get("user")).get("login") or "")
         if not is_owner_actor(login, config, env, repo):
             _say(
-                "doorbell", "skipped: the approval is not the owner's account's (decision 34)", env
+                ON_APPROVAL, "skipped: the approval is not the owner's account's (decision 34)", env
             )
             return EXIT_OK
         pull = _dict(payload.get("pull_request"))
         head = _dict(pull.get("head"))
         change_id = build_change_id(head.get("ref"))
         if change_id is None:
-            _say("doorbell", "skipped: not a build PR (its head is not sdlc/<id>/build)", env)
+            _say(ON_APPROVAL, "skipped: not a build PR (its head is not sdlc/<id>/build)", env)
             return EXIT_OK
         head_repo = str(_dict(head.get("repo")).get("full_name") or "")
         if head_repo.lower() != repo.lower():
-            _say("doorbell", f"skipped: the head is in {head_repo or 'an unknown repository'}", env)
+            _say(
+                ON_APPROVAL, f"skipped: the head is in {head_repo or 'an unknown repository'}", env
+            )
             return EXIT_OK
         number = pull.get("number")
         if not isinstance(number, int) or isinstance(number, bool):
@@ -235,9 +242,9 @@ def doorbell(
             why = sent.get("reason") or sent.get("status") or "failed"
             raise StepError(f"{MERGE_WORKFLOW} could not be dispatched: {why}")
     except StepError as exc:
-        _say("doorbell", f"failed: {exc}", env, stream=sys.stderr)
+        _say(ON_APPROVAL, f"failed: {exc}", env, stream=sys.stderr)
         return EXIT_FAILED
-    _say("doorbell", f"dispatched {MERGE_WORKFLOW} for #{number} ({change_id})", env)
+    _say(ON_APPROVAL, f"dispatched {MERGE_WORKFLOW} for #{number} ({change_id})", env)
     return EXIT_OK
 
 
@@ -484,8 +491,9 @@ def merge(root: Path, repo: str, number: int, env: Mapping[str, str], github: An
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="sdlc-merge-step", description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
-    for name in ("doorbell", "not-build", "merge"):
-        s = sub.add_parser(name)
+    for name in (ON_APPROVAL, "not-build", "merge"):
+        aliases = [old for old, new in SUBCOMMAND_ALIASES.items() if new == name]
+        s = sub.add_parser(name, aliases=aliases)
         s.add_argument("--root", default=".", help="the default branch's checkout")
         s.add_argument("--repo", required=True, help="owner/name")
         if name == "merge":
@@ -496,9 +504,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root, env = Path(args.root).resolve(), dict(os.environ)
-    if args.cmd == "doorbell":
-        return doorbell(root, args.repo, env)
-    if args.cmd == "not-build":
+    cmd = SUBCOMMAND_ALIASES.get(args.cmd, args.cmd)
+    if cmd == ON_APPROVAL:
+        return on_approval(root, args.repo, env)
+    if cmd == "not-build":
         return not_build(root, args.repo, env)
     return merge(root, args.repo, args.pr, env)
 

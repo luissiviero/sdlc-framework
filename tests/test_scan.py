@@ -432,11 +432,12 @@ def test_intent_text_of_a_bounded_finding_is_the_patch():
     )
     header = text.splitlines()[1]
     assert header == (
-        "Author: security review (phase f). Status: proposed. Change id: 0005. "
+        "Author: security review (phase f). Change id: 0005. "
         f"Entry route: incident scan:{finding['signature']}."
     )
     for field in art.INTENT_HEADER_FIELDS:
         assert field in header
+    assert "Status:" not in header  # R45 row 77: status.yaml holds the phase
     required = (*art.INTENT_SECTIONS, art.INTENT_EVIDENCE_SECTION)
     assert art.missing_sections(text, required) == []
     assert art.empty_sections(text, required) == []

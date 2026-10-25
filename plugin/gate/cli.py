@@ -66,7 +66,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from gate import artifacts as art  # noqa: E402
-from gate import gate, limits, preflight  # noqa: E402
+from gate import gate, limits, policy, preflight  # noqa: E402
 from gate.checks import GateContext  # noqa: E402
 from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
@@ -246,12 +246,9 @@ def plugin_version(root: Path, plugin_root: Path) -> str:
 
 
 def skill_overrides(root: Path) -> list[str]:
-    """Policy skills the project replaced with its own under .claude/skills/ (step 20)."""
-    return [
-        name
-        for name in preflight.POLICY_SKILLS
-        if (Path(root) / ".claude" / "skills" / name / "SKILL.md").is_file()
-    ]
+    """Policy skills the project replaced with its own under .claude/skills/ (step 20); an
+    override under a skill's name before plugin 1.0.46 counts for one release (R45 row 80)."""
+    return [name for name in preflight.POLICY_SKILLS if policy.skill_override(root, name)]
 
 
 POLICY_SOURCE_COMMIT_LEN = 12
@@ -266,8 +263,9 @@ def policy_sources(root: Path) -> list[tuple[str, str]]:
 
     found = []
     for name in preflight.POLICY_SKILLS:
-        rel = f"policies/{name}.md"
-        if not (Path(root) / rel).is_file():
+        # R45 row 80 (N35): policies/ux-conventions.md is read when ux-and-brand.md is missing
+        rel = policy.policy_source(Path(root), name)
+        if rel is None:
             continue
         sha = ""
         if gitops.is_repo(Path(root)):

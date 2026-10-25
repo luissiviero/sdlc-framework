@@ -31,7 +31,7 @@ UNATTENDED = tuple(name for name in PHASE_COMMAND_FILES if name not in ATTENDED)
 POLICY_SKILLS = (
     "coding-standards",
     "security-baseline",
-    "ux-conventions",
+    "ux-and-brand",
     "data-conventions",
     "definition-of-done",
 )
@@ -147,9 +147,10 @@ def test_intent_skill_sections_in_article_order():
     ]
     positions = [body.index(h) for h in order]
     assert positions == sorted(positions)
-    assert (
-        "Author:" in body and "Status:" in body and "Change id:" in body and "Entry route:" in body
-    )
+    assert "Author:" in body and "Change id:" in body and "Entry route:" in body
+    # R45 row 77: the header carries no status line; an old intent keeps its line as history
+    header = next(line for line in body.splitlines() if line.startswith("Author:"))
+    assert "Status:" not in header and "keeps its `Status:` line as history" in body
     assert "idea | ticket" in body and "incident" in body
 
 
@@ -967,7 +968,7 @@ def test_the_policy_skills_say_what_the_gate_checks_of_a_screenshot():
     assert (
         "by-hand screenshots under `evidence/screenshots/` are still required by no check" in done
     )
-    ux = flat(PLUGIN / "skills" / "ux-conventions" / "SKILL.md")
+    ux = flat(PLUGIN / "skills" / "ux-and-brand" / "SKILL.md")
     assert "`evidence/proof/` or `evidence/screenshots/` holds a screenshot" in ux
     assert "Rule 7 has one only when `sdlc.yaml: commands.drive` is set" in ux
     assert "UI changed but evidence/proof/ and evidence/screenshots/ hold no screenshot" in ux

@@ -61,6 +61,34 @@ def is_automation(author_name: str, author_email: str, identities: list[str]) ->
     return (author_email or "").strip().lower().endswith(BOT_EMAIL_SUFFIX)
 
 
+# R45 row 80 (and N35): the skill ``ux-conventions`` is ``ux-and-brand`` since plugin 1.0.46,
+# {new: old}. For one release the old name is still read where the project wrote it: the
+# owner's source ``policies/ux-conventions.md`` when ``policies/ux-and-brand.md`` is missing,
+# and a project override under ``.claude/skills/ux-conventions/`` when none is under the new
+# name. Both are guardrail paths the owner renames in a commit of their own.
+RENAMED_SKILLS = {"ux-and-brand": "ux-conventions"}
+
+
+def _first_file(root: Path, rels: list[str]) -> str | None:
+    return next((rel for rel in rels if (Path(root) / rel).is_file()), None)
+
+
+def policy_source(root: Path, name: str) -> str | None:
+    """The owner's source for the policy skill ``name`` (R27), relative to ``root``:
+    ``policies/<name>.md``, or for one release the file of the name the skill had before
+    (``RENAMED_SKILLS``) when the new one is missing; None when neither exists."""
+    names = [name, *([RENAMED_SKILLS[name]] if name in RENAMED_SKILLS else [])]
+    return _first_file(root, [f"policies/{n}.md" for n in names])
+
+
+def skill_override(root: Path, name: str) -> str | None:
+    """The project's override of the policy skill ``name`` (build guide step 20):
+    ``.claude/skills/<name>/SKILL.md``, or for one release the one under the name the skill
+    had before (``RENAMED_SKILLS``); None when the project has none."""
+    names = [name, *([RENAMED_SKILLS[name]] if name in RENAMED_SKILLS else [])]
+    return _first_file(root, [f".claude/skills/{n}/SKILL.md" for n in names])
+
+
 TEXT_SUFFIXES = {
     ".py", ".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs", ".json", ".yaml", ".yml", ".toml",
     ".md", ".txt", ".html", ".css", ".scss", ".vue", ".svelte", ".sql", ".sh", ".ps1", ".cfg",

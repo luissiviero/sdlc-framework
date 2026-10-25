@@ -72,7 +72,7 @@ Read `changes/<id>-<slug>/intent.md`, `spec.md`, `plan.md` and `status.yaml`. Th
 the contract: "Files that change", "Order of work", "Proof". Do not redesign; if the plan
 cannot be followed, update `plan.md` in the same commit as the departure and say why under
 Risks (article p.16 step 7). Load the policy skills (`coding-standards`,
-`security-baseline`, `ux-conventions`, `data-conventions`, `definition-of-done`; a project
+`security-baseline`, `ux-and-brand`, `data-conventions`, `definition-of-done`; a project
 override under `.claude/skills/<name>/` replaces the plugin's; the owner's source
 `policies/<name>.md`, where it exists, wins over either (decision 40)).
 
@@ -99,7 +99,7 @@ files (the Playwright test, its config) under "Files that change", since the rev
 them. Without a drive it stays prose, as before.
 The build matches the owner's mock (`spec.md` Acceptance, the `Mock:` line), never the
 screens the intent's Examples/References only refer to (ROADMAP R29); with
-`Mock: none`, screens follow the `ux-conventions` skill.
+`Mock: none`, screens follow the `ux-and-brand` skill.
 Follow "Order of work". After each step run the project's `test` command for the tests the
 step touches (the full suite is the test phase's). Commit with
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase build --message "build(<id>): <step>" --paths <files>`

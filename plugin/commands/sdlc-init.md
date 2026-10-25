@@ -124,6 +124,12 @@ the template of every release (`plugin/init/template_hashes.json`):
   `policies/README.md`) is replaced with this version's and reported
   `refreshed (was <version>)`, the first release that shipped the text it had; the report's
   `refreshed` map lists them;
+- a copy the template renamed (`sdlc-evals.yml`, now `sdlc-agent-evals.yml` after the
+  article's `agent-evals.yml`, p.30; R45 row 78, plugin 1.0.46) is removed when an older
+  release wrote it and nobody changed it since, reported `removed (was <version>): …`, and
+  the new file is installed in its place; an edited one is kept and reported `kept; renamed
+  (edited): …`, and the new file is reported `not installed: …` until the owner moves the
+  edits and deletes the old copy, so the suite never runs twice;
 - an edited copy is kept, and so is one rendered with values the project no longer has
   (another framework repository, a renamed default branch, changed `commands.env` names): a
   workflow is reported `outdated: …`, a README or `evals/check.py` `kept; outdated (edited):
@@ -143,11 +149,20 @@ the template of every release (`plugin/init/template_hashes.json`):
   `legacy_keys` names each one, and the rename is the owner's edit: show those lines to the
   owner as they are. The rename waits for the pin at 1.0.45 or later: an older plugin reads
   only the old key, so a `deploy.production_gate: true` under it is read as false and the
-  production gate is off.
+  production gate is off;
+- a guardrail path that names the skill `ux-conventions`, now `ux-and-brand` (R45 row 80,
+  plugin 1.0.46), is never renamed by the script: the report's `legacy_paths` names each
+  one. The owner's source `policies/ux-conventions.md` is still read for one release while
+  `policies/ux-and-brand.md` is missing, and an override in `.claude/skills/ux-conventions/`
+  is still honoured as the `ux-and-brand` override; a `.claude/settings.json` rule that
+  names `sdlc:ux-conventions` is not honoured and must name `sdlc:ux-and-brand`. Show those
+  lines to the owner as they are: each rename is the owner's edit in a reviewed PR.
 
 Read its JSON report and show the owner the file-by-file result, the `outdated` ones first,
-then the `refreshed` ones; the refreshed copies ride in the same PR as the pin, so the two
-move together, and the PR body lists them. Whenever a copy is `outdated`, say so to the owner
+then the `refreshed` ones, then any `removed (was <version>)` (a renamed copy nobody edited,
+replaced by its new name, as `sdlc-evals.yml` by `sdlc-agent-evals.yml`), `kept; renamed
+(edited)` and `not installed` lines; the refreshed and removed copies ride in the same PR as
+the pin, so the two move together, and the PR body lists them. Whenever a copy is `outdated`, say so to the owner
 and name the template copy to diff by hand; the framework never rewrites an edited one. For an outdated `sdlc-build.yml` or `sdlc-fix.yml`, also say:
 replace sdlc-build.yml and sdlc-fix.yml to get the build caps (decision 32; an older copy
 keeps the build and every fix round on the general caps). The report's `maintain.observation` line
@@ -270,11 +285,11 @@ close look" banner shows (the intent gate matches the globs on this PR's own fil
      the **secret** `SDLC_MERGE_APP_PRIVATE_KEY` (the `.pem` file's content), never as a
      repository secret, which every workflow on every branch could read. Environments
      on a private repository need a paid plan (GitHub's documentation); on a free private
-     repository the merge stays yours (fallback C1).
+     repository there is no merge App: merge it yourself.
   3. Add this App to ruleset 1's bypass list (the ruleset bullet below), in "For pull
      requests only" mode.
   Without `SDLC_MERGE_APP_ID` the merge workflow says so and stops: you merge the build PR
-  after approving it (fallback C1). The daily digest says so at the top while the
+  after approving it (no merge App: merge it yourself). The daily digest says so at the top while the
   environment lets a branch other than the default one use it, or while the key is also a
   repository secret (choice 250). The merge job runs its actions pinned by commit SHA;
   when you refresh `sdlc-merge.yml` from a later framework version, keep the pins it brings.
