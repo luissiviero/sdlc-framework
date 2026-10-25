@@ -1,4 +1,4 @@
-# Abandon (decision 25; build guide step 9): a pull request of gate (a)-(e) closed without a
+# Abandon (decision 25; build guide step 9): a pull request of the intent to deploy gates closed without a
 # merge ends its change. status.yaml says `phase: abandoned` on the closed PR's head and on
 # every other sdlc/<id>/* branch of the change on the remote; the branches are kept; every
 # workflow's guard skips the change from then on (OPERATING_MODEL sections 4 and 4.2).
@@ -17,7 +17,7 @@
 # The change is found from the pull request's own files (its changes/<id>-<slug>/ folder),
 # never from the head name alone (a web-session intent PR carries a claude/... head). A
 # closed PR that carries no change folder costs one green job of about 20 s. A merged PR is
-# gate (a), (b) or (e) passed and is never this workflow's.
+# the intent, design or deploy gate passed and is never this workflow's.
 #
 # The fast lane (decision 30): the run closes the owner's intent PR once the design PR carries
 # it, and the design PR once the build PR carries it, each labelled sdlc:superseded first.
@@ -26,7 +26,7 @@
 # a PR without the label abandons the change as before. A PR the runner labelled but could not
 # close stays open with the label; remove the label before you close it to abandon.
 #
-# Gate (f) (decision 25, second half; build guide step 39; article p.47 step 4 "Dismiss with
+# The triage gate of maintain (decision 25, second half; build guide step 39; article p.47 step 4 "Dismiss with
 # a reason, so the dismissal is recorded and the same finding does not return as new on the
 # next run"): closing an incident intent PR also dismisses its finding. The last comment by
 # a person on the PR is the reason; detect/cli.py dismiss appends the finding's signature to

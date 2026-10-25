@@ -1,7 +1,7 @@
-# Phase (f) maintain: the deterministic detection script on a schedule, and the diagnosis
+# The maintain phase: the deterministic detection script on a schedule, and the diagnosis
 # it invokes when a control band is breached (build guide step 37; decisions 14, 15, 26).
 #
-# Contract: docs/OPERATING_MODEL.md sections 4 (gate (f)), 4.1 (the (f) row) and 4.2, article
+# Contract: docs/OPERATING_MODEL.md sections 4 (the triage gate), 4.1 (the maintain row) and 4.2, article
 # p.42-45 ("A deterministic script watches production and invokes Claude when a control
 # band is breached"; the trigger layer "can be a scheduled workflow in GitHub"; "At 1σ the
 # script only logs, at 2σ it invokes Claude read-only to diagnose, and at 3σ Claude may act,
@@ -14,13 +14,13 @@
 # (the GitHub Actions runs API, cached across runs), computes the rolling statistics and
 # the Western Electric rules with no model involved, appends one line to the detection log
 # (uploaded as an artifact: the p.45 leading indicator, "the detection script's log has the
-# breach timestamp and tier"), and at tier 2 or 3 files one incident change on sdlc/<id>/a
+# breach timestamp and tier"), and at tier 2 or 3 files one incident change on sdlc/<id>/intent
 # - unless an incident of the same metric is already open or the finding was dismissed
 # (changes/.dismissed.json). Then, only when a change was filed, run_phase.py runs the
 # diagnosis: /sdlc-maintain, read-only on source, which writes the incident intent.md and
 # the proposed route, dispatches it (a pre-approved runbook runs and opens its PR; a `go`
 # route parks the PR with "Go" requested) and opens the intent PR with the labels
-# sdlc:f-ready and incident. Gate (f) is your triage of that PR (decision 25).
+# sdlc:maintain-ready and incident. The triage gate is your triage of that PR (decision 25).
 #
 # Token rule (decision 33): with the repository variable SDLC_APP_ID set, the job pushes and
 # opens the incident PR with the project's GitHub App token, and the events the App causes do
@@ -42,7 +42,7 @@
 #
 # /sdlc-init filled in the framework repository. The Claude Code version is read from
 # sdlc.yaml at run time.
-name: SDLC detect (f)
+name: SDLC detect (maintain)
 
 on:
   schedule:
@@ -172,7 +172,7 @@ jobs:
 
       # The diagnosis (p.43 step 3, 2σ "read-only to diagnose"): the model writes the
       # incident intent and the proposed route, commits them and stops (--diagnosis-only).
-      - name: Run phase (f)
+      - name: Run the maintain phase
         id: phase
         if: steps.detect.outputs.change_id != ''
         env:
@@ -185,7 +185,7 @@ jobs:
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase f --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase maintain --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"
 
       # The diagnosis ran a session holding Write and Bash(git *) in this same checkout
       # (PROGRESS session 8, "the shared checkout"; the review of the 0.2.26 diff, M4):
@@ -220,12 +220,12 @@ jobs:
         run: python framework/plugin/ci/checkout_check.py --root . --framework framework --pin-ref "$PIN_REF" --origin "$ORIGIN_URL" --framework-origin "$FRAMEWORK_URL"
 
       # 3σ "may act, though only by opening a PR into the review gate or triggering a
-      # pre-approved runbook": the deterministic dispatcher, then gate (f) and the intent
+      # pre-approved runbook": the deterministic dispatcher, then the triage gate and the intent
       # PR. No model runs here. A project runbook's own secrets belong in this step's env:.
       # The detection record it judges is compared with the digest the Detect step printed
       # (a step output lives in the runner, not in the checkout): a record the session
       # changed is refused and the change parked (plugin 0.2.27).
-      - name: Dispatch the route, run gate (f) and open the intent PR
+      - name: Dispatch the route, run gate (maintain) and open the intent PR
         if: steps.detect.outputs.change_id != ''
         env:
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}

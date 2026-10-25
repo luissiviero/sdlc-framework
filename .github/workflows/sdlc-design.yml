@@ -1,4 +1,4 @@
-# Phase (b) design, fired by the merge of the intent PR: the merged pull request that carries
+# The design phase, fired by the merge of the intent PR: the merged pull request that carries
 # the change's changes/<id>-<slug>/ folder, whatever its head branch is called.
 #
 # The fast lane (decision 30): an intent PR your own account opens
@@ -6,9 +6,9 @@
 # your acceptance. The design branch is cut from the PR's head, and once the design PR exists
 # the intent PR is labelled sdlc:superseded and closed (no comment). The find step judges it
 # exactly (your account as the author and as the one who opened or reopened it,
-# one change folder at phase a and nothing else, no design PR yet) and skips green otherwise; a
-# collaborator's or a bot's intent PR or reopen, a draft and a fork's head keep gate (a), the
-# merge.
+# one change folder at phase intent and nothing else, no design PR yet) and skips green otherwise; a
+# collaborator's or a bot's intent PR or reopen, a draft and a fork's head keep the intent gate,
+# the merge.
 #
 # Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table), build guide
 # step 30, article p.39-41 ("Run Claude Code non-interactively inside the CI/CD pipeline,
@@ -28,7 +28,7 @@
 #
 # /sdlc-init rewrote `branches: [main]` below to this project's default branch and filled
 # in the framework repository. The Claude Code version is read from sdlc.yaml at run time.
-name: SDLC design (b)
+name: SDLC design
 
 on:
   workflow_dispatch:
@@ -38,7 +38,7 @@ on:
         required: true
         type: string
       head_ref:
-        description: "The change's work branch, e.g. sdlc/0001/c; it keys the concurrency group"
+        description: "The change's work branch, e.g. sdlc/0001/build; it keys the concurrency group"
         required: false
         type: string
   pull_request:
@@ -52,8 +52,8 @@ permissions:
   checks: write
   actions: write
 
-# One change at a time, keyed on the change's own branch: sdlc/<id>/b for the design PR
-# merge, sdlc/<id>/c for build, test and deploy — the runs that must serialise
+# One change at a time, keyed on the change's own branch: sdlc/<id>/design for the design PR
+# merge, sdlc/<id>/build for build, test and deploy — the runs that must serialise
 # (OPERATING_MODEL section 4.2). run_phase.py passes head_ref on every dispatch, so an
 # automated hop lands in the same group as the PR-fired run of the same branch.
 concurrency:
@@ -64,7 +64,7 @@ jobs:
   design:
     # A closed pull request only counts when it was merged (into the default branch: the
     # `branches:` filter above). The head name is not a filter any more: a web session pushes
-    # /sdlc-plan's intent to a branch of its own (claude/...), and the old sdlc/ head rule
+    # /sdlc-intent's intent to a branch of its own (claude/...), and the old sdlc/ head rule
     # never fired for it (HANDOFF 4(a)). The first step finds the change from the merged
     # pull request's changes/<id>-<slug>/ folder instead; a merge that carries none costs one
     # green job of about 20 s, and every later step is skipped. Decision 30: an opened or
@@ -137,8 +137,8 @@ jobs:
           ref: ${{ steps.pin.outputs.ref }}
           path: framework
 
-      # --id wins (a dispatch), then a head sdlc/<id>/a, then the one changes/<id>-<slug>/
-      # folder the merged pull request touches. An empty change_id skips every step below.
+      # --id wins (a dispatch), then a head sdlc/<id>/intent (or /a), then the one
+      # changes/<id>-<slug>/ folder the merged pull request touches. An empty change_id skips every step below.
       # An opened intent PR (decision 30) is judged from the event payload and the default
       # branch's sdlc.yaml; it also outputs start_point (the PR's head) and intent_pr.
       - name: Find the change this merge carries
@@ -151,7 +151,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase b --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase design --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
 
       - if: steps.find.outputs.change_id != ''
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
@@ -175,7 +175,7 @@ jobs:
         if: steps.find.outputs.change_id != ''
         run: python framework/plugin/ci/project_setup.py --root . --out "$RUNNER_TEMP/sdlc-setup.json"
 
-      - name: Run phase (b)
+      - name: Run the design phase
         id: phase
         if: steps.find.outputs.change_id != ''
         env:
@@ -193,7 +193,7 @@ jobs:
           # unknown flag and ignores an unknown variable
           SDLC_START_POINT: ${{ steps.find.outputs.start_point }}
           SDLC_INTENT_PR: ${{ steps.find.outputs.intent_pr }}
-        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase b --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase design --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"
 
       # R18: a failed run explains itself. After a failed setup or runner step, or a park
       # with a log to read (the runner's triage=park output; a park ends the job green), the
@@ -267,7 +267,7 @@ jobs:
           if-no-files-found: ignore
 
   # ROADMAP R8 (plugin 1.0.19): a second opinion on the design from a model of another vendor,
-  # advisory. Off unless the default branch's sdlc.yaml lists (b) under
+  # advisory. Off unless the default branch's sdlc.yaml lists design under
   # external_review.phases. A job of its own on a fresh runner after the design job: the
   # Claude session never held the Gemini key and never shared this machine, and the key
   # reaches only the one step that calls the API. The step reads the PR's head from git
@@ -276,7 +276,7 @@ jobs:
   # 1.0.24: a framework pinned before 1.0.19 has no plugin/external/, and the step is skipped
   # green (hashFiles is empty), so a project may carry these copies at any pin; with
   # external_review off the command prints "off" and writes and posts nothing. On the fast
-  # lane the design PR is superseded before the owner reads it: the (e) job carries this
+  # lane the design PR is superseded before the owner reads it: the deploy job carries this
   # opinion onto the build PR (sdlc-deploy.yml).
   second-opinion:
     needs: design
@@ -319,7 +319,7 @@ jobs:
           HEAD_REF: ${{ needs.design.outputs.head_ref }}
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
-        run: python framework/plugin/external/cli.py review --root . --id "$CHANGE_ID" --head-ref "$HEAD_REF" --phase b --repo "$REPO" --ref "$DEFAULT_BRANCH" --post --out second-opinion.json
+        run: python framework/plugin/external/cli.py review --root . --id "$CHANGE_ID" --head-ref "$HEAD_REF" --phase design --repo "$REPO" --ref "$DEFAULT_BRANCH" --post --out second-opinion.json
 
       - name: Keep the second opinion's record
         if: ${{ always() }}

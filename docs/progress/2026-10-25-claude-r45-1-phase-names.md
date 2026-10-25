@@ -10,6 +10,8 @@ This session ran on branch `claude/r45-1-phase-names`, from `main` at `11d5661` 
 5. **The readers of history** (choice 273) read both forms for good: `detect/cli.py` and `scan/route.py` read `origin/sdlc/<id>/a` and `/intent`; `counters.py` counts a change at `deploy` (a letter `e` is read as `deploy`); the old reason "waiting for the owner at gate (e)" is read as the merge reason on the default branch (`status.WAITING_AT_GATE_E_REASONS`).
 6. **Not in this PR**, by section 12's order: `incident`, `schedule`, `escalate` and the triage session (PR 2), `external_review`'s key name (PR 3), `doorbell` and "fallback C1" (PR 4), the rulesets and the roles (PR 5). This repository's `changes/*/status.yaml` keep their letters: each repository migrates them in its own pin-move PR (choice 273).
 
+7. **The decisions it renames, annotated** (decision 39, "What it amends"; choice 126): decisions 3, 10, 11, 13, 14, 18, 19, 21, 22, 25, 27, 35 and 36, each beside its reference line, with the names that replace its letters; the substance of none changes.
+
 ## How it was built
 The shared API (`conventions.py`, `status.py`, `gitops.py`) was written first, as its own commit ("readers"); four sub-agents then converted the rest in parallel, each on a disjoint set of files and the tests that cover them (the runner; the gate, panel and hooks; the PR, release, detect and scan modules; the commands, skills and templates), and this session merged their work, bumped the version, regenerated `plugin/init/template_hashes.json` (`python tasks.py template-hashes`, with every `v*` tag fetched) and ran the suite. Tests that asserted the old names now assert the new ones; none was deleted or skipped; each group added tests that its readers still accept the letters.
 
@@ -42,12 +44,14 @@ The sample's guardrail lines (`sdlc.yaml`, `CLAUDE.md`, `REVIEW.md`, `bands.yaml
 ## What the owner does
 | When | Act |
 |---|---|
-| Now | Commit the workflow copies on `claude/r45-1-phase-names` (the PR body's table), then merge the PR when `Framework checks` is green on its final head. |
+| Now | Write and commit the workflow copies on `claude/r45-1-phase-names` with `python tasks.py workflow-copies` (the PR body's commands; the tables below are the fallback), then merge the PR when `Framework checks` is green on its final head. |
 | Before merging | Check whether any ruleset of this repository or the sample requires a check run by its old name (`sdlc/c`, `sdlc/e`): the check run is now `sdlc/build`, `sdlc/deploy` (section 12, PR 1). |
 | Until this repository's pin moves past 1.0.42 | Start no change here. |
 
 ## The workflow copies for the owner
-One table per copy under `.github/workflows/`, generated from a line diff between the copy on `main` and the template rendered as `tests/test_templates.py` renders it; each cell is the exact line, indentation included (`&nbsp;` is a space). `sdlc-evals.yml`, `sdlc-comment.yml` and `sdlc-digest.yml` do not change.
+**The task.** `python tasks.py workflow-copies` (new in this PR, at the central session's request; `tasks.py` is not under `plugin/` or `template/`, so it bumps nothing) writes each copy under `.github/workflows/` exactly as `test_this_repository_s_workflow_copies_match_the_template` expects it, `sdlc_init.apply_env_markers(render.render_file(WORKFLOW_DIR / name, VALUES), [])` from that test's own module, `sdlc-evals.yml` aside, with LF line endings. It is the owner's to run: a session never writes a workflow. Proved in a scratch copy of the branch outside the clone: the task wrote 11 copies, the two copy tests then passed (`2 passed`), and a second run wrote nothing.
+
+**The fallback.** One table per copy under `.github/workflows/`, generated from a line diff between the copy on `main` and the template rendered as `tests/test_templates.py` renders it; each cell is the exact line, indentation included (`&nbsp;` is a space). `sdlc-evals.yml`, `sdlc-comment.yml` and `sdlc-digest.yml` do not change.
 
 **[`.github/workflows/sdlc-abandon.yml`](https://github.com/luissiviero/sdlc-framework/blob/claude/r45-1-phase-names/.github/workflows/sdlc-abandon.yml)** (3 rows)
 
