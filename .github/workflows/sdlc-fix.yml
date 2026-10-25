@@ -138,7 +138,7 @@ jobs:
     # Change 0004: a set commands.drive adds gate.drive_timeout to the commands step (300 s by
     # default: 185 + 55 + 10 = 250 of 260; at most 600 s at build and test: 255). Not counted
     # here: commands.setup (up to 15 minutes, more with Playwright's browser install) and the
-    # R18 triage step after a park (5 minutes). The worst case is a fix round at deploy: R51's
+    # R18 explain step after a park (5 minutes). The worst case is a fix round at deploy: R51's
     # merge and re-check of the targets (45 minutes, only when the default branch moved) come
     # before the session, so 45 + 185 + 50 + 10 = 290 of 260 without a drive, and
     # 45 + 180 + 55 + 10 = 290 of 260 with one (the drive's minutes come off that session's
@@ -281,19 +281,19 @@ jobs:
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"
 
       # R18: a failed run explains itself. After a failed setup or runner step, or a park
-      # with a log to read (the runner's triage=park output; a park ends the job green), the
+      # with a log to read (the runner's explain=park output; a park ends the job green), the
       # framework checkout the session could reach is replaced and the project checkout
-      # verified, as after the review pass; then the read-only triage session (Read only, no
+      # verified, as after the review pass; then the read-only explain session (Read only, no
       # GitHub token, .git and /proc denied) reads the run's files. Its lines, model-written
       # and scanned for secrets, join the park block or a failed-run record on
       # refs/sdlc/failed-runs/, which the digest's "Failed runs" line reads. Neither step
-      # fails the job (plugin/ci/triage.py).
-      - name: Remove the framework checkout before the triage step
-        if: always() && steps.find.outputs.change_id != '' && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.triage == 'park')
+      # fails the job (plugin/ci/explain.py).
+      - name: Remove the framework checkout before the explain step
+        if: always() && steps.find.outputs.change_id != '' && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park')
         run: python -c "import shutil; shutil.rmtree('framework', ignore_errors=True)"
 
-      - name: Check out the pinned framework afresh for the triage step (public repository, no token)
-        if: always() && steps.find.outputs.change_id != '' && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.triage == 'park')
+      - name: Check out the pinned framework afresh for the explain step (public repository, no token)
+        if: always() && steps.find.outputs.change_id != '' && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park')
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
@@ -301,9 +301,9 @@ jobs:
           ref: ${{ steps.pin.outputs.ref }}
           path: framework
 
-      - name: Verify the project checkout before the triage step
-        id: triage_checkout
-        if: always() && steps.find.outputs.change_id != '' && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.triage == 'park')
+      - name: Verify the project checkout before the explain step
+        id: explain_checkout
+        if: always() && steps.find.outputs.change_id != '' && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park')
         env:
           PIN_REF: ${{ steps.pin.outputs.ref }}
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
@@ -315,20 +315,20 @@ jobs:
 
       # The read-only half: the model credential and no GitHub token in its environment, so
       # nothing the session reads, /proc included, holds one; its lines go to a file.
-      - name: Explain the failed or parked run (read-only triage, model-written)
-        if: always() && steps.triage_checkout.outcome == 'success'
+      - name: Explain the failed or parked run (read-only, model-written)
+        if: always() && steps.explain_checkout.outcome == 'success'
         continue-on-error: true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase triage --out "$RUNNER_TEMP/sdlc-run.json" --setup "$RUNNER_TEMP/sdlc-setup.json" --lines "$RUNNER_TEMP/sdlc-triage.json"
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase explain --out "$RUNNER_TEMP/sdlc-run.json" --setup "$RUNNER_TEMP/sdlc-setup.json" --lines "$RUNNER_TEMP/sdlc-explain.json"
 
       # The writing half: the token and no model credential, no model run; the lines into
       # the park block or a failed-run record (a missing file: a record with no lines).
-      - name: Publish the triage (the park block, or a failed-run record)
-        if: always() && steps.triage_checkout.outcome == 'success'
+      - name: Publish the explanation (the park block, or a failed-run record)
+        if: always() && steps.explain_checkout.outcome == 'success'
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
@@ -336,7 +336,7 @@ jobs:
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase triage --repo "$REPO" --out "$RUNNER_TEMP/sdlc-run.json" --setup "$RUNNER_TEMP/sdlc-setup.json" --publish "$RUNNER_TEMP/sdlc-triage.json"
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase explain --repo "$REPO" --out "$RUNNER_TEMP/sdlc-run.json" --setup "$RUNNER_TEMP/sdlc-setup.json" --publish "$RUNNER_TEMP/sdlc-explain.json"
 
       # Build guide step 41.1 (article p.39): every hook decision of the run is one line of
       # changes/<id>-<slug>/evidence/hook-log.jsonl (committed with the evidence) or of
