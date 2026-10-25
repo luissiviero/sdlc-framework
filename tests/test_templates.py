@@ -649,7 +649,8 @@ def test_merge_fired_jobs_find_the_change_instead_of_filtering_the_head(name):
     assert job["steps"][find - 1]["with"]["path"] == "framework"
     assert "--find-change" in job["steps"][find]["run"]
     for step in job["steps"][find + 1 :]:
-        if "explain" in step.get("name", "").lower():  # R18: after a failure or a park
+        title = step.get("name", "").lower()
+        if "explain" in title or "explanation" in title:  # R18: after a failure or a park
             assert "steps.find.outputs.change_id != ''" in step["if"] or (
                 step["if"] == "always() && steps.explain_checkout.outcome == 'success'"
             ), step
