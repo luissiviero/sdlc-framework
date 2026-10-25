@@ -1,13 +1,11 @@
 id: "0003"
 slug: lessons-with-frontmatter-and-a-generated
 title: Lessons with frontmatter and a generated index
-phase: e
+phase: deploy
 entry_route: idea
 change_type: feature
-profile_override: null
-review_override: null
 gate:
-  phase: e
+  phase: deploy
   result: passed
   reason: waiting for the owner at gate (e)
   at: "2026-10-08T12:55:31Z"
