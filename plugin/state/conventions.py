@@ -19,7 +19,11 @@ INTENT, DESIGN, BUILD, TEST, DEPLOY, MAINTAIN = PHASES
 # they were the letters (a) to (f). ``phase_name`` reads a letter as its name wherever a phase
 # is read (status.yaml, --phase, branches, labels, sdlc.yaml keys, evidence files) for one
 # release; the readers of history (a remote ``sdlc/<id>/<letter>`` branch, a merged change's
-# folder) keep reading letters for good (choice 273).
+# folder) keep reading letters for good (choice 273), so ``LEGACY_PHASES``, ``phase_name``'s
+# letter mapping and ``BRANCH_RE``'s letter branch stay when the sixth rename PR removes the
+# live readers' calls. A project moves its workflow copies with its pin (``/sdlc-init``'s
+# upgrade): a copy older than 1.0.43 filters the build PR on ``/c`` and the incident PR on
+# ``/a``, and never fires for a change cut with the names.
 LEGACY_PHASES = dict(zip(("a", "b", "c", "d", "e", "f"), PHASES, strict=True))
 PHASE_LETTERS = {name: letter for letter, name in LEGACY_PHASES.items()}
 # Not a phase: the end state of a change whose PR the owner closed without merging at a gate

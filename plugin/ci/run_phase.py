@@ -234,7 +234,7 @@ PERMISSION_MODE = {
 }
 # Gap 4 of NOTES §45 (choice 231): an unattended session has nobody to answer a question, so
 # the design, build, test, deploy and fix sessions are denied the tool that asks one (the
-# name ``sdlc-plan.md`` and ``sdlc-init.md`` allow for their interactive runs); round 5 of
+# name ``sdlc-intent.md`` and ``sdlc-init.md`` allow for their interactive runs); round 5 of
 # change 0005 ended its turn with a question all the same, which the runner now parks on.
 ASK_TOOL = "AskUserQuestion"
 # The design phase writes spec.md and plan.md and nothing else: it may create files, never edit one.
@@ -1105,7 +1105,7 @@ def resolve_change_id(change_id: str | None, head_ref: str | None, run_phase: st
 
 
 # A merged pull request names its change by the folder it touches (HANDOFF 4(a)): the web
-# platform pushes /sdlc-plan's intent to a branch of its own (``claude/...``), so the head
+# platform pushes /sdlc-intent's intent to a branch of its own (``claude/...``), so the head
 # name of a merged intent PR says nothing about the change.
 CHANGE_FOLDER_RE = re.compile(r"^changes/(\d{4})-[^/]+/")
 

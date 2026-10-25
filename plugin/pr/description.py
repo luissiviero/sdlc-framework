@@ -482,7 +482,7 @@ def _owner_line(
 
 
 def _intent_bullets(intent: str, st: Status, draft: bool = False) -> list[str]:
-    """Phase intent: the intent PR /sdlc-plan opens. There is no spec, no diff and no gate file
+    """Phase intent: the intent PR /sdlc-intent opens. There is no spec, no diff and no gate file
     yet, so the middle bullets describe the intent itself (build guide step 11). A quick
     intent (R54) says that the design run fills the sections the owner left to it."""
     problem = _first_sentence(_section(intent, "## Problem"))

@@ -203,14 +203,20 @@ def test_classification_reported_for_a_change(project):
         "iterations_so_far": 0,
         "verdict_file": "adversarial-review-design.json",
     }
-    # R45: the verdict a plugin before 1.0.43 wrote under the letter is still read
-    verdict = project / "changes" / "0001-x" / "evidence" / "adversarial-review-design.json"
+    # R45: the verdict a plugin before 1.0.43 wrote under the letter is still read, and named
+    verdict = project / "changes" / "0001-x" / "evidence" / "adversarial-review-b.json"
     verdict.write_text(
         json.dumps({"verdict": "continue", "classification": "non-routine", "head": "abc1234"})
     )
     report = preflight.run_preflight(project, ROOT, "0001")
     assert report["change"]["classification"] == "non-routine"
     assert report["change"]["iteration_cap"] == 2 and report["allow"] is True  # tightens only
+    assert report["change"]["verdict_file"] == "adversarial-review-b.json"
+    # once the name's file is written it is the one read
+    verdict.rename(verdict.with_name("adversarial-review-design.json"))
+    report = preflight.run_preflight(project, ROOT, "0001")
+    assert report["change"]["classification"] == "non-routine"
+    assert report["change"]["verdict_file"] == "adversarial-review-design.json"
 
 
 def _new_change(project: Path) -> Path:

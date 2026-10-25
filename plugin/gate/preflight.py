@@ -339,7 +339,10 @@ def classification(root: Path, config: dict[str, Any], change_id: str | None) ->
         "classification": cls,
         "iteration_cap": limits.iteration_cap(ctx, cls),
         "iterations_so_far": st.iterations,
-        "verdict_file": art.ADVERSARIAL_VERDICT.format(phase=c.DESIGN),
+        # the file read: the name's, or the letter's an older plugin wrote (R45)
+        "verdict_file": c.phase_file(
+            change_dir / art.EVIDENCE_DIR, art.ADVERSARIAL_VERDICT, c.DESIGN
+        ).name,
     }
 
 

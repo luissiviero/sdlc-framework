@@ -471,7 +471,7 @@ def cmd_show(args) -> int:
 
 
 def cmd_list(args) -> int:
-    """Every change folder with its phase, so a re-run of /sdlc-plan can find an existing one.
+    """Every change folder with its phase, so a re-run of /sdlc-intent can find an existing one.
     On the default branch the gate of a merged deploy change is derived as in ``show``."""
     root = Path(args.root).resolve()
     default = _default_branch_checkout(root)

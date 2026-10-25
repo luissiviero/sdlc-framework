@@ -307,7 +307,7 @@ RECHECK_RED = (
     "merged into the default branch after gate (deploy); deploy.command did not run"
 )
 RECHECK_ROUTE = (
-    "fix the default branch in a change of its own (an incident intent, /sdlc-plan), then "
+    "fix the default branch in a change of its own (an incident intent, /sdlc-intent), then "
     "dispatch SDLC release with pr_number {pr}; nothing is lost: the change is merged and "
     "not recorded as released"
 )

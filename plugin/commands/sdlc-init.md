@@ -128,7 +128,10 @@ the template of every release (`plugin/init/template_hashes.json`):
   (another framework repository, a renamed default branch, changed `commands.env` names): a
   workflow is reported `outdated: …`, a README or `evals/check.py` `kept; outdated (edited):
   …`; the owner diffs it with the template copy
-  (`${CLAUDE_PLUGIN_ROOT}/template/`) to take the newer text, or keeps their edits;
+  (`${CLAUDE_PLUGIN_ROOT}/template/`) to take the newer text, or keeps their edits. A pin
+  that moves past 1.0.42 needs its workflow copies taken with it in the same PR: a copy from
+  before the phase names (R45) waits for a build PR on `sdlc/<id>/c` and an incident PR on
+  `sdlc/<id>/a`, and never fires for a change cut as `sdlc/<id>/build` or `/intent`;
 - `REVIEW.md` and `bands.yaml` are guardrail files and never rewritten (decision 6): a
   `REVIEW.md` an older release wrote and nobody edited is reported `kept; outdated (was
   <version>): …` for the owner's reviewed PR; an edited one and `bands.yaml` are the owner's

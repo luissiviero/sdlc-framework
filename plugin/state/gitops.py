@@ -670,7 +670,7 @@ def remote_change_ids(root: Path, remote: str = "origin") -> list[str]:
 
 
 # --- the id reservation (R51, gap G2; NOTES §59) -------------------------------------------------
-# A new id is reserved on the remote before its folder is written: ``sdlc/<id>/a`` is
+# A new id is reserved on the remote before its folder is written: ``sdlc/<id>/intent`` is
 # created with a commit unique to this allocation (the default branch's tree, the default
 # branch's tip as parent, a message with a random nonce), pushed with an empty lease. NOTES
 # §59 shows why both halves: a push of the object a ref already holds answers "up to date"
@@ -712,7 +712,7 @@ def reserve_change_id(
         ).strip()  # fmt: skip
     except GitError as exc:
         return UNRESERVED, None, str(exc)
-    ref = f"refs/heads/{conventions.branch_name(change_id, 'a')}"
+    ref = f"refs/heads/{conventions.branch_name(change_id, conventions.INTENT)}"
     try:
         proc = run_proc(root, "push", f"--force-with-lease={ref}:", remote, f"{sha}:{ref}")
     except (GitError, FileNotFoundError) as exc:

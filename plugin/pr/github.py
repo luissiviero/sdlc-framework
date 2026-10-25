@@ -1,4 +1,4 @@
-"""A thin GitHub client with three routes (the fallback chain ``/sdlc-plan`` step 6 already
+"""A thin GitHub client with three routes (the fallback chain ``/sdlc-intent`` step 6 already
 uses by hand, made deterministic here):
 
 1. **api** - the REST API over ``urllib`` with ``GITHUB_TOKEN`` or ``GH_TOKEN``. It is tried
