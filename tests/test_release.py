@@ -86,7 +86,7 @@ def _repo_with_change(
             )
         status.write_status(change_dir, st)
     (root / "sdlc.yaml").write_text(
-        sdlc_yaml or "deploy:\n  action: none\n  production: false\n", encoding="utf-8"
+        sdlc_yaml or "deploy:\n  action: none\n  production_gate: false\n", encoding="utf-8"
     )
     _git(root, "init", "-q", "-b", "main")
     _git(root, "config", "user.email", "t@example.com")
@@ -432,9 +432,9 @@ def _record(root, *extra, git=None, env=None):
     return code, lines
 
 
-def _yaml(action="publish package", production=False, command=""):
+def _yaml(action="publish package", production=False, command="", key="production_gate"):
     return (
-        f"deploy:\n  action: {action}\n  production: {'true' if production else 'false'}\n"
+        f"deploy:\n  action: {action}\n  {key}: {'true' if production else 'false'}\n"
         f"  command: '{command}'\n"
     )
 
@@ -576,12 +576,38 @@ def test_cli_fails_closed_on_a_production_flag_that_is_not_a_boolean(tmp_path):
     """``production: yes`` read as "not production" and skipped the release approval (1.0.0
     readiness review, group A)."""
     root, _ = _repo_with_change(
-        tmp_path, sdlc_yaml="deploy:\n  action: publish package\n  production: yes\n"
+        tmp_path, sdlc_yaml="deploy:\n  action: publish package\n  production_gate: yes\n"
     )
     code, lines = _run(root, FakeGitHub())
     assert code == 2
-    assert any("deploy.production is 'yes', not a boolean" in line for line in lines)
+    assert any("deploy.production_gate is 'yes', not a boolean" in line for line in lines)
     assert any("fails closed" in line for line in lines)
+
+
+def test_cli_waits_for_the_release_label_under_the_old_key(tmp_path):
+    """R45 (decision 39, row 55): a project whose sdlc.yaml still says ``deploy.production:
+    true`` keeps the release approval for one release: the release waits for the label."""
+    sdlc_yaml = _yaml(production=True, command="x", key="production")
+    assert "  production: true\n" in sdlc_yaml
+    root, _ = _repo_with_change(tmp_path, sdlc_yaml=sdlc_yaml)
+    code, lines = _run(root, FakeGitHub(actor=None, labels=()))
+    assert code == 0
+    assert "release: config: action=publish package production=true command=set" in " ".join(lines)
+    assert any(line.startswith("release: waiting: ") for line in lines)
+    assert "release: route: apply sdlc:release-approved on #7" in lines
+    assert not any(line.startswith("release: run:") for line in lines)
+
+
+def test_cli_fails_closed_when_the_old_and_new_production_keys_disagree(tmp_path):
+    sdlc_yaml = _yaml(production=False, command="x") + "  production: true\n"
+    root, _ = _repo_with_change(tmp_path, sdlc_yaml=sdlc_yaml)
+    code, lines = _run(root, FakeGitHub())
+    assert code == 2
+    assert any(
+        "deploy.production_gate is false and the old deploy.production is true" in line
+        for line in lines
+    )
+    assert not any(line.startswith("release: run:") for line in lines)
 
 
 # --- issue #66: one release per change, and only once gate (deploy) has a result (0.3.1) ---------

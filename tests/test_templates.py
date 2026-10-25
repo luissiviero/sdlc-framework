@@ -130,7 +130,7 @@ def test_sdlc_yaml_renders_to_documented_keys():
     # step 29 / 32: the release workflow's command and the production-gate hook's patterns
     assert data["deploy"] == {
         "action": "none",
-        "production": False,
+        "production_gate": False,  # R45 (decision 39, row 55): `production` until 1.0.44
         "command": "",
         "guarded_commands": [],
     }
