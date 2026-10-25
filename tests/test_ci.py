@@ -1999,7 +1999,7 @@ import json, pathlib
 path = pathlib.Path("changes/0001-percent-helper/evidence/decisions-build.json")
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps({"schema_version": 1, "phase": "build", "decisions": [
-    {"n": 1, "phase": "build", "kind": "escalate", "key": "escalate:x", "item": "escalate",
+    {"n": 1, "phase": "build", "kind": "park", "key": "park:x", "item": "park",
      "reviewer": "continue", "advocate": "no objection", "decision": "continue",
      "rationale": ["the plan lists every file"], "head": "abc", "at": "2026-10-02T00:00:00Z",
      "cost_usd": None, "overturned": None, "item_n": 1}]}), encoding="utf-8")

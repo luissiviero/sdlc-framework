@@ -106,7 +106,11 @@ def test_adversarial_verdict_example_matches_the_gate_reader(tmp_path):
     path.write_text(json.dumps(example), encoding="utf-8")
     data, error = checks.load_verdict(path)
     assert error == "" and data["verdict"] == "continue"
-    assert "routine" in body and "non-routine" in body and "escalate" in body
+    assert "routine" in body and "non-routine" in body and "`park`" in body
+    # R45 row 62: the verdict is ``continue | park``; ``escalate`` is named only as an older
+    # plugin's word, and the brief's field is "Verdict" (row N17)
+    assert "continue or park" in body and "- Verdict: continue" in body
+    assert "- Word:" not in body and "`continue` or `escalate`" not in body
     assert "park" in body.lower() and "nobody is paged" in body.lower()
 
 

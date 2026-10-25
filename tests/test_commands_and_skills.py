@@ -24,7 +24,7 @@ COMMAND_FILES = sorted(path.name for path in COMMANDS.glob("*.md"))
 RENAMED = {"sdlc-plan.md": "/sdlc-intent"}
 PHASE_COMMAND_FILES = [name for name in COMMAND_FILES if name not in RENAMED]
 # /sdlc-intent and /sdlc-init are the two attended commands: they talk to the owner. Every
-# other command runs unattended and parks instead of asking (OPERATING_MODEL: escalate = park).
+# other command runs unattended and parks instead of asking (OPERATING_MODEL: the reviewer's park is the gate's park).
 ATTENDED = ("sdlc-intent.md", "sdlc-init.md")
 UNATTENDED = tuple(name for name in PHASE_COMMAND_FILES if name not in ATTENDED)
 POLICY_SKILLS = (
@@ -970,3 +970,25 @@ def test_the_policy_skills_say_what_the_gate_checks_of_a_screenshot():
     assert "`evidence/proof/` or `evidence/screenshots/` holds a screenshot" in ux
     assert "Rule 7 has one only when `sdlc.yaml: commands.drive` is set" in ux
     assert "UI changed but evidence/proof/ and evidence/screenshots/ hold no screenshot" in ux
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        *sorted(COMMANDS.glob("*.md")),
+        *sorted((PLUGIN / "skills").glob("*/SKILL.md")),
+        *sorted((PLUGIN / "panel" / "briefs").glob("*.md")),
+        PLUGIN / "review" / "REVIEW_PROMPT.md",
+        PLUGIN / "agents" / "adversarial-reviewer.md",
+    ],
+    ids=lambda p: f"{p.parent.name}/{p.name}",
+)
+def test_every_instruction_names_the_reviewer_s_verdict_park(path):
+    """R45 row 62: the adversarial reviewer's verdict is ``continue | park``, the word the
+    gate's result and the state use for the same event. An instruction to a model never asks
+    for ``escalate``; it names it only as an older plugin's word (the history lines that quote
+    what a run did, "escalated on ...", stay)."""
+    text = " ".join(path.read_text(encoding="utf-8").split())
+    for old in ("an `escalate`", "the reviewer's `escalate`", "escalation on", "`continue` or "
+                "`escalate`", "- Word:", "escalates on"):  # fmt: skip
+        assert old not in text, (path.name, old)
