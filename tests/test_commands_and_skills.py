@@ -24,7 +24,8 @@ COMMAND_FILES = sorted(path.name for path in COMMANDS.glob("*.md"))
 RENAMED = {"sdlc-plan.md": "/sdlc-intent"}
 PHASE_COMMAND_FILES = [name for name in COMMAND_FILES if name not in RENAMED]
 # /sdlc-intent and /sdlc-init are the two attended commands: they talk to the owner. Every
-# other command runs unattended and parks instead of asking (OPERATING_MODEL: the reviewer's park is the gate's park).
+# other command runs unattended and parks instead of asking (OPERATING_MODEL: a park, never a
+# page; the reviewer's verdict says park too, R45 row 62).
 ATTENDED = ("sdlc-intent.md", "sdlc-init.md")
 UNATTENDED = tuple(name for name in PHASE_COMMAND_FILES if name not in ATTENDED)
 POLICY_SKILLS = (

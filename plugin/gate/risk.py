@@ -56,8 +56,8 @@ CHANGES_PREFIX = "changes/"
 BRIEF_DIR = "roles"
 BRIEF_FILE = "security-policy-{phase}.md"
 BRIEF_FIELDS = ("What the change does to it", "What could break", "How to undo it")
-# the field that holds the reviewer's verdict on the item; ``Word`` is an older plugin's name
-VERDICT_FIELD = "Verdict"
+# the brief's field that holds the reviewer's verdict on the item, ``- Verdict:``; ``Word`` is
+# the name an older plugin wrote, read for one release (R45 row N17)
 VERDICT_FIELDS = ("verdict", "word")
 BANNER_HEADING = "**Needs your close look**"
 ACCEPT_ACT = "risk accepted"

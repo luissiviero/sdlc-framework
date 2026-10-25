@@ -120,6 +120,7 @@ def collect_items(
         }
     )
     for check in result.failed:
+        parked_verdict = check.details.get("verdict") == art.VERDICT_PARK
         if check.name == "open_concerns":
             for text in check.details.get("open") or []:
                 stripped = art.CONCERN_ITEM_RE.match(str(text))
@@ -128,7 +129,7 @@ def collect_items(
                     {"kind": ledger.kind_of_concern(body), "key": ledger.concern_key(body),
                      "item": body}
                 )  # fmt: skip
-        elif check.name == "adversarial_review" and check.details.get("verdict") == "park" and on_risk:
+        elif check.name == "adversarial_review" and parked_verdict and on_risk:
             parks.append(
                 {
                     "check": check.name,
@@ -138,7 +139,7 @@ def collect_items(
                     + ": the owner's, never the panel's, decision 35)",
                 }
             )
-        elif check.name == "adversarial_review" and check.details.get("verdict") == "park":
+        elif check.name == "adversarial_review" and parked_verdict:
             reasons = [str(r) for r in (check.details.get("reasons") or [])]
             items.append(
                 {
