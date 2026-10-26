@@ -129,6 +129,9 @@ too (plugin 1.0.10).
 — the gate's wall clock restarts here, with the build caps (decision 32; the runner's
 `SDLC_RUN=fix` says the same); without it the clock of the previous run (the owner
 reviews on their own cadence, decision 20) would park every round as "wall-clock limit exceeded".
+In a round at deploy whose default branch moved, the runner also passes `SDLC_RECHECK_MINUTES`,
+the minutes its merge and re-check took off your wall clock, and `start-run` keeps them for the
+gate's check (decision 41); keep the variable as it is.
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
 If it reports the cap reached: do not change anything; write the open requests, one line
 each, into `evidence/fix-response.md` ("not applied: iteration cap reached"), then run the

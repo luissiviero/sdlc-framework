@@ -4166,6 +4166,71 @@ def test_the_e_wall_clock_gives_up_the_drive_minutes_and_floors_at_30(tmp_path):
     assert limits.drive_floor_refusal({}, False) is None
 
 
+def test_start_run_keeps_the_recheck_minutes_of_a_fix_round(tmp_path, monkeypatch, capsys):
+    """Decision 41: under ``SDLC_RUN=fix`` the record keeps ``SDLC_RECHECK_MINUTES`` as a whole
+    number; without the fix mark, or with a value that is not a positive number, it keeps none."""
+    change_dir, _st = status_mod.new_change(tmp_path, "x")
+
+    def started(*env: tuple[str, str]) -> dict:
+        monkeypatch.delenv(limits.RUN_KIND_ENV, raising=False)
+        monkeypatch.delenv(limits.RECHECK_MINUTES_ENV, raising=False)
+        for name, value in env:
+            monkeypatch.setenv(name, value)
+        argv = ["start-run", "--root", str(tmp_path), "--id", "0001", "--phase", "deploy"]
+        assert gate_cli.main(argv) == 0
+        capsys.readouterr()
+        return json.loads((change_dir / "evidence" / "run-deploy.json").read_text("utf-8"))
+
+    fix = (limits.RUN_KIND_ENV, "fix")
+    assert started(fix, (limits.RECHECK_MINUTES_ENV, "20"))["recheck_minutes"] == 20
+    assert "recheck_minutes" not in started(fix)
+    assert "recheck_minutes" not in started((limits.RECHECK_MINUTES_ENV, "20"))
+    for bad in ("0", "-5", "x", ""):
+        assert "recheck_minutes" not in started(fix, (limits.RECHECK_MINUTES_ENV, bad)), bad
+
+
+def test_the_deploy_wall_clock_subtracts_the_recorded_recheck_minutes(tmp_path):
+    """Decision 41, point 1: the gate's wall-clock check reads the re-check's minutes from the
+    run record (it cannot recompute them) and subtracts them with the drive's, never below the
+    floor; a record without them, or at another gate, keeps the whole cap."""
+    started = (datetime.now(timezone.utc) - timedelta(minutes=165)).isoformat()
+    ctx = _drive_ctx(tmp_path, phase="deploy")
+    ctx.config = {}
+    record = ctx.evidence_dir / "run-deploy.json"
+    write(record, json.dumps({"started_at": started, "run": "build", "recheck_minutes": 20}))
+    res = limits.check_limits(ctx)
+    assert not res.ok and "limit 160 min" in res.reason
+    # the default branch had not moved: 180
+    write(record, json.dumps({"started_at": started, "run": "build"}))
+    res = limits.check_limits(ctx)
+    assert res.ok and "recheck_minutes" not in res.details
+    # with a drive: 180 - 5 - r
+    ctx.config = {"commands": {"drive": "x"}}
+    write(record, json.dumps({"started_at": started, "run": "build", "recheck_minutes": 4}))
+    res = limits.check_limits(ctx)
+    assert res.ok and res.details["recheck_minutes"] == 4 and res.details["drive_minutes"] == 5
+    write(record, json.dumps({"started_at": started, "run": "build", "recheck_minutes": 11}))
+    assert "limit 164 min" in limits.check_limits(ctx).reason
+    # a figure that is not a whole number counts nothing
+    for bad in ("20", True, 20.5, None):
+        write(record, json.dumps({"started_at": started, "run": "build", "recheck_minutes": bad}))
+        assert limits.check_limits(ctx).ok, bad
+    # below the floor: the floor park, with the re-check's need
+    ctx.config = {}
+    write(record, json.dumps({"started_at": started, "run": "build", "recheck_minutes": 160}))
+    res = limits.check_limits(ctx)
+    assert not res.ok and res.reason == limits.drive_floor_refusal({}, True, 160)
+    assert res.need == limits.RECHECK_FLOOR_NEED and res.details["recheck_minutes"] == 160
+    # another gate reads no re-check minutes
+    ctx = _drive_ctx(tmp_path / "test", phase="test")
+    ctx.config = {}
+    write(
+        ctx.evidence_dir / "run-test.json",
+        json.dumps({"started_at": started, "run": "build", "recheck_minutes": 20}),
+    )
+    assert limits.check_limits(ctx).ok
+
+
 def _with_drive_on_base(root: Path) -> None:
     def edit(r: Path) -> None:
         write(r / "drive.py", DRIVE_SCRIPT)

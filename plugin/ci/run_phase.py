@@ -83,7 +83,9 @@ What one run does, in order:
    ``--output-format json`` — with exactly one credential in the environment, and with
    ``SDLC_GATE_COMMANDS=runner`` in it, so the gate the session runs leaves the project's
    build, test and lint to step 6b instead of running them inside Claude Code's sandbox
-   (a fix session also carries ``SDLC_RUN=fix``, so its ``start-run`` records the build caps);
+   (a fix session also carries ``SDLC_RUN=fix``, so its ``start-run`` records the build caps,
+   and at deploy ``SDLC_RECHECK_MINUTES``, the minutes R51's merge and re-check took off its
+   wall clock, which that record keeps for the gate's check; decision 41);
    the session runs on ``--model`` from ``sdlc.yaml: session_model`` for its phase
    (``SDLC_MODEL`` wins), and ``ANTHROPIC_DEFAULT_<FAMILY>_MODEL`` pins the alias each
    sub-agent is started with to the reviewer's and the advocate's full ids
@@ -422,15 +424,20 @@ def run_caps(
     phase: str,
     env: dict[str, str] | None = None,
     gate_phase: str | None = None,
+    recheck_minutes: int = 0,
 ) -> tuple[int, int]:
     """(turns, wall-clock minutes) of a run of ``phase``: the build caps for the build run
     and a fix round when the job allows them (``build_caps_refusal``), the general caps for
     every other run (decision 32; ``limits.run_caps``). At gate (deploy), ``gate_phase``
     ``deploy`` (the deploy run, or a fix round of a change at deploy), the drive's minutes come
     off the wall clock,
-    as the gate's own check subtracts them (change 0004, R4)."""
+    as the gate's own check subtracts them (change 0004, R4); so do ``recheck_minutes``, the
+    minutes R51's merge and re-check took before a fix round there (decision 41), which the
+    gate's check reads from the run record."""
     build = phase in BUILD_CAP_PHASES and build_caps_refusal(config, env) is None
     less = limits.drive_minutes(config) if gate_phase == limits.DRIVE_PHASE else 0
+    if gate_phase == limits.DRIVE_PHASE:
+        less += max(recheck_minutes, 0)
     return limits.run_caps(_gate_settings(config), build, less)
 
 
@@ -439,9 +446,19 @@ def run_timeout_seconds(
     phase: str,
     env: dict[str, str] | None = None,
     gate_phase: str | None = None,
+    recheck_minutes: int = 0,
 ) -> int:
-    _turns, minutes = run_caps(config, phase, env, gate_phase)
+    _turns, minutes = run_caps(config, phase, env, gate_phase, recheck_minutes)
     return (minutes + GRACE_MINUTES) * 60
+
+
+def recheck_minutes_spent(updated: dict[str, Any], seconds: float) -> int:
+    """Decision 41, point 1: the whole minutes, rounded up, R51's merge and re-check took
+    before a fix round at (deploy), ``seconds`` measured around ``update_before_offer``; 0 when
+    the default branch had not moved (nothing merged), so such a round keeps its whole cap."""
+    if not updated.get("ok") or not updated.get("merged"):
+        return 0
+    return max(math.ceil(seconds / 60), 1)
 
 
 # --- GitHub (imported lazily: plugin/pr/github.py is a sibling deliverable) --------------------
@@ -2286,6 +2303,7 @@ def session_env(
     phase: str | None = None,
     config: dict[str, Any] | None = None,
     model_phase: str | None = None,
+    recheck_minutes: int = 0,
 ) -> dict[str, str]:
     """The model's session's environment: ``env`` plus the mark that leaves the gate's
     ``commands`` check to the runner (``gate.checks.COMMANDS_RUNNER_ENV``), the switch
@@ -2293,9 +2311,11 @@ def session_env(
     workflow's ``env:`` already carries is kept), the cache folder under ``root``
     (``CACHE_HOME_ENV``; a value the workflow carries is replaced, since only the checkout is
     known to be writable) and, for a fix round, ``SDLC_RUN=fix`` (``limits.RUN_KIND_ENV``),
-    which makes the session's ``start-run`` record the build caps (decision 32); any other
-    session drops a value the workflow carries. Decision 33 (R49): the session's GitHub token
-    is the workflow token, never the App's - as ``GITHUB_TOKEN`` and ``GH_TOKEN``
+    which makes the session's ``start-run`` record the build caps (decision 32), with
+    ``SDLC_RECHECK_MINUTES`` (``limits.RECHECK_MINUTES_ENV``) when ``recheck_minutes`` came off
+    its wall clock (decision 41), which that record keeps for the gate's check; any other
+    session drops a value the workflow carries for either. Decision 33 (R49): the session's
+    GitHub token is the workflow token, never the App's - as ``GITHUB_TOKEN`` and ``GH_TOKEN``
     (``ci/app_token.py session_tokens``) and as git's header in the environment
     (``git_auth_env``, on a runner), so its own pushes work (no checkout persists a
     credential) and start no run without the owner's approval. A job that minted the App's
@@ -2319,8 +2339,11 @@ def session_env(
     marked.setdefault(BACKGROUND_TASKS_ENV, "1")
     marked[CACHE_HOME_ENV] = str(Path(root) / SESSION_CACHE_DIR)
     marked.pop(limits.RUN_KIND_ENV, None)
+    marked.pop(limits.RECHECK_MINUTES_ENV, None)
     if phase == "fix":
         marked[limits.RUN_KIND_ENV] = limits.FIX_RUN
+        if recheck_minutes > 0:
+            marked[limits.RECHECK_MINUTES_ENV] = str(recheck_minutes)
     if config is not None:
         marked.update(panel_models_mod.alias_pins(config, model_phase or phase, env))
         # R61 part 4: a target the session runs gets the gate's per-command timeout, not
@@ -3259,12 +3282,18 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # R51 (gap G1, checks 6 and 7): before the REVIEW.md pass, the deploy run and a fix round
     # at deploy, the default branch is merged in and the merged tree re-checked by the runner;
     # a conflict or a red target parks (ci/base_update.py)
+    recheck_minutes = 0
     if (phase in ("review", c.DEPLOY) or gate_phase == c.DEPLOY) and not args.dry_run:
+        update_started = time.monotonic()
         updated = base_update.update_before_offer(
             root, config, commands_env(), merge_default_branch, branch["branch"], change_id,
             phase,
         )  # fmt: skip
         track["base_update"] = updated
+        if phase == "fix":
+            # decision 41, point 1: a fix round at deploy gives up the minutes the merge and
+            # re-check took, so the round fits the fix job's 260 minutes
+            recheck_minutes = recheck_minutes_spent(updated, time.monotonic() - update_started)
         if not updated.get("ok"):
             parked = park_and_publish(
                 plugin_dir, root, change_dir, st, phase, updated["reason"],
@@ -3297,18 +3326,19 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         )  # fmt: skip
         _emit({**parked, "branch": branch})
         return EXIT_OK
-    # change 0004 (R4): the drive's minutes would take the deploy session below the floor - the
-    # gate's wall-clock check parks the same case, so no session starts on it; ``build`` is
-    # the one ``start-run`` records (every fix round), which is what that check reads
+    # change 0004 (R4): the drive's minutes, and decision 41's re-check minutes, would take the
+    # deploy session below the floor - the gate's wall-clock check parks the same case, so no
+    # session starts on it; ``build`` is the one ``start-run`` records (every fix round), which
+    # is what that check reads
     floor = (
-        limits.drive_floor_refusal(config, phase in BUILD_CAP_PHASES)
+        limits.drive_floor_refusal(config, phase in BUILD_CAP_PHASES, recheck_minutes)
         if gate_phase == limits.DRIVE_PHASE
         else None
     )
     if floor:
         parked = park_and_publish(
             plugin_dir, root, change_dir, st, phase, "limits: " + floor,
-            branch=fix_branch, check="limits", need=limits.DRIVE_FLOOR_NEED,
+            branch=fix_branch, check="limits", need=limits.floor_need(recheck_minutes),
         )  # fmt: skip
         _emit({**parked, "branch": branch})
         return EXIT_OK
@@ -3430,8 +3460,8 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     data, raw, err, code = invoke(
         argv,
         root,
-        session_env(env, root, phase, config, gate_phase),
-        run_timeout_seconds(config, phase, env, gate_phase),
+        session_env(env, root, phase, config, gate_phase, recheck_minutes),
+        run_timeout_seconds(config, phase, env, gate_phase, recheck_minutes),
     )
     stored = run_line_record(data, raw, code, env, time.monotonic() - session_started)
     store_result(change_dir, phase, stored, raw, result_path)
