@@ -11,9 +11,10 @@ the explain step writes no record for it. Two sources, no model call:
   job, a failed checkout and a failed digest, which show as the bare line;
 - the failed-run records on ``refs/sdlc/failed-runs/<run>-<attempt>`` (``ci/explain.py``) add
   the runner's reason and the explain step's lines, labelled model-written (under the key
-  ``explanation``). A record is data: the phase session holds ``Bash(git *)`` and could push
-  such a ref, so a record shows only for a run the API lists as red, on one line, cut to
-  ``TEXT_MAX`` characters, with its
+  ``explanation``). A cancelled run whose record says it parked is left out: decision 41's
+  step parked it, and it is in the queue. A record is data: the phase session holds
+  ``Bash(git *)`` and could push such a ref, so a record shows only for a run the API lists
+  as red, on one line, cut to ``TEXT_MAX`` characters, with its
   mentions and links made inert (the issue body would otherwise notify, against decision 31).
 
 Where the line sits in the digest is R20's to place; until then it follows the queue.
@@ -123,16 +124,20 @@ def collect(repo: str, now: datetime, get: Get, api_root: str) -> dict[str, Any]
         if isinstance(ref, dict)
         and str(ref.get("ref") or "").rpartition("/")[2].rpartition("-")[0] in red_ids
     ]
+    parked: set[str] = set()
     for ref in sorted(wanted, key=lambda r: str(r.get("ref")))[-MAX_RECORDS:]:
         record = _record(api_root, repo, ref, get)
         name = str(ref.get("ref")).rpartition("/")[2]
-        if record is not None and not record.get("parked"):
+        if record is not None and record.get("parked"):
+            parked.add(name)
+        elif record is not None:
             records[name] = record
     runs = []
     for run in sorted(red, key=lambda r: str(r.get("created_at") or "")):
-        attempt = str(run.get("run_attempt") or 1)
-        record = records.get(f"{run.get('id')}-{attempt}")
-        runs.append({"run": run, "record": record})
+        name = f"{run.get('id')}-{run.get('run_attempt') or 1}"
+        if name in parked and run.get("conclusion") == "cancelled":
+            continue  # decision 41: the cancelled job's step parked it; it is in the queue
+        runs.append({"run": run, "record": records.get(name)})
     return {"ok": True, "runs": runs, "reason": ""}
 
 

@@ -2463,13 +2463,17 @@ def test_merge_fired_workflows_find_the_change_from_the_merged_pr(name):
     after = steps[find:].split("\n      - ")[1:]
     # setup-node, the CLI, the sandbox, the toolchain, the run, R18's five explain steps (the
     # framework removed and checked out afresh, the checkout verified, the read-only explain,
-    # its publication), the log
-    assert len(after) == 11
+    # its publication) with decision 41's park after a cancelled run before the explain, the log
+    assert len(after) == 12
     for step in after[:5] + after[-1:]:
         assert "if: steps.find.outputs.change_id != ''" in step, step
     for step in after[5:8]:
         assert "if: always() && steps.find.outputs.change_id != '' && (" in step, step
-    for step in after[8:10]:
+    assert (
+        "if: always() && steps.find.outputs.change_id != '' && "
+        "steps.explain_checkout.outcome == 'success' && (" in after[8]
+    )
+    for step in after[9:11]:
         assert "if: always() && steps.explain_checkout.outcome == 'success'" in step, step
     after = after[:5] + after[-1:]
     # the phase run gets the id the find step printed, through an env var; the hook log
