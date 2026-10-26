@@ -15,7 +15,7 @@ decision 18 (the human gates, one profile since decision 37). Prompt version: **
 
 This phase runs unattended: by hand or from the merge-triggered workflow.
 **Never ask the owner anything.** The merged intent.md is the owner's answer; anything it
-leaves open becomes a carried-forward question or a flagged concern the owner reads at the
+leaves open becomes a carried-forward question or a flagged concern the product owner reads at the
 gate. Never edit intent.md (accepted at the intent gate; the gate parks a branch that changes it).
 Never edit source: the only files this phase writes are under `changes/<id>-<slug>/`
 (decision 2; the gate's `design_scope` check parks anything else).
@@ -42,7 +42,7 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
   there is not exactly one, stop and report the candidates. Never invent an id.
 - Read the change: `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" show --root "${CLAUDE_PROJECT_DIR}" --id <id>`.
   If `status.parked_reason` is set, stop: the owner has something to do first.
-- An incident change (`entry_route: incident`) whose intent PR the owner merged is at the
+- An incident change (`entry_route: incident`) whose intent PR the service owner merged is at the
   intent gate even if `status.yaml` still says `phase: maintain` (or `f`): the maintain run
   leaves it there, and the merge is the intent gate (decision 25; in CI the runner sets
   `intent` before this command runs).
@@ -52,7 +52,7 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
 
 ## 1. Branch (idempotent; re-run rule, build guide step 8)
 - First run: `git switch -c sdlc/<id>/design origin/<default>` (or `<default>` when there is no
-  remote). The intent is read from that branch: it is what the owner merged.
+  remote). The intent is read from that branch: it is what the product owner merged.
 - The fast lane (decision 30): in CI, an intent PR the owner's own account opened starts this
   run without a merge, and the runner has already cut `sdlc/<id>/design` from that PR's head
   and recorded it in `status.yaml: fast_lane.intent`. The intent on the branch is what the owner
@@ -111,19 +111,19 @@ Rules for the pass (from the three by-hand runs of build guide step 22, recorded
   in `sdlc.yaml` the design touches, and any policy the design cannot meet. Name a risk-list
   item under "## Flagged concerns" only when the design touches it: the gate reads that
   section literally and shows every item named there in the design PR's "Needs your close
-  look" banner, which the owner's merge accepts (decision 35). Write the declaration closed,
+  look" banner, which the product owner's merge accepts (decision 35). Write the declaration closed,
   as the `spec-template` skill shows (`- decided (decision 35): risk item '<item>': ...`):
   decision 35 settles it, and an open line would park the design as an open concern. The
   items that do not apply are said not to apply in Requirements, never listed there.
 - Close a concern yourself only when the policy text settles it, and say which policy
   (`- [x] <concern>: decided <how> per <skill> rule <n>`); the closing word is the first
   word of the item — a label such as `C3:` in front of it keeps the concern open. Every
-  other concern stays open: the panel of step 6a closes it and the owner reads the decision
+  other concern stays open: the panel of step 6a closes it and the product owner reads the decision
   at the gate (a review comment overturns it, and `/sdlc-fix` applies the comment).
 - A quick intent (header `Quick intent: yes`, ROADMAP R54) gives only the owner's Problem
   paragraph: fill the sections it leaves to this run as `## Assumed from the quick intent`,
   before Requirements, one list item per section and per other assumption (skill
-  `spec-template`, "A quick intent"). Those assumptions are not flagged concerns: the owner
+  `spec-template`, "A quick intent"). Those assumptions are not flagged concerns: the product owner
   reads them above the design PR's bullets (and the build PR's, on the fast lane) and
   corrects one with a review comment (on the design PR the spec changes; at the deploy gate the
   code does, and the line stays). "Open questions from intent" holds "none" or the
@@ -214,7 +214,7 @@ travels in a commit with content the reviewer did not see (the first deferred ru
 2026-09-24, committed each verdict beside the content it did not judge, three times, and
 needed four commits to land one). A `park` verdict with new reasons is a new item: run
 `items` once more. The panel never decides a park item, never raises a limit, never
-touches a guardrail file, and never asks the owner: the owner reads "Decisions taken for
+touches a guardrail file, and never asks the owner: the product owner reads "Decisions taken for
 you" at the gate and overturns any line with a review comment.
 
 ## 7. The design gate (build guide steps 16, 23)
@@ -248,7 +248,7 @@ renders the ≤5-bullet summary from `status.yaml`, `spec.md`, `plan.md` and
 2. evidence status ("design phase, no code yet" at this gate);
 3. flagged concerns: how many open, how many closed, the open ones quoted verbatim;
 4. open questions from the intent: answered / carried forward;
-5. what needs the owner — the design gate's checklist (build guide step 23): does the spec solve
+5. what needs the product owner — the design gate's checklist (build guide step 23): does the spec solve
    the stated problem? are the intent's open questions answered or carried forward? is every
    flagged concern closed? could someone who never saw this conversation implement plan.md?
    Merge = approve; a review comment = change request (`/sdlc-fix`). When parked, the
@@ -263,7 +263,7 @@ with other means.
 ## 9. Report
 One line: the PR URL (or the compare URL), the gate result, the number of open concerns
 and the number of panel decisions. Nothing else is started.
-Do not start the build phase here: the design gate is the owner's merge, except on the
+Do not start the build phase here: the design gate is the product owner's merge, except on the
 fast lane, where the CI runner (never this session) dispatches the build.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `policies/**`, `intent.md`

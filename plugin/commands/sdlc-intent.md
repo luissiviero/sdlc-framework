@@ -1,5 +1,5 @@
 ---
-description: The intent phase — brainstorm a change with the owner, write changes/<id>-<slug>/intent.md via the intent-template skill, let the owner correct it, commit on sdlc/<id>/intent and open the intent PR. The intent gate = the owner merges that PR; an intent PR the owner's own account opens starts the design at once (the fast lane, decision 30).
+description: The intent phase — brainstorm a change with the owner, write changes/<id>-<slug>/intent.md via the intent-template skill, let the product owner correct it, commit on sdlc/<id>/intent and open the intent PR. The intent gate = the product owner merges that PR; an intent PR the owner's own account opens starts the design at once (the fast lane, decision 30).
 argument-hint: [one-line description of the idea, ticket or incident]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Write, Edit, Glob, Grep, AskUserQuestion
@@ -46,7 +46,7 @@ Do not write files during the brainstorm.
 type when the paragraph does not make it plain. The route is `idea`. In step 3 write the
 quick intent's shape (skill `intent-template`, "Quick intent"), skip step 4's correction
 loop and set the header status to `proposed`: the design run states what it assumed at
-the top of the design PR, and the owner corrects it there or at the deploy gate.
+the top of the design PR, and the product owner corrects it there, or the code owner at the deploy gate.
 
 ## 2. Allocate the change
 Run (from the project root):
@@ -60,9 +60,9 @@ Use the `intent-template` skill (it defines the exact sections and header). Writ
 `changes/<id>-<slug>/intent.md`. The header carries no status line (`status.yaml` holds the
 phase).
 
-## 4. The owner corrects (article p.11 step 4)
-Show the draft in full and ask the owner what you misunderstood. Apply every correction.
-Repeat until the owner says it is right.
+## 4. The product owner corrects (article p.11 step 4)
+Show the draft in full and ask the owner, as the product owner, what you misunderstood. Apply
+every correction. Repeat until they say it is right.
 
 ## 5. Commit on the phase branch (article p.11 step 5)
 ```
@@ -78,7 +78,7 @@ python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_
 It opens (or updates, on a re-run) the PR — base the default branch, head `sdlc/<id>/intent`,
 title `intent(<id>): <title>` — with the generated description: a ≤5-bullet summary first
 (what the change is and why · entry route and change type · affected users and systems ·
-open questions · what needs the owner: nothing when the owner's own account opens it, not as
+open questions · what needs the product owner: nothing when the owner's own account opens it, not as
 a draft (the fast lane, decision 30), else read, correct via review comments, merge = approve),
 then the link to `changes/<id>-<slug>/intent.md`; and applies the label `sdlc:intent-ready`
 (created if missing). Routes, in order: the GitHub REST API with the token
@@ -89,7 +89,7 @@ the owner to paste (in a cloud session without `gh`, a GitHub MCP tool such as
 with other means.
 
 ## 7. Report
-One line: the PR URL (or the compare URL), and "gate (intent): merge the PR to approve; review
+One line: the PR URL (or the compare URL), and "gate (intent): as the product owner, merge the PR to approve; review
 comments are the change request (then run `/sdlc-fix`)". Add that an intent PR opened from the owner's own account takes the fast lane (decision 30):
 opening it accepts the intent, the design workflow starts at once without a merge, and the
 intent PR is closed as `sdlc:superseded` once the design PR carries the intent. For a PR

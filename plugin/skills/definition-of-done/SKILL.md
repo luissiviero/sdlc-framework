@@ -34,10 +34,10 @@ description: What "done" means for a change in the SDLC framework. Use before re
   screenshots for UI changes, `verifier.md`; the test gate.
 - **deploy**: review passes published as `evidence/review-findings.json` with no
   Important finding open; PR summary ≤5 bullets (what changed and why, evidence status,
-  findings by severity, plan conformance, what needs the owner); merge is the owner's.
+  findings by severity, plan conformance, what needs the code owner); merge is the code owner's.
 - **Always**: no guardrail file touched unless the intent says `Framework change: yes`; no
   risk-list item touched without its line in the "Needs your close look" banner, which the
-  owner's merge accepts (decision 35; at the deploy gate, the owner's approving review,
+  owner's merge accepts (decision 35; at the deploy gate, the code owner's approving review,
   decision 36); no
   test skipped, weakened or
   deleted; nobody notified — a run that cannot finish parks with "What I need from you".

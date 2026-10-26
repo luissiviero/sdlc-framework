@@ -1084,7 +1084,7 @@ def test_production_gate_blocks_any_command_that_names_the_release_label(tmp_pat
     d = _gate(root, env, command, github=gh)
     assert d.block
     assert "a run cannot apply the label to itself (decision 5)" in d.reason
-    assert "the release approval is the owner's act on GitHub" in d.reason
+    assert "the release approval is the release manager's act on GitHub" in d.reason
     assert gh.calls == []  # blocked before any approval lookup
     line = _log_lines(log)[-1]
     assert line["verdict"] == "block" and line["matched"] == "sdlc:release-approved"

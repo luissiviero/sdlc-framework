@@ -28,7 +28,7 @@ tiers:
     # Every route is one of the two authorization models of decision 14 (split by blast
     # radius), named by the hook's verbs (p.36): allow = CI-scoped and reversible, runs with
     # no human in the path; ask = touches a running system, parks with "what I need from you"
-    # until the owner says Go (the label sdlc:go). A route not listed here is never taken.
+    # until the service owner says Go (the label sdlc:go). A route not listed here is never taken.
     # Until plugin 1.0.44 the values were preapproved and go, read as allow and ask for one
     # release (R45, decision 39).
     routes:

@@ -57,18 +57,18 @@ UI, the metric and its threshold; for a change that touches a screen, the Mock: 
   `- [x] Cache location: decided ~/.cache/<app>/ per the data conventions.`
   The closing word must be the first word of the item: `- C3: decided ...` is still open,
   because the gate reads the item from its start.
-  Only the owner closes a concern (article p.14 step 4: "the product owner resolves each one
+  Only the product owner closes a concern (article p.14 step 4: "the product owner resolves each one
   with its policy owner"); the design pass opens them and may close only the ones the policy
   text itself settles, saying which policy.
 - **Risk-list items are declared here, and only here.** The gate's risk-list check reads
   the diff's paths and the "## Flagged concerns" section of spec.md, nothing else of the
   spec; an item of `sdlc.yaml: risk_list` named in that section is a line of the design
-  PR's "Needs your close look" banner, which the owner's merge accepts (decision 35; it no
+  PR's "Needs your close look" banner, which the product owner's merge accepts (decision 35; it no
   longer parks). Decision 35 settles the declaration, so write it closed, one item per
   line: `- decided (decision 35): risk item '<item>': <what the design does to it>; the
-  close-look banner shows it and the owner's merge accepts it (at the deploy gate, the owner's
+  close-look banner shows it and the product owner's merge accepts it (at the deploy gate, the code owner's
   approving review).` A question the item raises
-  that the owner must answer is a concern of its own, left open. List the items the design
+  that the product owner must answer is a concern of its own, left open. List the items the design
   touches, and say in Requirements that the others do not apply — never under Flagged
   concerns.
 - **Open questions are answered or carried forward**, never dropped (p.14 step 3). A
@@ -95,7 +95,7 @@ UI, the metric and its threshold; for a change that touches a screen, the Mock: 
   deploy gate the code does, and the line stays). "Open questions from intent" holds "none"
   or the questions you assumed answers to, never the intent's marker line. A gap no
   reasonable reading fills (two
-  policies in conflict, a risk-list item, a cost or data question only the owner can
+  policies in conflict, a risk-list item, a cost or data question only the product owner can
   answer) stays a flagged concern. The gate parks a quick intent's spec without the
   section.
 - **Never edit intent.md** in the design phase: it was accepted at the intent gate and the gate parks a

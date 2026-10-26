@@ -62,7 +62,7 @@ Rules
   the body of Proposed outcome, Affected users and systems, Constraints and Open questions,
   and write Examples/References as the owner gave them, or "none". The design run states
   what it assumed for each of those sections at the top of spec.md, and the design PR shows
-  the list above its bullets, where the owner corrects it.
+  the list above its bullets, where the product owner corrects it.
 - Only when the change is the framework itself (it must edit `.claude/**`, `CLAUDE.md`,
   `REVIEW.md`, `sdlc.yaml` or a protected path): add a header line `Framework change: yes`
   under the Author line. The confidence gate parks any other change whose diff touches a

@@ -41,7 +41,7 @@ description: The organization's security baseline: the rules this project applie
    (`- decided (decision 35): risk item '<item>': ...`, the `spec-template` skill); the gate
    shows it in the "Needs your close look" banner of the PR the owner merges, with the
    reviewer's brief on it, and the owner's merge accepts it (decision 35; at the deploy
-   gate, the owner's approving review, decision 36; it no longer parks).
+   gate, the code owner's approving review, decision 36; it no longer parks).
 
 ## Check
 Run the deterministic check and include its output in your summary (article p.22 pattern):

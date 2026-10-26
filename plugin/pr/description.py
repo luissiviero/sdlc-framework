@@ -111,17 +111,22 @@ STEP_23_CHECKLIST = (
     "Is every flagged concern closed with a decision?",
     "Is plan.md implementable by someone who never saw the conversation?",
 )
+# R45 row 87 (decision 39): each line names the article's role that takes the decision asked
+# (product owner p.9-14, code owner p.29 and p.33, release manager p.37 and p.40-41, service
+# owner p.43-44); one person holds every role (OPERATING_MODEL section 2).
 GATE_CHECKLIST = {
-    c.INTENT: "read, correct via review comments, merge = approve (gate (intent))",
-    c.MAINTAIN: "triage (gate (maintain), decision 25): merge = fix now (gate (intent) of this "
-    "intent); label "
+    c.INTENT: "as the product owner, read, correct via review comments, merge = approve "
+    "(gate (intent))",
+    c.MAINTAIN: "as the service owner, triage (gate (maintain), decision 25): merge = fix now "
+    "(gate (intent) of this intent); label "
     "`sdlc:schedule` = later; close with a comment = dismiss the finding (the comment is the "
     "recorded reason)",
-    c.DESIGN: "; ".join(STEP_23_CHECKLIST)
+    c.DESIGN: "As the product owner: "
+    + "; ".join(STEP_23_CHECKLIST)
     + " Merge = approve; a review comment = change request (/sdlc-fix).",
-    c.DEPLOY: "an approving review = approve (gate (deploy), decision 36); a review comment is "
-    "the "
-    "change request (/sdlc-fix). Waiting for your approval: the merge App then merges this PR "
+    c.DEPLOY: "as the code owner, an approving review = approve (gate (deploy), decision 36); "
+    "a review comment is the change request (/sdlc-fix). Waiting for your approval: the merge "
+    "App then merges this PR "
     "(without a merge App, merge it after approving) and the release workflow runs "
     "`deploy.command`",
 }
@@ -142,7 +147,8 @@ FAST_LANE_A_CHECKLIST = (
     "or changing other files: " + GATE_CHECKLIST[c.INTENT]
 )
 RELEASE_APPROVAL_LINE = (
-    f"Release approval: apply `{c.RELEASE_APPROVED_LABEL}` on this PR with your approval; the "
+    f"Release approval, as the release manager: apply `{c.RELEASE_APPROVED_LABEL}` on this PR "
+    "with your approval; the "
     "release workflow waits for it after the merge."
 )
 NOTHING_NEEDED = "nothing: the run continues to the next phase"

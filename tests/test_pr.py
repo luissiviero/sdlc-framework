@@ -750,8 +750,8 @@ def test_release_approval_line_only_when_production_is_declared(project):
     body = desc.build_description(root, "0001", "deploy")
     assert len(bullets(body)) == 5
     line = (
-        "Release approval: apply `sdlc:release-approved` on this PR with your approval; the "
-        "release workflow waits for it after the merge."
+        "Release approval, as the release manager: apply `sdlc:release-approved` on this PR "
+        "with your approval; the release workflow waits for it after the merge."
     )
     assert line in body.splitlines()
     assert "signed tag" not in body  # decision 5: the label is the only route
