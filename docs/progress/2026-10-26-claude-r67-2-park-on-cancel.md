@@ -37,6 +37,5 @@ None to a guardrail file. The workflow copies:
 ## What the owner does
 | When | Act |
 |---|---|
-| Before merging | Merge #400 first; then run `python tasks.py workflow-copies` on this PR's branch, commit and push. |
+| Before merging | Run `python tasks.py workflow-copies` on this PR's branch, commit and push (#400 is merged, as `0fb7b99`; the live check's two throwaway branches are deleted, as the central session reported). |
 | Then | Merge when `Framework checks` is green on the final head. |
-| After | Delete the two throwaway branches of the live check, if not done (`r67-timeout-check`, `claude/r67-timeout-check`). |
