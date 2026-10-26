@@ -34,13 +34,19 @@ plugin read from .../v1046/plugin/state/status.py
 
 After the write, each file loads again, its `to_dict()` equals the one written, and its text equals `yamlish.dumps` of what it loads (the round trip, asserted per file); a second run with `--check` reports `0 file(s) would change`. Each file reads at the default branch as it did before (`read_status(..., on_default_branch=True)`: gate deploy/passed for 0001 to 0005).
 
-The owner's edits were proved in a scratch clone outside this one, from a bare copy standing in for `origin`: the command sequence below ran as written, changed 16 lines in four files (`16 insertions(+), 16 deletions(-)`), committed and pushed. Plugin 1.0.46 reads the same values from the old and the new lines (`production_gate` false; `session_model` for design `claude-fable-5-1`, for build `claude-opus-5-5`; the four routes `allow`, `allow`, `allow`, `ask`). `python tasks.py verify` passed in that clone with the edits applied (the PR body), and passes on this branch without them: no check reads the pin.
+The owner's edits were proved in a scratch clone outside this one, from a bare copy standing in for `origin`: the command sequence below ran as written, changed 17 lines in four files (`17 insertions(+), 17 deletions(-)`), committed and pushed. The clone must sit in a folder named `sdlc-framework`, as a Codespace's `/workspaces/sdlc-framework` does: `tests/test_ci.py`'s second-opinion test names the repository by its folder, and a first proof in a folder named `proof` failed it on that alone. Plugin 1.0.46 reads the same values from the old and the new lines (`production_gate` false; `session_model` for design `claude-fable-5-1`, for build `claude-opus-5-5`; the four routes `allow`, `allow`, `allow`, `ask`). `python tasks.py verify` passed in that clone with the edits applied (the PR body), and passes on this branch without them: no check reads the pin.
 
 ## The fresh-context review
-FILLED AFTER THE REVIEW.
+A fresh-context sub-agent reviewed the migration, the rows and the command sequence (report only). It found nothing blocking. It loaded each `status.yaml` from `05d9412` and from this branch with v1.0.46, on and off the default branch, with `production_gate` false and true: all 24 `to_dict()` results are the same. `pr/counters.collect` gives the same output on both trees. Its findings and what was done:
+1. **Fixed:** `REVIEW.md:28` names `evidence/gate-e.json`, which a change cut after the pin move does not have; R45's first record left it out. It is the seventeenth row and the commands carry it.
+2. **Noted, nothing to do:** until the merge, the PR's own SDLC design run is red, as on every PR since #389: the workflow reads the pin from `main`'s `sdlc.yaml`, where it is still 1.0.38, and that runner refuses `--phase design` (`RUNNABLE` in `plugin/ci/run_phase.py` at v1.0.38).
+3. **Noted:** 1.0.38 refuses every migrated file ("phase must be one of ('a', ...) ... got 'deploy'"); if this PR merged without the owner's commit, `counters` would count the six changes unreadable and detect and scan would skip them. Nothing fails, and the commands commit on this branch before the merge (the order of acts below).
+4. **Noted:** the letters left in guardrail comments ("Not in the rows" below).
+
+It also traced the merge of this PR under 1.0.46: `find_change` sees six change folders and skips as ambiguous, so SDLC design and SDLC build skip green; the release skips; `merge_step.py on-approval` exists.
 
 ## Proposed edits for the owner
-Every row is from R45's records (`2026-10-25-claude-r45-1-phase-names.md`, the four rows; `2026-10-25-claude-r45-3-config-values.md`, the eleven rows; `2026-10-25-claude-r45-2-labels-verdict.md` and `2026-10-25-claude-r45-4-files.md` have none for these files) and the pin itself, read again on `05d9412`. The root `sdlc.yaml` has no `external_review` block, so there is no `second_opinion` row; `session_model`'s only letter key is `b`.
+The rows are R45's records (`2026-10-25-claude-r45-1-phase-names.md`, the four rows; `2026-10-25-claude-r45-3-config-values.md`, the eleven rows; `2026-10-25-claude-r45-2-labels-verdict.md` and `2026-10-25-claude-r45-4-files.md` have none for these files), the pin itself, and `REVIEW.md` row 28, which the records left out (the review below): the review pass reads `REVIEW.md`, and from 1.0.43 the gate writes `gate-deploy.json` (`GATE_RESULT = "gate-{phase}.json"`, `plugin/gate/artifacts.py`), as `template/REVIEW.md:28` already says. Each was read again on `05d9412`. The root `sdlc.yaml` has no `external_review` block, so there is no `second_opinion` row; `session_model`'s only letter key is `b`.
 
 | Link | Row | What is there | What it must become |
 |---|---|---|---|
@@ -60,8 +66,9 @@ Every row is from R45's records (`2026-10-25-claude-r45-1-phase-names.md`, the f
 | `CLAUDE.md` | 3 | `... with human gates at (a), (b) and (e), and the owner's triage at (f). ...` | `... with human gates at intent, design and deploy, and the owner's triage at maintain. ...` |
 | `CLAUDE.md` | 19 | `` - `plugin/commands/`: /sdlc-init, /sdlc-plan, /sdlc-design, ... `` | `` - `plugin/commands/`: /sdlc-init, /sdlc-intent, /sdlc-design, ... `` |
 | `REVIEW.md` | 27 | `` - Each added skip marker the gate's `ratchets` check listed at gate (e) `` | `` - Each added skip marker the gate's `ratchets` check listed at gate (deploy) `` |
+| `REVIEW.md` | 28 | `` (`evidence/gate-e.json`'s `details.skip_markers`) must be declared in `plan.md` or `` | `` (`evidence/gate-deploy.json`'s `details.skip_markers`) must be declared in `plan.md` or `` |
 
-The same edits as commands, for a GitHub Codespace (bash) on this branch; the `git diff --stat` line must read `4 files changed, 16 insertions(+), 16 deletions(-)` before the commit:
+The same edits as commands, for a GitHub Codespace (bash) on this branch; the `git diff --stat` line must read `4 files changed, 17 insertions(+), 17 deletions(-)` before the commit:
 
 ```bash
 git fetch origin claude/pin-move-1-0-46 && git checkout claude/pin-move-1-0-46 && git pull --ff-only origin claude/pin-move-1-0-46
@@ -84,7 +91,10 @@ sed -i \
   -e 's/with human gates at (a), (b) and (e), and the owner.s triage at (f)\./with human gates at intent, design and deploy, and the owner'"'"'s triage at maintain./' \
   -e 's|^- `plugin/commands/`: /sdlc-init, /sdlc-plan, /sdlc-design,|- `plugin/commands/`: /sdlc-init, /sdlc-intent, /sdlc-design,|' \
   CLAUDE.md
-sed -i -e 's/^\(- Each added skip marker the gate.s `ratchets` check listed at gate \)(e)$/\1(deploy)/' REVIEW.md
+sed -i \
+  -e 's/^\(- Each added skip marker the gate.s `ratchets` check listed at gate \)(e)$/\1(deploy)/' \
+  -e 's/^  (`evidence\/gate-e\.json`.s `details\.skip_markers`)/  (`evidence\/gate-deploy.json`'"'"'s `details.skip_markers`)/' \
+  REVIEW.md
 git diff --stat -- sdlc.yaml bands.yaml CLAUDE.md REVIEW.md
 git commit -am "Pin move to plugin 1.0.46: the guardrail lines" && git push origin claude/pin-move-1-0-46
 ```
@@ -97,8 +107,8 @@ Not in the rows: the letters left in comments and prose that no plugin reads (`s
 3. The owner merges this PR: the pin and the migrated `status.yaml` files reach `main` together.
 
 ## What the owner checks after the merge
-- This PR's own merge, and the next one after it, run SDLC design and SDLC build with the 1.0.46 runner (the pin is read from the default branch at run time): each is green or skipped, never the `invalid choice` failure above.
-- The next approving review on a PR runs the merge workflow's `on-approval` job without `invalid choice: 'on-approval'`; on a PR that is not a build PR it ends at `not-a-build-pr`.
+- This PR's own merge, and the next one after it, run SDLC design and SDLC build with the 1.0.46 runner (the pin is read from the default branch at run time): each is green or skipped, never the `invalid choice` failure above. This PR touches six change folders, so its find step skips as ambiguous.
+- The next approving review on a PR runs the merge workflow without `invalid choice: 'on-approval'`.
 - `python plugin/state/cli.py list` (or the digest) shows changes 0001 to 0005 at `deploy`, gate deploy/passed.
 
 ## Port list
