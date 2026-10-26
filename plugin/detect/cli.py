@@ -1533,7 +1533,8 @@ def cmd_dismiss(args) -> int:
                 )
                 number = (out["pr"] or {}).get("number")
                 # R22 (decision 36, point 5): the abandon workflow's token pushes it, so no
-                # sdlc-merge.yml run posts the "not a build PR" check ruleset 2 requires. It
+                # sdlc-merge.yml run posts the "not a build PR" check the review ruleset
+                # requires. It
                 # goes on the commit just pushed, also on a second close, whose pull request
                 # is already open and create_pr refuses (the R22 double check, finding F1); a
                 # re-run that commits nothing new posts on the branch tip it pushed

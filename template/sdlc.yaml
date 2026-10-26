@@ -87,7 +87,7 @@ deploy:
   action: {{DEPLOY_ACTION}}
   # true turns on the release label at the deploy gate, the production-gate hook and the approval
   # check of the release workflow (build guide step 29; decision 13). The approval is the
-  # label sdlc:release-approved applied by a person on the build PR from GitHub, nothing
+  # label sdlc:release-approved applied by the release manager on the build PR from GitHub, nothing
   # else: a run cannot approve itself (decision 5, the automation identity), so no signed
   # tag counts and the hook blocks any command that names the label. Until plugin 1.0.44
   # the key was `production`, which is read for one release (R45, decision 39); a plugin
@@ -117,7 +117,7 @@ maintain:
   # the project's own runbooks (plugin 0.2.19; plugin/detect/routes.py). bands.yaml names a
   # route `runbook:<name>` with its authorization (decision 14: allow = CI-scoped and
   # reversible, runs with no human in the path; ask = touches a running system, parks the
-  # incident PR with "Go" requested until the owner applies sdlc:go; until plugin 1.0.44
+  # incident PR with "Go" requested until the service owner applies sdlc:go; until plugin 1.0.44
   # preapproved and go, read as allow and ask for one release). The plugin ships
   # quarantine-flaky-test and revert-pr; an entry here adds a `command` (no shell; steps
   # joined by &&, run on the runner with the repository's own secrets) under that name.

@@ -19,8 +19,8 @@ from the pull request, never reaches the merge App's key (the R22 proposal, "Wha
 settle", the App row). Any other review is a green skip that says why.
 
 **not-build** (``pull_request``): every pull request that is not a framework build PR gets a
-passing ``sdlc/review`` check ("not a build PR") on its head, so ruleset 2, which requires
-that check, holds only build PRs (decision 36, point 5). A build PR is one whose head is
+passing ``sdlc/review`` check ("not a build PR") on its head, so the review ruleset, which
+requires that check, holds only build PRs (decision 36, point 5). A build PR is one whose head is
 ``sdlc/<id>/build``; its check is the review pass's, posted by the deploy run on its final
 head. The merge step below reads the review findings and gate (deploy)'s record, not the check, so a
 check posted on a wrong head is caught there. ``pr/cli.py upsert`` posts the same check on
@@ -49,7 +49,7 @@ digest (decisions 11 and 20):
    approval given before gate (deploy) offered the PR, before the owner could read its
    banner, is no gate (deploy) (choice 250; the R22 double check, F3);
 7. it merges at exactly that head through the merge App's token (``SDLC_MERGE_TOKEN``),
-   a bypass actor of ruleset 1; the workflow token never merges (decision 4).
+   a bypass actor of the merge ruleset; the workflow token never merges (decision 4).
 
 Output: ``merge: <what>`` lines on stdout and in ``$GITHUB_STEP_SUMMARY``; until R11's
 approvals list exists they are the record of the approval and the merge (who, when, the

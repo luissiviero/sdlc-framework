@@ -839,15 +839,21 @@ def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
     assert "Never add this App to a ruleset's bypass list" in text
     assert "still lets `gh pr merge` through" in text
     assert "The daily digest says so" in text
-    # 0.2.26: the owner is Exempt in ruleset 1 (NOTES section 17); 1.0.23 (choice 251, NOTES
-    # section 57): Exempt alone let anything acting as the owner's login write to the default
-    # branch, so ruleset 2 also holds the no-direct-writes rules, with the owner's bypass for
-    # pull requests only
+    # 0.2.26: the owner is Exempt in the merge ruleset (NOTES section 17); 1.0.23 (choice 251,
+    # NOTES section 57): Exempt alone let anything acting as the owner's login write to the
+    # default branch, so the review ruleset also holds the no-direct-writes rules, with the
+    # owner's bypass for pull requests only
     assert "The owner's bypass actor's mode is **Exempt**" in text
     assert "No setting stops a session acting as your login from merging" in text
     assert "the workflow token included" in text
-    assert "`review and no direct writes on main (decision 36, choice 251)`" in text
-    ruleset_2 = text[text.index("- Ruleset 2, which holds a build PR") :]
+    # R45's fifth rename PR (decision 39, rows N9 and N10): "Ruleset 1" and "Ruleset 2" are
+    # the merge ruleset and the review ruleset, and the review ruleset's name on GitHub drops
+    # its decision reference; a project with the old name renames it by hand
+    assert "name `review and no direct writes on main`; enforcement **Active**" in text
+    assert "rename it to `review and no direct writes on main` yourself" in text
+    for old in ("Ruleset 1", "Ruleset 2", "ruleset 1", "ruleset 2"):
+        assert old not in text
+    ruleset_2 = text[text.index("- The review ruleset, which holds a build PR") :]
     for rule in (
         '**"Require status checks to pass"**',
         '**"Require a pull request before merging"**, with required approvals **0**',

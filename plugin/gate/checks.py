@@ -2393,8 +2393,8 @@ def check_route(ctx: GateContext) -> CheckResult:
     if status == "ran" and asked and not outcome.get("authorized_by"):
         return _fail(
             "route",
-            f"runbook {name} is recorded as run, but its route needs the owner's Go and the "
-            "record names nobody who gave it",
+            f"runbook {name} is recorded as run, but its route needs the service owner's Go "
+            "and the record names nobody who gave it",
             f"An `ask` route runs only through `{c.GO_LABEL}` (sdlc-runbook.yml records the "
             "actor); re-run /sdlc-maintain <id> to record the route again.",
             **details,

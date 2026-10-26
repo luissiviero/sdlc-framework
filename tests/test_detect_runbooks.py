@@ -156,7 +156,7 @@ def test_revert_of_a_plain_commit_opens_the_labelled_pr_and_comes_back(project, 
     )
     assert gh.named("ensure_label")[0][0][:2] == ("o/r", "sdlc:triage")
     assert gh.named("set_labels")[0][0] == ("o/r", 1, ["sdlc:triage"], [])
-    # R22: the passing "not a build PR" check ruleset 2 requires, on the revert PR's head
+    # R22: the passing "not a build PR" check the review ruleset requires, on the revert PR's head
     assert gh.named("post_not_build_check") == [(("o/r", "f" * 40), {"cwd": project})]
 
 

@@ -65,14 +65,16 @@ a by-hand run under `cmd.exe` writes `%SDLC_PROOF_DIR%`).
 
 ## 1. Ask the owner (one question round, defaults in brackets)
 - Not asked (decision 37): the gates and the review mode are one behaviour for every
-  project. The owner merges at the intent and design gates and approves at the deploy
-  gate; the build and test gates are the confidence gate's. A judgment item inside a phase goes to a review panel in fresh contexts and the
+  project. The owner holds every role: as the product owner they merge at the intent and
+  design gates, as the code owner they approve at the deploy gate, as the release manager
+  they apply the release label on a declared production, and as the service owner they
+  triage the maintain queue; the build and test gates are the confidence gate's. A judgment item inside a phase goes to a review panel in fresh contexts and the
   run continues; the owner reads "Decisions taken for you" at the next gate and overturns
   any of them with a review comment (decisions 21 and 32). The reviewer's park on a risk-list
   item, a guardrail file change, a run limit, an infrastructure failure, a merge to main
   and a deploy still park; a risk-list hit itself parks nothing (decision 35: it is a line
   of the "Needs your close look" banner on the PR the owner merges, and the merge accepts
-  it; at the deploy gate, the owner's approving review, on which the merge App merges, decision 36).
+  it; at the deploy gate, the code owner's approving review, on which the merge App merges, decision 36).
 - deploy action [none]: what makes a merged change live — publish package · schedule job ·
   regenerate report · promote to paper trading · deploy service · none
 - real production? [no] — turns on the release label and the production gate
@@ -171,7 +173,7 @@ are the framework's (`SDLC …`, excluded from the metric by design) has none un
 carries its own CI workflow — say so to the owner in the report, with the one-line workflow
 to add (run the test command on `push` and `pull_request`). Re-running is safe: it merges and never
 overwrites the owner's edits. This script is the only sanctioned writer of guardrail files in a run;
-everything it writes rides in the change-0000 PR the owner merges.
+everything it writes rides in the change-0000 PR the product owner merges.
 
 ## 4. Verify the feedback loop
 Run and time the three commands from `sdlc.yaml` once (give the Bash call a timeout that
@@ -208,7 +210,7 @@ uncommitted, so commit the project's own work first). Then open the PR exactly a
 report, add what the summary cannot know: the detected targets and their health, and the
 files the owner should review (CLAUDE.md trim, settings, the risk list's globs), and the
 acts of step 6 the owner does after the merge, each settings act marked desktop-only with
-its direct link (ROADMAP R21). Merge =
+its direct link (ROADMAP R21). The product owner's merge =
 accept: it also confirms the risk list, and accepts any risk-list hit the PR's "Needs your
 close look" banner shows (the intent gate matches the globs on this PR's own files, decision 35).
 
@@ -263,15 +265,15 @@ close look" banner shows (the intent gate matches the globs on this PR's own fil
   `sdlc-digest.yml` gives the digest its `checks: read` for the approved, unmerged build PR's
   line. On an upgrade to 1.0.22, replace `sdlc-abandon.yml`, `sdlc-runbook.yml` and
   `sdlc-scan.yml` (they may now write checks, so their pull requests get the "not a build
-  PR" check ruleset 2 requires), `sdlc-digest.yml` (it reads the `sdlc-merge` environment)
+  PR" check the review ruleset requires), `sdlc-digest.yml` (it reads the `sdlc-merge` environment)
   and `sdlc-merge.yml` (its pinned actions), with the pin in the same pull request. On an
   upgrade to 1.0.38, re-run /sdlc-init in the pin's pull request: it adds
   `Edit(/policies/**)` to `.claude/settings.json`, which the build's preflight requires from
   that version on (decision 40); without it the first build parks with the missing rule.
 - The merge App (decision 36; ROADMAP R22): the deploy gate is your approving review on the build
-  PR, and a GitHub App of its own merges on it, so the approval is your only act there.
+  PR, as its code owner, and a GitHub App of its own merges on it, so the approval is your only act there.
   It is not the App above: GitHub grants a bypass to an actor, not to a job, and only this
-  App is a bypass actor of ruleset 1 (choice 242, point 4). Desktop-only (ROADMAP R21).
+  App is a bypass actor of the merge ruleset (choice 242, point 4). Desktop-only (ROADMAP R21).
   1. Create a second GitHub App on your account
      (`https://github.com/settings/apps/new`): webhook off; repository permissions
      Contents read and write, Pull requests read and write, Metadata read; Workflows
@@ -286,7 +288,7 @@ close look" banner shows (the intent gate matches the globs on this PR's own fil
      repository secret, which every workflow on every branch could read. Environments
      on a private repository need a paid plan (GitHub's documentation); on a free private
      repository there is no merge App: merge it yourself.
-  3. Add this App to ruleset 1's bypass list (the ruleset bullet below), in "For pull
+  3. Add this App to the merge ruleset's bypass list (the merge ruleset's bullet below), in "For pull
      requests only" mode.
   Without `SDLC_MERGE_APP_ID` the merge workflow says so and stops: you merge the build PR
   after approving it (no merge App: merge it yourself). The daily digest says so at the top while the
@@ -296,7 +298,7 @@ close look" banner shows (the intent gate matches the globs on this PR's own fil
 - On an organization repository, set `owner: <your login>` in `sdlc.yaml` (decision 34);
   otherwise no `@claude` comment or "Request changes" review starts a round. A personal
   repository needs nothing.
-- The branch ruleset on the default branch (decision 4: only the owner merges; the
+- The merge ruleset, the branch ruleset on the default branch (decision 4: only the owner and the merge App merge; the
   automation identity has branch-only write access). The framework never creates it — a
   session must not be able to — and nothing but this rule keeps a session or a workflow
   from pushing to the default branch or merging its own pull request: the workflow token
@@ -307,14 +309,14 @@ close look" banner shows (the intent gate matches the globs on this PR's own fil
   **"Restrict updates"** with the repository admin (the owner) as the only bypass actor
   besides the merge App —
   the one rule that keeps a merge to the owner and to the merge App, which merges only on
-  the owner's approval —, plus "Restrict deletions", "Block force
+  the code owner's approval —, plus "Restrict deletions", "Block force
   pushes" and "Require a pull request before merging". Since 1.0.18 the merge App above is
   its second bypass actor, in "For pull requests only" mode (decision 36). The owner's
   bypass actor's mode is
   **Exempt** (the `…` menu of the actor's row in the bypass list): this ruleset does not
-  run for you, so the phone's merge label shows ruleset 2's verdict alone (below). Exempt
+  run for you, so the phone's merge label shows the review ruleset's verdict alone (below). Exempt
   alone would also let anything that acts as your login write to the default branch
-  directly, which a cloud session's GitHub tools and git proxy do. Ruleset 2's
+  directly, which a cloud session's GitHub tools and git proxy do. The review ruleset's
   no-direct-writes rules close that (choice 251, tested live on 2026-10-22, NOTES §57).
   No setting stops a session acting as your login from merging a pull request through the
   API. From a terminal, `gh pr merge` refuses a `blocked` pull request before asking GitHub:
@@ -325,11 +327,11 @@ close look" banner shows (the intent gate matches the globs on this PR's own fil
   `pr/github.py default_branch_protection`: the branch's active rules must include an
   `update` rule; the classic `protected` flag is reported but does not count, since on a
   user-owned repository a classic rule cannot restrict who pushes; since 0.2.25).
-- Ruleset 2, which holds a build PR whose review is not green (decision 36, point 5;
+- The review ruleset, which holds a build PR whose review is not green (decision 36, point 5;
   plugin 1.0.18) and refuses a direct write to the default branch by your login (choice
   251, plugin 1.0.23). Desktop-only (ROADMAP R21). Settings → Rules → Rulesets → New branch
   ruleset (`https://github.com/<owner>/<repo>/settings/rules`): name
-  `review and no direct writes on main (decision 36, choice 251)`; enforcement **Active**;
+  `review and no direct writes on main`; enforcement **Active**;
   target the default branch ("Include default branch"); bypass list: the repository admin
   role (you), in "For pull requests only" mode, so your bypass never covers a push. Four
   rules:
@@ -348,8 +350,13 @@ close look" banner shows (the intent gate matches the globs on this PR's own fil
   shows "Unable to merge" and merges only through your bypass, a deliberate act: the web
   UI's bypass checkbox, or the phone's Merge under that label (verified for a bypass in
   this mode, NOTES §57). A session's direct commit to the default branch is refused (NOTES
-  §57). A project set up with plugin 1.0.18 to 1.0.22 has ruleset 2 with the check alone:
-  add the three rules to it, rename it, and keep your bypass in ruleset 1 Exempt.
+  §57). A project set up with plugin 1.0.18 to 1.0.22 has the review ruleset with the check alone:
+  add the three rules to it, rename it, and keep your bypass in the merge ruleset Exempt. A
+  project set up with plugin 1.0.23 to 1.0.46 named it
+  `review and no direct writes on main (decision 36, choice 251)`, the name the phone's merge
+  box shows: rename it to `review and no direct writes on main` yourself (the ruleset's
+  page, its name field; desktop-only, ROADMAP R21). No plugin code reads the name, so
+  nothing breaks before you do (decision 39, row N10).
 - Optional, owner's machine only: `docs/owner-machine/README.md` in the framework repo
   explains the managed settings file and its machine-wide consequences.
 

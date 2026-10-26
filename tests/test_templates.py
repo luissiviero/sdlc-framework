@@ -1175,7 +1175,7 @@ CHECK_POSTERS = (
 def test_a_job_that_posts_the_review_check_may_write_checks(name):
     """The R22 double check, F1 and F5: a job whose step posts sdlc/review holds
     ``checks: write``, and so does its App token, or the post is a 403 that the step keeps
-    quiet and ruleset 2 holds the pull request."""
+    quiet and the review ruleset holds the pull request."""
     data = _workflow_yaml(name)
     for job_name, job in data["jobs"].items():
         runs = " ".join(str(s.get("run") or "") for s in job.get("steps") or [])

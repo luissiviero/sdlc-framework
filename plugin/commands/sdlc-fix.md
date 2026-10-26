@@ -150,7 +150,7 @@ test (a test under `sdlc.yaml: test_paths` of a fix-type change is locked, the h
 the edit; if the test itself is wrong, write that in `evidence/fix-response.md` and park,
 as below), keep `plan.md` in sync, and answer the request in `evidence/fix-response.md`
 with what you changed:
-- **Phase intent** — comments on `intent.md` of the unmerged intent PR: apply the owner's
+- **Phase intent** — comments on `intent.md` of the unmerged intent PR: apply the product owner's
   corrections to the intent (the `intent-template` skill defines the sections) without
   re-running the brainstorm and without asking anything; a comment that is a question is
   answered in the intent's own words where the answer is in the comments, else carried into
@@ -175,8 +175,8 @@ with what you changed:
   in the same commit, re-run the touched tests; `/sdlc-build` steps 4–6 apply (simplifier
   and verifier again when code changed).
 - **Phase test** — failing checks or evidence comments: `/sdlc-test` steps 1–4.
-- **Phase deploy** — review findings the owner endorsed or new comments: `/sdlc-deploy`
-  step 2's loop for the Important ones; a nit the owner asked for is fixed like an
+- **Phase deploy** — review findings the code owner endorsed or new comments: `/sdlc-deploy`
+  step 2's loop for the Important ones; a nit the code owner asked for is fixed like an
   Important one.
 A comment on a line of "Decisions taken for you" (decision 21) overturns that panel
 decision: apply the comment like any other (for a concern, rewrite the item as
@@ -253,7 +253,7 @@ cap (decision 29), and the change parks for the owner at the cap.
 ## 6. Refresh the PR and answer the comments
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>`
 (with `--head <head>` when the PR's head is not the phase's framework branch) regenerates
-the summary and the label; the owner's own labels (release approval, un-park verbs) are
+the summary and the label; the owner's own labels (the release manager's release approval, un-park verbs) are
 never removed by it. **Never post a PR comment, reply, review or
 @mention** (a comment is a notification, and the runner's review request is the only push
 to the owner, decision 31). Instead

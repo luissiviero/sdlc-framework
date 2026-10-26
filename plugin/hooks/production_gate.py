@@ -128,7 +128,7 @@ CHAIN_RE = re.compile(r"&&|\|\||;|\||\r?\n")
 SPLIT_RE = re.compile(r"&&|\|\||;|\||&|\$\(|`|\)|\r?\n")
 # Token boundaries inside a part: whitespace, quotes, backticks and parentheses.
 TOKEN_RE = re.compile(r"[\s'\"`()]+")
-# Any mention of the release label: the approval is the owner's act on GitHub.
+# Any mention of the release label: the approval is the release manager's act on GitHub.
 LABEL_RE = re.compile(re.escape(approval_mod.RELEASE_LABEL), re.IGNORECASE)
 COMMAND_SHOWN = 100  # characters of the command quoted in the block text
 # Time budget (hooks.json gives the hook 60 s): each git call and each GitHub request gets
@@ -355,7 +355,7 @@ def block_text(command: str, action: str, detail: str, pr_number: int | None) ->
     return (
         f"Production gate (build guide step 29; article p.36-37): `{shown}` is a guarded "
         f"production command for deploy adapter '{action}' and no release approval exists"
-        f"{f' ({detail})' if detail else ''}. Route: the owner applies the label "
+        f"{f' ({detail})' if detail else ''}. Route: the release manager applies the label "
         f"`{approval_mod.RELEASE_LABEL}` on {where} from GitHub, then re-runs; the hook "
         "never asks (the run is unattended, OPERATING_MODEL section 4) and nobody has been "
         "notified."
@@ -368,7 +368,8 @@ def label_block_text(command: str) -> str:
         shown = shown[:COMMAND_SHOWN] + "..."
     return (
         f"Production gate (build guide step 29): `{shown}` names the label "
-        f"`{approval_mod.RELEASE_LABEL}`: the release approval is the owner's act on GitHub; "
+        f"`{approval_mod.RELEASE_LABEL}`: the release approval is the release manager's act on "
+        "GitHub; "
         "a run cannot apply the label to itself (decision 5). Nobody has been notified."
     )
 

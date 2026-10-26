@@ -191,7 +191,7 @@ def cmd_upsert(args) -> int:
         status_mod.write_status(change_dir, st)
         out["build_pr_recorded"] = int(number)
     if number and head not in build_heads:
-        # R22 (decision 36, point 5): ruleset 2 requires sdlc/review, so every pull request
+        # R22 (decision 36, point 5): the review ruleset requires sdlc/review, so every PR
         # that is not a build PR carries a passing "not a build PR" on its head; the workflow
         # token's pushes and pull requests start no run of sdlc-merge.yml that would post it
         out["review_check"] = not_build_check(repo, int(number), found, root)

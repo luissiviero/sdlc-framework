@@ -1412,7 +1412,7 @@ def merge_environment(repo: str, branch: str) -> dict[str, Any]:
     default branch (decision 36 and choice 242, point 4; ``/sdlc-init`` step 6): {'ok',
     'exists', 'safe', 'found', 'reason'}. Safe means a deployment branch policy of selected
     branches whose one rule is ``branch``; any other policy lets a workflow on another ref
-    read the key of a bypass actor of ruleset 1 (choice 250; the R22 double check, F8). No
+    read the key of a bypass actor of the merge ruleset (choice 250; the R22 double check, F8). No
     environment is safe (no merge App: the merge stays the owner's). Read-only: the workflow
     token's ``actions: read`` (``GET /repos/{repo}/environments/{name}`` and its
     ``deployment-branch-policies``); a lookup that fails is ``ok: False``."""
@@ -1452,7 +1452,7 @@ def merge_environment(repo: str, branch: str) -> dict[str, Any]:
     return {"ok": True, "exists": True, "safe": True, "found": found, "reason": ""}
 
 
-REVIEW_CHECK = "sdlc/review"  # review/findings.py CHECK_RUN_NAME, the check ruleset 2 requires
+REVIEW_CHECK = "sdlc/review"  # review/findings.py CHECK_RUN_NAME, the review ruleset's check
 NOT_BUILD_TITLE = "not a build PR"
 NOT_BUILD_SUMMARY = (
     "This pull request is not a framework build PR (its head is not `sdlc/<id>/build`), so "
@@ -1462,7 +1462,8 @@ NOT_BUILD_SUMMARY = (
 
 def post_not_build_check(repo: str, sha: str, cwd: str | Path | None = None) -> dict[str, Any]:
     """The passing ``sdlc/review`` "not a build PR" on ``sha`` (decision 36, point 5): every
-    pull request that is not a build PR carries it, so ruleset 2 holds only build PRs."""
+    pull request that is not a build PR carries it, so the review ruleset holds only build
+    PRs."""
     return create_check_run(
         repo, sha, REVIEW_CHECK, "success", NOT_BUILD_TITLE, NOT_BUILD_SUMMARY, cwd=cwd
     )

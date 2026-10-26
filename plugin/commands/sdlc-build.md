@@ -50,7 +50,7 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
 
 ## 1. Branch and run registration
 - Default branch as in `/sdlc-design` step 0. `git fetch origin`.
-- Start point: the default branch (the design gate is the owner's merge). First
+- Start point: the default branch (the design gate is the product owner's merge). First
   run: `git switch -c sdlc/<id>/build origin/<default>`. On the fast lane (decision 30; CI
   only) the runner has already cut `sdlc/<id>/build` from `origin/sdlc/<id>/design`, whose
   gate passed on a routine plan without a merge (`status.yaml: fast_lane.design`): the spec and plan
@@ -189,8 +189,8 @@ travels in a commit with content the reviewer did not see (the first deferred ru
 2026-09-24, committed each verdict beside the content it did not judge, three times, and
 needed four commits to land one). A `park` verdict with new reasons is a new item: run
 `items` once more. The panel never decides a park item, never raises a limit, never
-touches a guardrail file, and never asks the owner: the owner reads "Decisions taken for
-you" at the gate and overturns any line with a review comment.
+touches a guardrail file, and never asks the owner: the code owner reads "Decisions taken for
+you" at the deploy gate and overturns any line with a review comment.
 
 Then the gate:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase build`
@@ -214,7 +214,7 @@ paste. Do not retry with other means.
   merge-triggered workflow the job dispatches the test workflow itself. Do not run the test
   phase here.
   On the fast lane the runner also closes the design PR as `sdlc:superseded` once this PR
-  exists (no comment), or the intent PR when no design PR was opened; the owner reviews
+  exists (no comment), or the intent PR when no design PR was opened; the code owner reviews
   intent, spec, plan and code together at the deploy gate.
 - `park`: report the PR URL and the gate's "What I need from you" block.
 

@@ -19,13 +19,13 @@ older changes are read as these names). Branches: `sdlc/<id>/intent` (intent PR)
 `sdlc/<id>/design` (spec+plan PR), `sdlc/<id>/build` (build PR, kept open through test and
 review); a change started before the names finishes on its letter branch (`sdlc/<id>/c`).
 Labels: `sdlc:<phase>-ready` (waiting at a human gate, e.g. `sdlc:design-ready`),
-`sdlc:release-approved` (the release
+`sdlc:release-approved` (the release manager's release
 approval on a declared production), `sdlc:needs-human` (parked); the owner's un-park verbs
 `sdlc:reset-iterations`, `sdlc:unlock-tests` (read and removed by the next fix round). A
 risk-list hit parks nothing: it is a line of the PR's "Needs your close look" banner, and
-your merge accepts it, at the deploy gate your approving review (decisions 35 and 36; `sdlc:accept-risk` retired). A "Request changes" review on any of these PRs starts a fix round; closing
+your merge accepts it, at the deploy gate your approving review as the code owner (decisions 35 and 36; `sdlc:accept-risk` retired). A "Request changes" review on any of these PRs starts a fix round; closing
 one without merging abandons the change. The maintain phase: an incident intent PR (head
-`sdlc/<id>/intent`, title `maintain(<id>): …`) carries `sdlc:maintain-ready` and `sdlc:triage`; the owner's
+`sdlc/<id>/intent`, title `maintain(<id>): …`) carries `sdlc:maintain-ready` and `sdlc:triage`; the service owner's
 triage is the gate (merge = fix now, label `sdlc:schedule` = later, close with a comment =
 dismiss, recorded in `changes/.dismissed.json` through a dismissal PR); `sdlc:go` on it runs
 the runbook the diagnosis proposed when its route needs a person (read and removed once).

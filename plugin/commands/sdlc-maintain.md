@@ -1,5 +1,5 @@
 ---
-description: The maintain phase — the diagnosis of a control-band breach the deterministic detection script filed (or, by hand, run the detection first), read-only on source, from the project's lessons and the failed runs, written as an incident intent.md with its Evidence section and a proposed route (the intent PR itself, or at 3σ a listed runbook), dispatched through the route's authorization (pre-approved runs now; go parks with "Go" requested), then the triage gate: the intent PR opens with sdlc:maintain-ready and sdlc:triage and waits for the owner's triage — merge (fix now), label sdlc:schedule, or close with a reason (dismiss). Re-runnable.
+description: The maintain phase — the diagnosis of a control-band breach the deterministic detection script filed (or, by hand, run the detection first), read-only on source, from the project's lessons and the failed runs, written as an incident intent.md with its Evidence section and a proposed route (the intent PR itself, or at 3σ a listed runbook), dispatched through the route's authorization (pre-approved runs now; ask parks with "Go" requested), then the triage gate: the intent PR opens with sdlc:maintain-ready and sdlc:triage and waits for the service owner's triage — merge (fix now), label sdlc:schedule, or close with a reason (dismiss). Re-runnable.
 argument-hint: [change id, e.g. 0007; empty = run the detection first]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/detect/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *), Bash(git *), Bash(gh run view *), Bash(gh run list *), Read, Glob, Grep, Write
@@ -13,7 +13,7 @@ it invokes Claude read-only to diagnose, and at 3σ Claude may act, though only 
 PR into the review gate or triggering a pre-approved runbook"; step 5: "The agent writes its
 diagnosis as intent.md in the Stage 1: Plan format, covering the anomaly and its evidence, a
 proposed outcome, the affected systems and any open questions"), step 36 (the lessons file
-the diagnosis reads first, p.49), step 39 (the triage gate is the owner's triage of the incident PR,
+the diagnosis reads first, p.49), step 39 (the triage gate is the service owner's triage of the incident PR,
 decision 25), decisions 14 and 26 (routes split by blast radius; a rehearsed rollback on a
 declared production is pre-approved), decision 15 (the first metric is CI test failure rate).
 
@@ -67,7 +67,7 @@ Use only the tools the bands allow plus Read/Grep/Glob: `gh run view <run id> --
 on the failed runs the record lists (at most five, newest first), the tests and modules
 those logs name, `git log` over the commits in the breach window. Do not run the test
 suite, do not edit source, do not fix anything: the fix is a change of its own that starts
-at the intent gate when the owner merges this intent. Rule things out explicitly; what you could
+at the intent gate when the service owner merges this intent. Rule things out explicitly; what you could
 not determine is an open question.
 
 ## 3. Write the incident intent (skill `intent-template`)
@@ -91,7 +91,7 @@ Write `changes/<id>-<slug>/evidence/proposal.json` in the shape `routes` printed
   introduced the failures; a project runbook by its name when the incident is what it was
   written for. Never propose a route `routes` did not list, and never an unsupported one.
 The rationale says why this route and what was ruled out. An `ask` route may be proposed
-when it is the right action: the dispatcher parks the PR with "Go" requested and the owner's
+when it is the right action: the dispatcher parks the PR with "Go" requested and the service owner's
 `sdlc:go` label runs it (`sdlc-runbook.yml`); do not propose a weaker route to avoid the
 wait.
 
@@ -132,13 +132,13 @@ as at `intent`.
 ## 8. Open the intent PR (the triage queue, build guide step 39)
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase maintain`
 — head `sdlc/<id>/intent`, title `maintain(<id>): <title>`, the summary (the finding, the
-proposed outcome, the route and its state, what needs the owner), labels `sdlc:maintain-ready` (or
+proposed outcome, the route and its state, what needs the service owner), labels `sdlc:maintain-ready` (or
 `sdlc:needs-human` with "What I need from you": Go requested, or a failed check) and
 `sdlc:triage` (`incident` on a PR an older plugin opened). Nothing merges, nothing deploys, and you notify nobody (in CI the finish step
 requests the owner's review on the PR, decision 31).
 
 ## 9. Report
-One line: the PR URL and "gate (maintain): merge = fix now (the design run starts); label
+One line: the PR URL and "gate (maintain), the service owner's triage: merge = fix now (the design run starts); label
 `sdlc:schedule` = later; close with a comment = dismiss (the comment is the reason, recorded by
 the abandon workflow in a dismissal PR)". When a route waits for Go, add "apply `sdlc:go`
 on the PR to run runbook <name>". Do not start the design phase.

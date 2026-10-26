@@ -1,5 +1,5 @@
 ---
-description: The deploy phase — the review passes in a fresh context with REVIEW.md (bugs, security, compliance) into evidence/review-findings.json, a fix loop bounded by the iteration cap while an Important finding stands, the regenerated PR summary, then the deploy gate: the build PR is marked ready with sdlc:deploy-ready and waits for the owner's approving review, on which the merge App merges it (decision 36). The release is prepared in the PR per the project's deploy adapter (release notes, nothing executed); the release workflow runs it on that merge. Re-runnable.
+description: The deploy phase — the review passes in a fresh context with REVIEW.md (bugs, security, compliance) into evidence/review-findings.json, a fix loop bounded by the iteration cap while an Important finding stands, the regenerated PR summary, then the deploy gate: the build PR is marked ready with sdlc:deploy-ready and waits for the code owner's approving review, on which the merge App merges it (decision 36). The release is prepared in the PR per the project's deploy adapter (release notes, nothing executed); the release workflow runs it on that merge. Re-runnable.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evals/case.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
@@ -11,12 +11,12 @@ Source: build guide step 24 (composition: OPERATING_MODEL §4.1), step 26 (REVIE
 the review passes, article p.32–35: "Bugs · Security · Compliance", Important vs nit, "at
 most five nits"; decision 12: the review pass runs in a fresh context, writer ≠ judge),
 step 27a (the PR summary), step 32 (release prepared), decision 13 as amended by 36 (the
-deploy gate = the owner's approving review, on which the merge App merges; the release label only
+deploy gate = the code owner's approving review, on which the merge App merges; the release manager's release label only
 when `sdlc.yaml` declares a real production), decision 19
 (what deploy means for a project that is not a service).
 
-Unattended: never ask the owner; a blocker parks. The owner's approving review is the only
-human action in this phase (plus the release label on a declared production); nothing is deployed here: the release is prepared in the PR and the
+Unattended: never ask the owner; a blocker parks. The code owner's approving review is the only
+human action in this phase (plus the release manager's release label on a declared production); nothing is deployed here: the release is prepared in the PR and the
 release workflow runs it after the merge (article p.32: "The agent does everything up to
 the production gate and nothing past it").
 One shell command per Bash call: an unattended run allows only an explicit list of
@@ -151,7 +151,7 @@ While `tally.important` > 0:
    runner's step after this session replaces, as in the test phase — `/sdlc-test` step 1), commit
    (`commit-phase ... --phase deploy --message "review(<id>): fix <finding>" --paths <files>`),
    push, and re-run step 1 for a fresh verdict on the new HEAD.
-Nits are not fixed in this loop; the reviewer lists at most five and the owner reads them.
+Nits are not fixed in this loop; the reviewer lists at most five and the code owner reads them.
 
 ## 3. Second-occurrence rule (article p.35; REVIEW.md "Framework rules")
 `review/cli.py validate` compares each finding's `signature` with
@@ -205,14 +205,14 @@ never travels in a commit with content the reviewer did not see (the first defer
 2026-09-24, committed each verdict beside the content it did not judge, three times, and
 needed four commits to land one). A `park` verdict with new reasons is a new item: run `items`
 once more. The panel never decides a park item, never raises a limit, never
-touches a guardrail file, and never asks the owner: the owner reads "Decisions taken for
+touches a guardrail file, and never asks the owner: the code owner reads "Decisions taken for
 you" at the gate and overturns any line with a review comment.
 
 ## 4. The deploy gate
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy`
 — requires the test phase's evidence green, `review-findings.json` for HEAD with no Important
 finding, the plan in sync with the diff, no guardrail file, no reviewer's park on a risk-list
-item (a hit is a line of the PR's "Needs your close look" banner, which the owner's
+item (a hit is a line of the PR's "Needs your close look" banner, which the code owner's
 approving review accepts: decision 35, choice 242). Exit 3 `wait` is the
 normal outcome (the deploy gate is always human); 4 = `park`. Then the release notes
 (build guide step 32; deterministic: what changed, the commits since the base, the evidence
@@ -244,24 +244,24 @@ head after its own last commit, and dispatches the merge workflow when it is gre
 python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy --ready
 ```
 The description opens with the ≤5 bullets (what changed and why · evidence status ·
-findings by severity with the nits listed · plan conformance · what needs the owner: an
+findings by severity with the nits listed · plan conformance · what needs the code owner: an
 approving review = the deploy gate, review comments = `/sdlc-fix`), the two counters of build guide step 42
 ("no fix round so far" or "first-pass: no", a reset count included; fix iterations), the proposed `CLAUDE.md` lines, and the
 "## Release note" section quoted from `evidence/release-notes.md`. Label: `sdlc:deploy-ready`,
-or `sdlc:needs-human` when parked. The PR is waiting for the owner's approving review: the
+or `sdlc:needs-human` when parked. The PR is waiting for the code owner's approving review: the
 approval = gate (deploy) passed (decision 36); the merge App then merges it (`sdlc-merge.yml`),
 and the release workflow runs `deploy.command`. An approval given before this run committed
-the deploy gate's record does not count: the owner approves again on the head (choice 250). No merge
-App: the owner merges it after approving. When `sdlc.yaml` says
-`deploy.production_gate: true` (or the old `deploy.production: true`), the body also says: the release label `sdlc:release-approved` is
+the deploy gate's record does not count: the code owner approves again on the head (choice 250). No merge
+App: the code owner merges it after approving. When `sdlc.yaml` says
+`deploy.production_gate: true` (or the old `deploy.production: true`), the body also says the release manager's line: the release label `sdlc:release-approved` is
 the second act: apply it on this PR in the same visit; the release workflow waits for it.
 
 ## 6. Hand over
-Report the PR URL and "gate (deploy): an approving review = approve, and the merge App merges on
+Report the PR URL and "gate (deploy): as the code owner, an approving review = approve, and the merge App merges on
 it; a review comment is the change request (`/sdlc-fix <id>`)". When `sdlc.yaml` says
-`deploy.production_gate: true` (or the old `deploy.production: true`), add "the release label `sdlc:release-approved` is the second
+`deploy.production_gate: true` (or the old `deploy.production: true`), add the release manager's line, "the release label `sdlc:release-approved` is the second
 act: apply it on this PR in the same visit; the release workflow waits for it". Nothing
-else runs; the merge that follows the owner's approval is the trigger for the project's
+else runs; the merge that follows the code owner's approval is the trigger for the project's
 deploy adapter.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `policies/**`, `intent.md`

@@ -750,8 +750,8 @@ def test_release_approval_line_only_when_production_is_declared(project):
     body = desc.build_description(root, "0001", "deploy")
     assert len(bullets(body)) == 5
     line = (
-        "Release approval: apply `sdlc:release-approved` on this PR with your approval; the "
-        "release workflow waits for it after the merge."
+        "Release approval, as the release manager: apply `sdlc:release-approved` on this PR "
+        "with your approval; the release workflow waits for it after the merge."
     )
     assert line in body.splitlines()
     assert "signed tag" not in body  # decision 5: the label is the only route
@@ -987,9 +987,9 @@ def test_upsert_records_the_build_pr_in_status_yaml(project, capsys, recorder):
 
 
 def test_upsert_posts_not_a_build_pr_on_every_other_pull_request(project, capsys, recorder):
-    """R22 (decision 36, point 5): ruleset 2 requires sdlc/review; the workflow token's pull
-    requests start no run of sdlc-merge.yml, so the upsert posts the passing "not a build
-    PR" on the head of every pull request that is not the build PR."""
+    """R22 (decision 36, point 5): the review ruleset requires sdlc/review; the workflow
+    token's pull requests start no run of sdlc-merge.yml, so the upsert posts the passing
+    "not a build PR" on the head of every pull request that is not the build PR."""
     root, change = project
     calls, answers = recorder
     gate_json(change, "design", "wait", c.ready_label("design"))

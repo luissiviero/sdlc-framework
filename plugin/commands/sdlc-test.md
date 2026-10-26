@@ -156,8 +156,8 @@ travels in a commit with content the reviewer did not see (the first deferred ru
 2026-09-24, committed each verdict beside the content it did not judge, three times, and
 needed four commits to land one). A `park` verdict with new reasons is a new item: run
 `items` once more. The panel never decides a park item, never raises a limit, never
-touches a guardrail file, and never asks the owner: the owner reads "Decisions taken for
-you" at the gate and overturns any line with a review comment.
+touches a guardrail file, and never asks the owner: the code owner reads "Decisions taken for
+you" at the deploy gate and overturns any line with a review comment.
 
 Then the gate:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase test`
