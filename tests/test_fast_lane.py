@@ -685,7 +685,8 @@ def test_a_fast_lane_record_the_runner_does_not_confirm_waits_at_b(
     elif why == "other-head":
         _verdict(root, "routine", "0" * 40)
     elif why in ("park", "escalate"):  # S3: the reviewer's own verdict must be continue
-        # ``escalate``: an older plugin's word, read as ``park`` (R45 row 62)
+        # ``escalate``: an older plugin's word, read as ``park`` for one release (R45 row 62);
+        # refused as malformed since 1.0.48 (R45's sixth PR), and the design still waits
         _verdict(root, "routine", head, verdict=why)
     elif why == "after-gate":  # S7: a plan edit committed after the commit the gate judged
         _verdict(root, "routine", head)
@@ -696,7 +697,7 @@ def test_a_fast_lane_record_the_runner_does_not_confirm_waits_at_b(
     assert out["fast_lane"]["recorded"] is False and out["dispatched"] is None
     expected_reason = {
         "park": "the adversarial reviewer said park, not continue",
-        "escalate": "the adversarial reviewer said park, not continue",
+        "escalate": "the adversarial verdict is malformed: 'verdict' must be 'continue' or 'park'",
         "after-gate": "commits after the gate's commit changed notes.md",
     }.get(why, "")
     assert expected_reason in out["fast_lane"]["reason"]

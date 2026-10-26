@@ -738,48 +738,53 @@ def test_production_declared_needs_a_real_boolean():
     assert not routes.production_declared({"deploy": {"production_gate": None}})
 
 
-def test_production_declared_reads_the_old_key_for_one_release():
-    """R45 (decision 39, row 55): ``deploy.production`` is read as ``production_gate`` for one
-    release; both set and disagreeing declares nothing here (the gate and the hook refuse)."""
-    assert routes.production_declared({"deploy": {"production": True}})
+def test_production_declared_refuses_the_old_key_since_1_0_48():
+    """R45 (decision 39, row 55): ``deploy.production`` is refused since 1.0.48 (R45's sixth
+    PR): with it, alone or beside ``production_gate``, nothing is declared here (a rehearsed
+    rollback keeps its ``ask``), as for any configuration error the gate and the hook refuse."""
+    assert not routes.production_declared({"deploy": {"production": True}})
     assert not routes.production_declared({"deploy": {"production": "yes"}})
-    both = {"deploy": {"production_gate": False, "production": True}}
-    assert not routes.production_declared(both)
-    agree = {"deploy": {"production_gate": True, "production": True}}
-    assert routes.production_declared(agree)
+    assert not routes.production_declared(
+        {"deploy": {"production_gate": False, "production": True}}
+    )
+    assert not routes.production_declared({"deploy": {"production_gate": True, "production": True}})
+    assert routes.production_declared({"deploy": {"production_gate": True}})
 
 
-def test_the_old_authorization_values_route_as_allow_and_ask(tmp_path):
-    """R45 (decision 39, row 56): a bands.yaml that still says ``preapproved`` and ``go``
-    loads as ``allow`` and ``ask``, and resolves the same; a project runbook's ``go`` is still
-    the stricter value."""
+def test_the_old_authorization_values_are_refused_since_1_0_48(tmp_path):
+    """R45 (decision 39, row 56): since 1.0.48 (R45's sixth PR) a bands.yaml that still says
+    ``preapproved`` or ``go`` is refused by the bands validation, naming each route; a project
+    runbook's ``preapproved`` or ``go`` is not a value and reads as the stricter ``ask``."""
     old = (
         _rendered_template()
         .replace("authorization: allow", "authorization: preapproved")
         .replace("authorization: ask", "authorization: go")
     )
     assert "authorization: preapproved" in old and "authorization: go" in old
-    legacy = _load_bands(tmp_path, old)
-    assert [(r.name, r.authorization) for r in legacy.routes()] == list(TEMPLATE_ROUTES.items())
-    config = {"maintain": {"runbooks": [{"name": "rollback-deploy", "command": "x"}]}}
-    for name, auth in TEMPLATE_ROUTES.items():
-        assert (
-            routes.authorization(name, legacy.route(name), config, "python").authorization == auth
-        )
-    stricter = {"maintain": {"runbooks": [{"name": "revert-pr", "authorization": "go"}]}}
+    with pytest.raises(bands.BandsError) as exc:
+        _load_bands(tmp_path, old)
+    message = str(exc.value)
+    assert "route pull_request has authorization 'preapproved'" in message
+    assert "route runbook:rollback-deploy has authorization 'go'" in message
+    assert "expected one of allow, ask" in message
+    current = _load_bands(tmp_path)
     route = "runbook:revert-pr"
-    resolved = routes.authorization(route, legacy.route(route), stricter, "python")
-    assert (resolved.authorization, resolved.source) == (
-        "ask",
-        "sdlc.yaml: maintain.runbooks (stricter)",
-    )
+    assert current.route(route).authorization == "allow"
+    for value in ("preapproved", "go"):
+        project = {"maintain": {"runbooks": [{"name": "revert-pr", "authorization": value}]}}
+        resolved = routes.authorization(route, current.route(route), project, "python")
+        assert (resolved.authorization, resolved.source) == (
+            "ask",
+            "sdlc.yaml: maintain.runbooks (stricter)",
+        )
     # a project value that is neither allow nor ask can only tighten: it reads as ask
     for odd in ("Ask", "asks", "auto"):
         typo = {"maintain": {"runbooks": [{"name": "revert-pr", "authorization": odd}]}}
-        assert routes.authorization(route, legacy.route(route), typo, "python").authorization == (
+        assert routes.authorization(route, current.route(route), typo, "python").authorization == (
             "ask"
         )
-    assert routes.authorization_value("preapproved") == "allow"
-    assert routes.authorization_value("go") == "ask"
+    assert not hasattr(routes, "LEGACY_AUTHORIZATIONS")
+    assert routes.authorization_value("preapproved") == "preapproved"
+    assert routes.authorization_value(" go ") == "go"
     assert routes.authorization_value("auto") == "auto"
     assert not routes.production_declared({})

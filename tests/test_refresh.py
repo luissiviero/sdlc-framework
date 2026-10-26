@@ -239,46 +239,48 @@ def _old_evals() -> str:
     return text.replace("name: SDLC agent evals\n", "name: SDLC evals\n") + OLDER_YAML
 
 
-def test_the_renamed_evals_workflow_is_known_by_its_old_name():
-    """R45 row 78: the old name stays readable for one release, beside the new one."""
-    assert sdlc_init.RENAMED_COPIES == {OLD_EVALS: NEW_EVALS}
+def test_the_old_evals_workflow_name_is_no_longer_known():
+    """R45 row 78: the old name sdlc-evals.yml is refused since 1.0.48 (R45's sixth PR): it
+    is neither a workflow /sdlc-init installs nor a name the manifest keeps hashes for."""
+    assert not hasattr(sdlc_init, "RENAMED_COPIES")
     assert NEW_EVALS in sdlc_init.WORKFLOW_FILES and OLD_EVALS not in sdlc_init.WORKFLOW_FILES
     assert not (TEMPLATE / OLD_EVALS).exists()
+    manifest = refresh.load_manifest()
+    assert OLD_EVALS not in manifest["files"] and OLD_EVALS not in manifest["files_marked"]
 
 
-def test_an_upgrade_replaces_a_pristine_old_evals_workflow_with_the_new_one(project, monkeypatch):
-    """R45 row 78: /sdlc-init's upgrade removes a pristine sdlc-evals.yml and installs
-    sdlc-agent-evals.yml in its place; a second re-run moves nothing."""
+def test_an_upgrade_no_longer_removes_a_pristine_old_evals_workflow(project, monkeypatch):
+    """R45 row 78: since 1.0.48 (R45's sixth PR) /sdlc-init's upgrade does not retire a
+    pristine sdlc-evals.yml any more: the old copy is not read, kept as it is and not
+    reported, and sdlc-agent-evals.yml is installed beside it; a second re-run moves nothing."""
     _manifest_with(monkeypatch, {OLD_EVALS: _old_evals()})
     (project / NEW_EVALS).unlink()
-    (project / OLD_EVALS).write_text(_render(OLD_EVALS, _old_evals()), encoding="utf-8")
+    old = _render(OLD_EVALS, _old_evals())
+    (project / OLD_EVALS).write_text(old, encoding="utf-8")
     report = _init(project)
-    assert report["files"][OLD_EVALS].startswith("removed (was 1.0.10)")
-    assert report["removed"] == {OLD_EVALS: "1.0.10"}  # listed for the upgrade PR's body
-    assert "sdlc-agent-evals.yml" in report["files"][OLD_EVALS]
+    assert OLD_EVALS not in report["files"] and "removed" not in report
     assert report["files"][NEW_EVALS] == "created"
-    assert not (project / OLD_EVALS).exists()
+    assert (project / OLD_EVALS).read_text(encoding="utf-8") == old
     text = (project / NEW_EVALS).read_text(encoding="utf-8")
     assert "name: SDLC agent evals" in text
     again = _init(project)
     assert OLD_EVALS not in again["files"] and again["files"][NEW_EVALS] == "unchanged"
 
 
-def test_an_upgrade_keeps_an_edited_old_evals_workflow_and_reports_it(project, monkeypatch):
-    """R45 row 78: an edited sdlc-evals.yml is the owner's: kept, reported, and the new file
-    waits for it to go, so the suite never runs twice; once it is gone the new file comes."""
+def test_an_upgrade_no_longer_holds_back_the_new_evals_workflow_for_an_edited_old_one(
+    project, monkeypatch
+):
+    """R45 row 78: since 1.0.48 (R45's sixth PR) an edited sdlc-evals.yml is not read: it is
+    kept, not reported, and the new file is installed at once instead of waiting for it."""
     _manifest_with(monkeypatch, {OLD_EVALS: _old_evals()})
     (project / NEW_EVALS).unlink()
     edited = _render(OLD_EVALS, _old_evals()) + "# ours\n"
     (project / OLD_EVALS).write_text(edited, encoding="utf-8")
     report = _init(project)
-    assert report["files"][OLD_EVALS].startswith("kept; renamed (edited)")
-    assert "sdlc-agent-evals.yml" in report["files"][OLD_EVALS]
-    assert report["files"][NEW_EVALS].startswith("not installed: the edited sdlc-evals.yml")
+    assert OLD_EVALS not in report["files"]
+    assert report["files"][NEW_EVALS] == "created"
     assert (project / OLD_EVALS).read_text(encoding="utf-8") == edited
-    assert not (project / NEW_EVALS).exists()
-    (project / OLD_EVALS).unlink()  # the owner moved the edits, or dropped them
-    assert _init(project)["files"][NEW_EVALS] == "created"
+    assert (project / NEW_EVALS).is_file()
 
 
 def test_the_check_script_is_refreshed_like_the_readmes(project, monkeypatch):
@@ -291,8 +293,8 @@ def test_the_check_script_is_refreshed_like_the_readmes(project, monkeypatch):
 def test_the_shipped_manifest_is_well_formed():
     data = json.loads(refresh.MANIFEST.read_text(encoding="utf-8"))
     assert data["schema"] == refresh.SCHEMA
-    # R45 row 78: an old name keeps its released hashes for one release
-    rels = {*sdlc_init.REFRESHED_COPIES, *sdlc_init.REPORTED_COPIES, *sdlc_init.RENAMED_COPIES}
+    # R45 row 78: since 1.0.48 (R45's sixth PR) an old name keeps no hashes
+    rels = {*sdlc_init.REFRESHED_COPIES, *sdlc_init.REPORTED_COPIES}
     for key in ("files", "files_marked"):
         assert set(data[key]) == rels
         for known in data[key].values():
@@ -327,12 +329,12 @@ def test_template_hashes_keeps_the_first_version_and_refuses_a_clone_without_tag
 ):
     """`python tasks.py template-hashes`: each text keeps the first tag that shipped it, a
     file missing at a tag is skipped, and a clone without tags writes nothing (it would lose
-    every release's text)."""
+    every release's text). A name the template no longer has (R45 row 78) keeps no hashes
+    since 1.0.48 (R45's sixth PR)."""
     tasks = _tasks()
     monkeypatch.setattr(sdlc_init, "REFRESHED_COPIES", (README,))
     monkeypatch.setattr(sdlc_init, "REPORTED_COPIES", ("REVIEW.md",))
     old_name = "changes/OLD.md"  # R45 row 78: a name the template no longer has
-    monkeypatch.setattr(sdlc_init, "RENAMED_COPIES", {old_name: README})
     root = tmp_path / "fw"
     (root / ".claude-plugin").mkdir(parents=True)
     (root / "template" / "changes").mkdir(parents=True)
@@ -363,5 +365,5 @@ def test_template_hashes_keeps_the_first_version_and_refuses_a_clone_without_tag
     readme = maps["files"][README]
     assert readme == {refresh.digest("one\n"): "1.0.0", refresh.digest("two\n"): "1.0.1"}
     assert maps["files"]["REVIEW.md"] == {refresh.digest("review\n"): "1.0.1"}
-    # the old name keeps the texts its tags shipped, though the working tree has none
-    assert maps["files"][old_name] == {refresh.digest("old\n"): "1.0.0"}
+    # the old name is not listed, so the texts its tags shipped are not kept
+    assert old_name not in maps["files"] and old_name not in maps["files_marked"]

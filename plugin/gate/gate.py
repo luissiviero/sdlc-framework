@@ -132,11 +132,10 @@ class GateResult:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GateResult:
         """A gate record read back from ``evidence/gate-<phase>.json``: ``as_dict`` inverted,
-        the derived fields (``reason``, ``what_i_need``) recomputed from the checks. A record
-        written before R45's PR 2 keeps the explain step's lines under ``triage``, read for
-        one release."""
+        the derived fields (``reason``, ``what_i_need``) recomputed from the checks. A merged
+        change's record may name its phase by the letter (R45), read as the name for good."""
         checks_data = data.get("checks")
-        explanation = data.get("explanation", data.get("triage"))
+        explanation = data.get("explanation")
         return cls(
             change_id=str(data.get("change_id") or ""),
             slug=str(data.get("slug") or ""),
@@ -166,7 +165,6 @@ def build_context(
     root: Path, change_id: str, phase: str, base: str | None = None, any_phase: bool = False
 ) -> GateContext:
     root = Path(root).resolve()
-    phase = c.phase_name(phase)  # R45: a letter an older caller passes is read as its name
     if phase not in c.PHASES:
         raise GateError(f"phase must be one of {c.PHASES}")
     if not c.ID_RE.match(change_id):
@@ -257,7 +255,7 @@ def fast_lane_applies(
     fast lane and dispatches the build; a gate run by hand waits), and no risk-list item hit
     that is not accepted yet (decision 35: a hit at (design) waits on the design PR)."""
     return (
-        c.phase_name(phase) == FAST_LANE_PHASE
+        phase == FAST_LANE_PHASE
         and human_gate
         and in_runner
         and all(r.ok for r in results)
@@ -351,7 +349,6 @@ def risk_hits_now(
     (decision 35), without recording anything: ``{phase, hits, accepted, brief}``. The phase
     commands hand them to the reviewer, which writes one brief per item in ``brief``; the
     review pass asks for the deploy phase while status.yaml still says test."""
-    phase = c.phase_name(phase)
     ctx = build_context(root, change_id, phase, base, any_phase=True)
     hits: dict[str, list[str]] = {}
     accepted: set[str] = set()
@@ -551,14 +548,11 @@ def run_deferred_commands(
     already ran the targets itself. Raises ``GateError`` when the record or the change
     cannot be read."""
     root = Path(root).resolve()
-    phase = c.phase_name(phase)
     if phase not in c.PHASES:
         raise GateError(f"phase must be one of {c.PHASES}")
     change_dir = c.find_change_dir(root, change_id)
     if change_dir is None:
         raise GateError(f"no change folder for id {change_id} under {root / c.CHANGES_DIR}")
-    # R45: the session's record, or the one an older plugin's session wrote (``gate-c.json``);
-    # ``apply`` writes the name's
     path = c.phase_file(change_dir / art.EVIDENCE_DIR, art.GATE_RESULT, phase)
     if not path.is_file():
         return None

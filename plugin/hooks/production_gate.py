@@ -29,10 +29,10 @@ hook keeps that trigger and its exit-2 contract and changes three things:
   notified.
 
 It is inert unless ``sdlc.yaml: deploy.production_gate`` (until plugin 1.0.44
-``deploy.production``, read for one release) is ``true``: then it returns allow without
-logging anything. With production declared, every allow and block is appended as one
-timestamped JSON line to the hook log (``_common.log_decision``; p.37: "Allow and block
-decisions are logged with a timestamp"). An unreadable ``sdlc.yaml`` fails closed (exit 2).
+``deploy.production``) is ``true``: then it returns allow without logging anything. With
+production declared, every allow and block is appended as one timestamped JSON line to the
+hook log (``_common.log_decision``; p.37: "Allow and block decisions are logged with a
+timestamp"). An unreadable ``sdlc.yaml`` fails closed (exit 2).
 
 Usage in hooks.json (exec form): python production_gate.py
 """

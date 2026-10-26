@@ -116,9 +116,6 @@ class GateContext:
     # ``COMMANDS_RUNNER_ENV`` by ``gate.build_context``; a by-hand gate runs them itself)
     commands_deferred: bool = False
 
-    def __post_init__(self) -> None:
-        self.phase = c.phase_name(self.phase)  # R45: a letter an older caller passes
-
     @property
     def evidence_dir(self) -> Path:
         return self.change_dir / art.EVIDENCE_DIR
@@ -1238,10 +1235,7 @@ def load_verdict(path: Path) -> tuple[dict[str, Any] | None, str]:
     """Format written by the adversarial-reviewer agent:
     {"schema_version": 1, "phase": "build", "head": "<sha>", "verdict": "continue|park",
      "reasons": [...], "classification": "routine|non-routine",
-     "classification_reasons": [...], "at": "<iso>"}
-
-    A verdict an older plugin wrote says ``escalate``: it reads as ``park`` (R45 row 62, for
-    one release; ``art.verdict_word``), and the data returned always holds the new word."""
+     "classification_reasons": [...], "at": "<iso>"}"""
     if not path.is_file():
         return None, "missing"
     try:
@@ -2150,7 +2144,7 @@ def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
     item_n = entry.get("item_n")
     if isinstance(item_n, bool) or not isinstance(item_n, int):
         return []
-    phase = str(c.phase_name(entry.get("phase") or ctx.phase))
+    phase = str(entry.get("phase") or ctx.phase)
     texts: dict[str, str | None] = {}
     for member in ledger.BLIND_MEMBERS:
         path = ledger.member_path(ctx.change_dir, phase, item_n, member)

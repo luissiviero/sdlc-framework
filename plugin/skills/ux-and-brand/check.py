@@ -1,8 +1,7 @@
 """Deterministic check behind the ux-and-brand skill (``ux-conventions`` before plugin 1.0.46,
 R45 row 80): which UI files the change touches and whether the change folder holds the mock
 and the screenshots the visual loop needs (article p.28 step 5), and which owner's source is
-in force (``policies/ux-and-brand.md``, or for one release the old
-``policies/ux-conventions.md`` when the new file is missing). Advisory.
+in force (``policies/ux-and-brand.md``). Advisory.
 
     python "${CLAUDE_PLUGIN_ROOT}/plugin/skills/ux-and-brand/check.py" --root . [--id 0001]
 """
@@ -33,16 +32,10 @@ SKILL = "ux-and-brand"
 
 
 def source_note(root: Path) -> str:
-    """The owner's source the skill reads first (R27), or that there is none (R45 row 80:
-    the old file is read for one release when the new one is missing)."""
+    """The owner's source the skill reads first (R27), or that there is none."""
     rel = policy.policy_source(root, SKILL)
     if rel is None:
         return f"no owner's source (policies/{SKILL}.md): the skill's rules alone"
-    if rel != f"policies/{SKILL}.md":
-        return (
-            f"owner's source: {rel}, the name before plugin 1.0.46, read for one release; "
-            f"the owner renames it to policies/{SKILL}.md in a commit of their own"
-        )
     return f"owner's source: {rel}"
 
 

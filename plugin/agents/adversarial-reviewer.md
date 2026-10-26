@@ -104,8 +104,8 @@ it never interrupts the owner.
 Verdict: `continue` when you found nothing that would break behavior, leak data, breach a
 policy or leave the plan unfulfilled; `park` otherwise, with the reasons a person needs
 to decide in one reading. Park is the gate's word for the same event (decision 11): the owner
-finds it in the review queue; nobody is paged. An older plugin's reviewer wrote `escalate`;
-the gate reads it as `park`, but you write `park`. A risk-list item touched is not by itself a
+finds it in the review queue; nobody is paged. Write `park`, never another word (`escalate`
+is not a verdict). A risk-list item touched is not by itself a
 reason to say park: the
 banner shows it to the owner, who accepts it by the merge, or at gate (deploy), as the code owner, by the approving review
 (decisions 35 and 36).

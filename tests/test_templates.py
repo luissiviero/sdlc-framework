@@ -993,9 +993,10 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
         "${{ github.event.label.name == 'sdlc:go' && "
         "!endsWith(github.event.sender.login, '[bot]') && "
         "startsWith(github.event.pull_request.head.ref, 'sdlc/') && "
-        "(endsWith(github.event.pull_request.head.ref, '/a') || "
-        "endsWith(github.event.pull_request.head.ref, '/intent')) }}"
+        "endsWith(github.event.pull_request.head.ref, '/intent') }}"
     )
+    # R45: the letter head sdlc/<id>/a is no incident PR since 1.0.48 (R45's sixth PR)
+    assert "'/a'" not in job["if"]
     # the project checkout follows the App's mint step and its time (R49)
     assert job["steps"][2]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
     runs = [step["run"] for step in job["steps"] if "run" in step]
@@ -1126,13 +1127,12 @@ def test_the_merge_workflow_dispatches_posts_and_merges_with_the_merge_app_only(
     assert "!(startsWith(github.event.pull_request.head.ref, 'sdlc/')" in (
         _condition(MERGE_WORKFLOW, "not-a-build-pr")
     )
-    # R45 (decision 39, rows 44, N3, N4): the build branch is sdlc/<id>/build, and for one
-    # release a change in flight on sdlc/<id>/c is still a build PR in both guards
-    both = (
-        "(endsWith(github.event.pull_request.head.ref, '/c') || "
-        "endsWith(github.event.pull_request.head.ref, '/build'))"
-    )
-    assert both in on_approval and both in _condition(MERGE_WORKFLOW, "not-a-build-pr")
+    # R45 (decision 39, rows 44, N3, N4): the build branch is sdlc/<id>/build in both guards;
+    # the letter head sdlc/<id>/c is no build PR since 1.0.48 (R45's sixth PR)
+    build = "endsWith(github.event.pull_request.head.ref, '/build')"
+    not_build = _condition(MERGE_WORKFLOW, "not-a-build-pr")
+    assert build in on_approval and build in not_build
+    assert "'/c'" not in on_approval and "'/c'" not in not_build
     assert data["name"] == "SDLC merge (deploy)"
     assert "Check gate (deploy) and merge" in [s.get("name") for s in jobs["merge"]["steps"]]
     merge = jobs["merge"]

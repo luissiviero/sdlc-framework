@@ -429,9 +429,8 @@ def fast_lane_sha(
     default branch), a squash merge (the next branch then cut from the default branch, the
     commit not in it) and a change that never took the fast lane all give None, and the
     caller reads the merge base exactly as before."""
-    key = FAST_LANE_ENTRY.get(c.phase_name(phase))
-    # R45: an entry an older plugin recorded under its letter (``fast_lane: {b: ...}``)
-    lane = {c.phase_name(k): v for k, v in fast_lane.items()} if isinstance(fast_lane, dict) else {}
+    key = FAST_LANE_ENTRY.get(phase)
+    lane = fast_lane if isinstance(fast_lane, dict) else {}
     entry = lane.get(key) if key else None
     sha = entry.get("sha") if isinstance(entry, dict) else None
     if not isinstance(sha, str) or not sha:

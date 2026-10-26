@@ -16,8 +16,8 @@ no required headings:
 | `policies/definition-of-done.md` | `definition-of-done` |
 
 The UX file was `policies/ux-conventions.md`, read by the skill `ux-conventions`, before
-plugin 1.0.46 (R45 row 80): for one release, the skill reads the old file when the new one
-is missing; rename it in a commit of your own.
+plugin 1.0.46 (R45 row 80); since 1.0.48 the old file is not read: rename it in a commit of
+your own.
 
 **How a run reads them.** Each skill reads its file first. Where the file and the skill
 differ, the file wins, over a project override in `.claude/skills/<name>/` too; a rule of the

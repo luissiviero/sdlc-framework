@@ -282,48 +282,6 @@ def keep_build_caps(existing: dict, fresh: dict) -> dict:
     return {**fresh, "gate": kept}
 
 
-# R45 (decision 39, rows 55 and N11; plugin 1.0.45): keys an older sdlc.yaml holds under their
-# old name, read as the new one for one release. An upgrade never inserts the new key beside
-# the old one (``deploy.production_gate: false`` under ``deploy.production: true`` would make
-# the production gate fail closed); the report names the rename, which is the owner's edit.
-LEGACY_KEYS = {("deploy", "production"): "deploy.production_gate"}
-LEGACY_TOP_KEYS = {"external_review": "second_opinion"}
-
-
-# the pin the new name needs: a plugin before 1.0.45 reads only the old key, so a renamed
-# ``deploy.production`` there is read as false, the production gate off (the R45 PR 3 review)
-PIN_NOTE = (
-    "; rename it only with the pin at 1.0.45 or later: an older plugin does not read the new "
-    "key, and for deploy.production that turns the production gate off"
-)
-
-
-def keep_legacy_keys(existing: dict, fresh: dict) -> tuple[dict, list[str]]:
-    """``fresh`` without the new name of a key ``existing`` still holds under its old name,
-    and one line per such key for the report."""
-    notes: list[str] = []
-    out = dict(fresh)
-    for (top, old), new in LEGACY_KEYS.items():
-        block = existing.get(top)
-        if not isinstance(block, dict) or old not in block:
-            continue
-        new_key = new.split(".", 1)[1]
-        if isinstance(out.get(top), dict) and new_key not in block:
-            out[top] = {k: v for k, v in out[top].items() if k != new_key}
-        notes.append(
-            f"{top}.{old}: rename it {new} (R45; the old key is read for one release{PIN_NOTE})"
-        )
-    for old, new in LEGACY_TOP_KEYS.items():
-        if old in existing:
-            if new in existing:  # both: the new one is read, the old one only reported
-                notes.append(f"{old}: remove it, {new} is read (R45)")
-            else:
-                notes.append(
-                    f"{old}: rename it {new} (R45; the old key is read for one release{PIN_NOTE})"
-                )
-    return out, notes
-
-
 def merge_settings(existing: dict, fresh: dict) -> dict:
     out = merge_missing(existing, fresh)
     perms = out.setdefault("permissions", {})
@@ -466,7 +424,7 @@ WORKFLOW_FILES = (
     ".github/workflows/sdlc-detect.yml",
     ".github/workflows/sdlc-runbook.yml",
     # the project's eval suite on configuration changes and nightly (build guide step 35);
-    # sdlc-evals.yml before plugin 1.0.46 (R45 row 78, RENAMED_COPIES)
+    # sdlc-evals.yml before plugin 1.0.46 (R45 row 78)
     ".github/workflows/sdlc-agent-evals.yml",
     # the weekly security review and the deterministic scanners (build guide step 38)
     ".github/workflows/sdlc-scan.yml",
@@ -485,12 +443,6 @@ README_COPIES = (
     "policies/README.md",
 )
 REFRESHED_COPIES = (*WORKFLOW_FILES, *README_COPIES)
-# R45 row 78: a copy an older release installed under a name the template no longer has,
-# {old: new}. The manifest keeps the old name's hashes (read from the tags only, ``python
-# tasks.py template-hashes``), so an upgrade removes a pristine old copy and installs the new
-# file; an edited old copy is kept, reported, and the new file waits for it to go, so the
-# project never runs the same suite twice.
-RENAMED_COPIES = {".github/workflows/sdlc-evals.yml": ".github/workflows/sdlc-agent-evals.yml"}
 # a guardrail file the manifest knows only to report an older release's copy (decision 6);
 # bands.yaml is rendered from the maintain metric and is the owner's from the first install
 REPORTED_COPIES = ("REVIEW.md",)
@@ -573,47 +525,6 @@ def refresh_copy(
     return True
 
 
-# R45 row 78: the report's lines for a copy the template renamed (RENAMED_COPIES)
-RENAMED_REMOVED = (
-    "removed (was {was}): the template renamed it to {new} in plugin 1.0.46 (R45 row 78), "
-    "installed in its place"
-)
-RENAMED_KEPT = (
-    "kept; renamed (edited): the template renamed it to {new} in plugin 1.0.46 (R45 row 78), "
-    "and this copy matches no release's template (an edit, or values changed since the "
-    "install); move your edits to {new} (diff it with the template copy) and delete this "
-    "file, then re-run /sdlc-init"
-)
-RENAMED_WAITS = (
-    "not installed: the edited {old} is kept and still runs this suite; delete it (or rename "
-    "it to this name, where it then reads as outdated and keeps your edits) and re-run "
-    "/sdlc-init, so the project never runs the suite twice"
-)
-
-
-def retire_renamed_copies(
-    root: Path, values: dict[str, str], default_branch: str, report: dict
-) -> dict[str, str]:
-    """R45 row 78: remove each old copy of ``RENAMED_COPIES`` an older release wrote and
-    nobody changed since (``init/refresh.py``), so its new name is installed in its place;
-    an edited one is kept and reported. Returns ``{new: old}`` for each kept old copy whose
-    new file is not there yet: that one waits (``RENAMED_WAITS``)."""
-    waiting: dict[str, str] = {}
-    for old, new in RENAMED_COPIES.items():
-        target = root / old
-        if not target.is_file():
-            continue
-        was = _written_by(root, old, values, default_branch)
-        if was is not None:
-            target.unlink()
-            report[old] = RENAMED_REMOVED.format(was=was, new=Path(new).name)
-            continue
-        report[old] = RENAMED_KEPT.format(new=Path(new).name)
-        if not (root / new).exists():
-            waiting[new] = old
-    return waiting
-
-
 def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
     """Install the phase workflows and the pin script, create-only.
 
@@ -625,13 +536,10 @@ def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
     initialised before the find step never got it).
     """
     default_branch = project_default_branch(root)
-    waiting = retire_renamed_copies(root, values, default_branch, report)
     for rel in WORKFLOW_FILES:
         target = root / rel
         content = render_workflow(rel, values, default_branch)
-        if rel in waiting:
-            report[rel] = RENAMED_WAITS.format(old=Path(waiting[rel]).name)
-        elif not target.exists():
+        if not target.exists():
             _write_if_changed(target, content, report, rel)
         elif target.read_text(encoding="utf-8") == content:
             report[rel] = "unchanged"
@@ -856,9 +764,6 @@ def run(args) -> dict:
     if sdlc_path.exists():
         existing_yaml = yamlish.load_file(sdlc_path)
         fresh_yaml = keep_build_caps(existing_yaml, fresh_yaml)
-        fresh_yaml, legacy = keep_legacy_keys(existing_yaml, fresh_yaml)
-        if legacy:
-            report["legacy_keys"] = legacy
         merged = merge_missing(existing_yaml, fresh_yaml)
         merged.setdefault("plugin", {})["version"] = values["PLUGIN_VERSION"]
         rendered = render_file(TEMPLATE / "sdlc.yaml", values)
@@ -1015,62 +920,10 @@ def run(args) -> dict:
         for rel, state in report["files"].items()
         if state.startswith("refreshed (was ")
     }
-    # R45 (row 78): a renamed copy nobody edited, removed for its new name in the same PR
-    removed = {
-        rel: state[len("removed (was ") : state.index(")")]
-        for rel, state in report["files"].items()
-        if state.startswith("removed (was ")
-    }
-    if removed:
-        report["removed"] = removed
-    legacy = legacy_skill_paths(root)
-    if legacy:
-        report["legacy_paths"] = legacy
     report["maintain"] = _maintain_report(root, source, why)
     report["proposed"] = _proposed(root, det)
     report["values"] = values
     return report
-
-
-def legacy_skill_paths(root: Path) -> list[str]:
-    """R45 row 80 (N35): one line per guardrail path of the project that names a policy
-    skill by the name it had before plugin 1.0.46 (``gate/policy.py RENAMED_SKILLS``), with
-    whether this release still honours it. The renames are the owner's edits (decision 6)."""
-    from gate import policy  # noqa: PLC0415
-
-    notes: list[str] = []
-    settings = root / ".claude" / "settings.json"
-    try:
-        settings_text = settings.read_text(encoding="utf-8") if settings.is_file() else ""
-    except OSError:
-        settings_text = ""
-    for new, old in policy.RENAMED_SKILLS.items():
-        why = f"the skill {old} is {new} since plugin 1.0.46 (R45 row 80)"
-        if (root / "policies" / f"{old}.md").is_file():
-            if (root / "policies" / f"{new}.md").is_file():
-                state = f"no longer read, since policies/{new}.md exists; delete it"
-            else:
-                state = (
-                    f"still read for one release while policies/{new}.md is missing; rename "
-                    "it in a commit of your own"
-                )
-            notes.append(f"policies/{old}.md: {why}; {state}")
-        if (root / ".claude" / "skills" / old / "SKILL.md").is_file():
-            if (root / ".claude" / "skills" / new / "SKILL.md").is_file():
-                state = f"no longer honoured, since .claude/skills/{new}/ exists; delete it"
-            else:
-                state = (
-                    f"still honoured as the {new} override for one release; rename the folder "
-                    f"to .claude/skills/{new}/ and its name: to {new} in a reviewed PR"
-                )
-            notes.append(f".claude/skills/{old}/: {why}; {state}")
-        if re.search(rf"(?<![\w-]){re.escape(old)}(?![\w-])", settings_text):
-            notes.append(
-                f".claude/settings.json names {old}: {why}; not honoured: a rule that names "
-                f"sdlc:{old} matches nothing from plugin 1.0.46, so change it to sdlc:{new} "
-                "in a reviewed PR"
-            )
-    return notes
 
 
 def _maintain_report(root: Path, source: str, why: str = "given") -> dict[str, str]:

@@ -590,10 +590,11 @@ def _legacy_escalate_verdict(path: Path) -> None:
     path.write_text(json.dumps({**data, "verdict": "escalate"}), encoding="utf-8")
 
 
-def test_an_older_plugin_s_escalate_ledger_line_and_verdict_still_read_as_park(project):  # noqa: F811
-    """R45 row 62, for one release: a ledger line an older plugin wrote, with the kind
-    ``escalate`` and the key ``escalate:<hash>``, settles today's verdict on the same reasons,
-    an ``escalate`` verdict file reads as ``park``, and the next save writes the new word."""
+def test_an_older_plugin_s_escalate_ledger_line_and_verdict_are_refused_since_1_0_48(project):  # noqa: F811
+    """R45 row 62: since 1.0.48 (R45's sixth PR) a ledger line an older plugin wrote, with the
+    kind ``escalate`` and the key ``escalate:<hash>``, is read as it is and never as ``park``:
+    the gate's ``panel`` check refuses its kind and it settles nothing; an ``escalate``
+    verdict file is malformed, not a ``park``."""
     root, change = project
     head = git(root, "rev-parse", "HEAD").strip()
     reasons = ["blast radius larger than the plan says"]
@@ -604,46 +605,40 @@ def test_an_older_plugin_s_escalate_ledger_line_and_verdict_still_read_as_park(p
     ledger_file.write_text(
         json.dumps({"schema_version": 1, "phase": "build", "decisions": [old]}), encoding="utf-8"
     )
-    assert ledger.load_ledger(change, "build") == [entry]
-    assert ledger.normalize({"kind": "concern", "key": "concern:x"}) == {
-        "kind": "concern",
-        "key": "concern:x",
-    }
+    assert ledger.load_ledger(change, "build") == [old]
+    assert not hasattr(ledger, "normalize") and not hasattr(ledger, "LEGACY_KINDS")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build(0001): an older plugin's panel decision")
+    # today's park verdict on the same reasons: the old line does not settle it
+    verdict(root, "build", verdict="park")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
+    assert result.result == "park"
+    failed = {ch.name: ch for ch in result.failed}
+    assert "kind 'escalate' is not one of the panel's" in failed["panel"].reason
+    assert "says park" in failed["adversarial_review"].reason
+    # an ``escalate`` verdict file is malformed
     _legacy_escalate_verdict(verdict(root, "build", verdict="park"))
     result = gate.run_gate(root, "0001", "build", dry_run=True)
-    assert result.result == "continue", result.reason
-    adv = next(ch for ch in result.checks if ch.name == "adversarial_review")
-    assert adv.ok and adv.details["settled_by_panel"] == 1
-    assert "said park" in adv.reason and "escalate" not in adv.reason
-    panel = next(ch for ch in result.checks if ch.name == "panel")
-    assert panel.ok, panel.reason
-    # an older plugin's line the panel upheld still parks, named in today's word
-    old["decision"] = "park: the owner must see the blast radius"
-    ledger_file.write_text(
-        json.dumps({"schema_version": 1, "phase": "build", "decisions": [old]}), encoding="utf-8"
-    )
-    result = gate.run_gate(root, "0001", "build", dry_run=True)
-    panel = next(ch for ch in result.failed if ch.name == "panel")
-    assert "decision 1: the panel upheld the adversarial reviewer's park" in panel.reason
-    # the next write says park
+    assert result.result == "park"
+    adv = next(ch for ch in result.failed if ch.name == "adversarial_review")
+    assert "'verdict' must be 'continue' or 'park'" in adv.reason
+    # a save writes the line as it was read: nothing is renamed
     ledger.save_ledger(change, "build", ledger.load_ledger(change, "build"))
     saved = json.loads(ledger_file.read_text(encoding="utf-8"))["decisions"][0]
-    assert saved["kind"] == "park" and saved["key"] == entry["key"]
-    assert "[park]" in ledger.ledger_md_path(change, "build").read_text(encoding="utf-8")
+    assert saved["kind"] == "escalate" and saved["key"] == old["key"]
 
 
-def test_an_older_plugin_s_escalate_item_reads_as_park_in_the_prompt(project):  # noqa: F811
-    """An items list an older plugin wrote names the kind ``escalate``: ``prompt`` reads it as
-    ``park`` and fills in today's hint (R45 row 62)."""
+def test_an_older_plugin_s_escalate_item_is_not_read_as_park_since_1_0_48(project):  # noqa: F811
+    """An items list an older plugin wrote names the kind ``escalate``: since 1.0.48 (R45's
+    sixth PR, row 62) ``prompt`` reads it as it is, never as ``park``, and gives no park
+    hint."""
     root, change = project
     path = ledger.items_path(change, "build", write=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     old = {"n": 1, "kind": "escalate", "key": "escalate:abc", "item": "escalate: x"}
     path.write_text(json.dumps({"items": [old]}), encoding="utf-8")
     item = panel_cli._item(change, "build", 1)
-    assert item is not None and item["kind"] == "park" and item["key"] == "park:abc"
+    assert item == old
     proc = subprocess.run(
         [
             sys.executable,
@@ -665,8 +660,8 @@ def test_an_older_plugin_s_escalate_item_reads_as_park_in_the_prompt(project):  
         encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
-    assert "Kind: park" in proc.stdout
-    assert prompts.APPLY_HINT["park"].split(" (")[0] in proc.stdout
+    assert "Kind: escalate" in proc.stdout and "Kind: park" not in proc.stdout
+    assert prompts.APPLY_HINT["park"].split(" (")[0] not in proc.stdout
 
 
 def _gate_with_park_decision(root: Path, change: Path, phase: str, decision: str, **extra):
@@ -973,41 +968,47 @@ def test_the_pr_summary_names_the_models_and_the_warning(tmp_path):
 
 
 # --- R45: the phase names, and the letters an older plugin wrote --------------------------------
-def test_the_ledger_reads_an_older_plugin_s_letter_files_and_writes_the_name(tmp_path):
-    """A change in flight when its project moved to the phase names: ``decisions-b.json`` and
-    ``panel/b-1-reviewer.md`` are read; the next save writes ``decisions-design.json``."""
+def test_the_ledger_no_longer_reads_an_older_plugin_s_letter_files_since_1_0_48(tmp_path):
+    """Since 1.0.48 (R45's sixth PR) a change in flight's ``decisions-b.json`` and
+    ``panel/b-1-reviewer.md`` are not read: the ledger reads and writes
+    ``decisions-design.json`` only, and a letter is no phase of the ledger."""
     change = tmp_path / "changes" / "0001-x"
     evidence = change / "evidence"
     (evidence / "panel").mkdir(parents=True)
     item = {"kind": "concern", "key": "concern:x", "item": "x", "n": 1}
-    old = ledger.new_entry(1, "b", item, DECISION, "abc123", None)
-    assert old["phase"] == "design"  # a letter is written as its name
+    old = ledger.new_entry(1, "design", item, DECISION, "abc123", None)
     (evidence / "decisions-b.json").write_text(
         json.dumps({"schema_version": 1, "phase": "b", "decisions": [{**old, "phase": "b"}]}),
         encoding="utf-8",
     )
-    assert ledger.ledger_path(change, "design").name == "decisions-b.json"
+    assert ledger.ledger_path(change, "design").name == "decisions-design.json"
     assert ledger.ledger_path(change, "design", write=True).name == "decisions-design.json"
-    assert [e["n"] for e in ledger.load_ledger(change, "design")] == [1]
-    assert [ph for ph, _e in ledger.load_ledgers(change, "c")] == ["design", "build"]
+    assert ledger.load_ledger(change, "design") == []
+    assert ledger.load_ledgers(change, "c") == []
     (evidence / "panel" / "b-1-reviewer.md").write_text("## Verdict\nkeep it\n", encoding="utf-8")
-    assert ledger.member_path(change, "design", 1, "reviewer").name == "b-1-reviewer.md"
+    assert ledger.member_path(change, "design", 1, "reviewer").name == "design-1-reviewer.md"
     assert ledger.member_path(change, "design", 1, "advocate").name == "design-1-advocate.md"
     verdicts, missing = ledger.read_member_verdicts(change, "design", 1)
-    assert verdicts == {"reviewer": "keep it"} and len(missing) == 1
-    entries = ledger.load_ledger(change, "design")
-    ledger.save_ledger(change, "b", entries)
+    assert verdicts == {} and len(missing) == 2
+    ledger.save_ledger(change, "design", [old])
     saved = json.loads((evidence / "decisions-design.json").read_text(encoding="utf-8"))
     assert saved["phase"] == "design" and len(saved["decisions"]) == 1
     assert (evidence / "decisions-design.md").is_file()
-    assert ledger.ledger_path(change, "b").name == "decisions-design.json"  # the name wins now
-    assert ledger.phases_up_to("c") == ("design", "build")
+    assert [e["n"] for e in ledger.load_ledger(change, "design")] == [1]
+    assert ledger.phases_up_to("c") == ()
+    assert ledger.phases_up_to("build") == ("design", "build")
 
 
-def test_the_panel_cli_accepts_a_letter_for_one_release(tmp_path):
+def test_the_panel_cli_refuses_a_letter_since_1_0_48(tmp_path):
+    """``--phase b`` exits 2 since 1.0.48 (R45's sixth PR); ``--phase design`` runs."""
     (tmp_path / "sdlc.yaml").write_text("adversarial_model: claude-opus-5-5\n", encoding="utf-8")
     proc = subprocess.run(
         [sys.executable, str(PANEL_CLI), "models", "--root", str(tmp_path), "--phase", "b"],
+        capture_output=True, text=True, encoding="utf-8",
+    )  # fmt: skip
+    assert proc.returncode == 2 and "invalid choice: 'b'" in proc.stderr
+    proc = subprocess.run(
+        [sys.executable, str(PANEL_CLI), "models", "--root", str(tmp_path), "--phase", "design"],
         capture_output=True, text=True, encoding="utf-8",
     )  # fmt: skip
     assert proc.returncode == 0, proc.stderr

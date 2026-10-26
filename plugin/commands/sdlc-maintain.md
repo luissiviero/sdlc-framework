@@ -33,8 +33,7 @@ One shell command per Bash call (an unattended run denies a chained command whol
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" show --root "${CLAUDE_PROJECT_DIR}" --id <id>`:
   `entry_route` is `incident`, the phase is `maintain` (`f` in an older change; a change at another phase is
   not this command's: stop and say so); `git fetch origin`, `git switch sdlc/<id>/intent`,
-  `git pull --ff-only origin sdlc/<id>/intent` (the filing step created the branch; an older
-  change's is `sdlc/<id>/a`).
+  `git pull --ff-only origin sdlc/<id>/intent` (the filing step created the branch).
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase maintain`
 - Load the `intent-template` skill (the incident shape with its Evidence section).
 
@@ -134,7 +133,7 @@ as at `intent`.
 — head `sdlc/<id>/intent`, title `maintain(<id>): <title>`, the summary (the finding, the
 proposed outcome, the route and its state, what needs the service owner), labels `sdlc:maintain-ready` (or
 `sdlc:needs-human` with "What I need from you": Go requested, or a failed check) and
-`sdlc:triage` (`incident` on a PR an older plugin opened). Nothing merges, nothing deploys, and you notify nobody (in CI the finish step
+`sdlc:triage`. Nothing merges, nothing deploys, and you notify nobody (in CI the finish step
 requests the owner's review on the PR, decision 31).
 
 ## 9. Report

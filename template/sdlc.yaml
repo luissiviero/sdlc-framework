@@ -24,9 +24,8 @@
 # --- models (ROADMAP R7; plugin/panel/models.py) ----------------------------------------------
 # Each a full model id or a family alias (opus, sonnet, haiku, fable).
 # session_model: the CI session's model (--model), one model or `default` plus per-phase
-#   entries (intent, design, build, test, deploy, maintain; the letters a-f of older files
-#   are read for one release; a fix round takes its change's phase; the triage of maintain
-#   and the weekly scan take `default`); unset = the CLI's default. The workflow's SDLC_MODEL wins.
+#   entries (intent, design, build, test, deploy, maintain; a fix round takes its change's
+#   phase; the triage of maintain and the weekly scan take `default`); unset = the CLI's default. The workflow's SDLC_MODEL wins.
 # adversarial_model: the adversarial reviewer's model; the gate parks a verdict whose
 #   writer did not run on it (check reviewer_model); unset = not checked.
 # panel_advocate_model: the devil's advocate's (a panel reduces variance, not bias: three
@@ -45,11 +44,11 @@ panel_advocate_model: claude-fable-5-1
 # you read it, so in the deploy phase the design opinion is carried onto the build PR (1.0.24). A job of its own after the phase job holds
 # the repository secret GEMINI_API_KEY; no Claude session ever does. Check the id with
 # `cli.py models` first, and send project code only from a Google project with billing linked
-# (the paid tier's terms). Until plugin 1.0.44 the block was `external_review:`, which is
-# read as this one for one release (R45, decision 39).
+# (the paid tier's terms). Until plugin 1.0.44 the block was `external_review:` (R45,
+# decision 39).
 # second_opinion:
 #   model: gemini-4-argon
-#   phases: [design, deploy]   # the letters [b, e] of older files are read for one release
+#   phases: [design, deploy]
 #   max_chars: 400000   # what one call may read; a file past it is left out and named
 
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
@@ -90,8 +89,7 @@ deploy:
   # label sdlc:release-approved applied by the release manager on the build PR from GitHub, nothing
   # else: a run cannot approve itself (decision 5, the automation identity), so no signed
   # tag counts and the hook blocks any command that names the label. Until plugin 1.0.44
-  # the key was `production`, which is read for one release (R45, decision 39); a plugin
-  # before 1.0.45 reads only `production`, so rename it only with the pin at 1.0.45 or later
+  # the key was `production` (R45, decision 39), not read since 1.0.48
   production_gate: {{DEPLOY_PRODUCTION}}
   # the one command the release workflow (.github/workflows/sdlc-release.yml) runs after the
   # build PR's merge (and, when production_gate is true, after the release label): e.g.
@@ -118,7 +116,7 @@ maintain:
   # route `runbook:<name>` with its authorization (decision 14: allow = CI-scoped and
   # reversible, runs with no human in the path; ask = touches a running system, parks the
   # incident PR with "Go" requested until the service owner applies sdlc:go; until plugin 1.0.44
-  # preapproved and go, read as allow and ask for one release). The plugin ships
+  # preapproved and go). The plugin ships
   # quarantine-flaky-test and revert-pr; an entry here adds a `command` (no shell; steps
   # joined by &&, run on the runner with the repository's own secrets) under that name.
   # An `ask` here is stricter than the bands' value and wins. Decision 26: on a project with

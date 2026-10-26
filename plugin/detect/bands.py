@@ -15,8 +15,7 @@
   diagnose, propose); ``2sigma`` may name the read-only ``tools`` of the diagnosis and
   ``3sigma`` lists the ``routes`` (``name`` plus ``authorization``: ``allow`` or ``ask``,
   decision 14, the hook's verbs of p.36). A route not listed is never taken. Until plugin
-  1.0.44 the values were ``preapproved`` and ``go``, which are read as ``allow`` and ``ask``
-  for one release (R45, decision 39, row 56; ``routes.LEGACY_AUTHORIZATIONS``).
+  1.0.44 the values were ``preapproved`` and ``go`` (R45, decision 39, row 56).
 
 Read with ``state.yamlish`` (no PyYAML at runtime). ``load`` raises ``BandsError`` (a
 ``ValueError``) with a one-line reason; ``validate`` returns the reasons.

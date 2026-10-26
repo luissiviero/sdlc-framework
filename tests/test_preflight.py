@@ -203,19 +203,20 @@ def test_classification_reported_for_a_change(project):
         "iterations_so_far": 0,
         "verdict_file": "adversarial-review-design.json",
     }
-    # R45: the verdict a plugin before 1.0.43 wrote under the letter is still read, and named
+    # R45: since 1.0.48 (R45's sixth PR) the cap of a live change does not read a verdict
+    # under the letter (only the counters, readers of history, do: choice 273)
     verdict = project / "changes" / "0001-x" / "evidence" / "adversarial-review-b.json"
     verdict.write_text(
         json.dumps({"verdict": "continue", "classification": "non-routine", "head": "abc1234"})
     )
     report = preflight.run_preflight(project, ROOT, "0001")
-    assert report["change"]["classification"] == "non-routine"
-    assert report["change"]["iteration_cap"] == 2 and report["allow"] is True  # tightens only
-    assert report["change"]["verdict_file"] == "adversarial-review-b.json"
-    # once the name's file is written it is the one read
+    assert report["change"]["classification"] is None
+    assert report["change"]["verdict_file"] == "adversarial-review-design.json"
+    # the name's file is the one read
     verdict.rename(verdict.with_name("adversarial-review-design.json"))
     report = preflight.run_preflight(project, ROOT, "0001")
     assert report["change"]["classification"] == "non-routine"
+    assert report["change"]["iteration_cap"] == 2 and report["allow"] is True  # tightens only
     assert report["change"]["verdict_file"] == "adversarial-review-design.json"
 
 
@@ -269,12 +270,17 @@ def test_a_missing_change_refuses(project):
 def test_phases_test_and_deploy_skip_the_test_target(project, monkeypatch):
     """Test judges the suite itself and deploy ships what test judged: their preflight checks
     the guardrails and the park, never the tests. Build still needs the suite green to lean
-    on. A letter (``d``) an older caller passes is read as its name (R45)."""
+    on. A letter (``d``) an older caller passes is refused since 1.0.48 (R45's sixth PR):
+    the CLI exits 2."""
     monkeypatch.setenv("SAMPLE_FAIL", "1")
-    for phase, name in (("test", "test"), ("deploy", "deploy"), ("d", "test"), ("e", "deploy")):
+    for phase in ("test", "deploy"):
         report = preflight.run_preflight(project, ROOT, phase=phase)
-        assert report["allow"] is True and report["phase"] == name
+        assert report["allow"] is True and report["phase"] == phase
         assert "test_target" not in [ch["name"] for ch in report["checks"]]
+    for letter in ("d", "e"):
+        with pytest.raises(SystemExit) as exc:
+            preflight.build_parser().parse_args(["--root", str(project), "--phase", letter])
+        assert exc.value.code == 2
     report = preflight.run_preflight(project, ROOT, phase="build")
     assert report["allow"] is False and _names(report, False) == ["test_target"]
 

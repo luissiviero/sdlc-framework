@@ -155,21 +155,14 @@ NOTHING_NEEDED = "nothing: the run continues to the next phase"
 
 
 # --- small readers ----------------------------------------------------------------------
-def head_branch(change_id: str, phase: str, root: Path | None = None) -> str:
+def head_branch(change_id: str, phase: str) -> str:
     """The branch the phase's PR is opened from (design has its own; build, test and deploy
-    share one). With ``root`` (a git checkout), a change in flight on the letter branch an
-    older plugin cut (``sdlc/<id>/c``, R45) gets that branch (``gitops.existing_branch``)."""
-    phase = c.phase_name(phase)
-    names = c.branch_names(change_id, PR_BRANCH_PHASE.get(phase, phase))
-    if root is not None and gitops.is_repo(Path(root)):
-        return gitops.existing_branch(Path(root), names)
-    return names[0]
+    share one)."""
+    return c.branch_name(change_id, PR_BRANCH_PHASE.get(phase, phase))
 
 
 def load_gate(change_dir: Path, phase: str) -> dict[str, Any] | None:
-    """``evidence/gate-<phase>.json`` as the gate wrote it (``GateResult.as_dict``); the
-    letter's file (``gate-c.json``) an older plugin wrote is read too (R45)."""
-    phase = c.phase_name(phase)
+    """``evidence/gate-<phase>.json`` as the gate wrote it (``GateResult.as_dict``)."""
     if phase not in c.PHASES:
         return None
     path = c.phase_file(Path(change_dir) / art.EVIDENCE_DIR, art.GATE_RESULT, phase)
@@ -187,7 +180,7 @@ def label_for(gate_json: dict[str, Any] | None, phase: str | None = None) -> str
     Phase intent has no gate file - the intent PR always waits for the owner - so a missing
     result there means ``sdlc:intent-ready``."""
     if not gate_json:
-        return c.ready_label(c.INTENT) if c.phase_name(phase) == c.INTENT else None
+        return c.ready_label(c.INTENT) if phase == c.INTENT else None
     label = gate_json.get("label")
     return label if isinstance(label, str) and label else None
 
@@ -686,7 +679,6 @@ def models_lines(change_dir: Path, phase: str) -> list[str]:
 # --- the body ---------------------------------------------------------------------------------
 def _links_line(root: Path, change_dir: Path, change_id: str, phase: str) -> str:
     rel_dir = str(Path(change_dir).relative_to(root)).replace("\\", "/")
-    # the gate file the change has: the name's, or the letter's of an older plugin (R45)
     gate_name = c.phase_file(Path(change_dir) / art.EVIDENCE_DIR, art.GATE_RESULT, phase).name
     if phase == c.INTENT:  # spec, plan and the gate result do not exist yet
         targets = ["intent.md"]
@@ -709,7 +701,7 @@ def _links_line(root: Path, change_dir: Path, change_id: str, phase: str) -> str
         repo = gitops.github_repo(Path(root))
     except Exception:  # noqa: BLE001 - a missing git is not a reason to lose the summary
         repo = None
-    branch = head_branch(change_id, phase, root)
+    branch = head_branch(change_id, phase)
     parts = []
     for name in targets:
         rel = f"{rel_dir}/{name}"
@@ -797,7 +789,6 @@ def build_description(root: Path, change_id: str, phase: str, draft: bool = Fals
     """The whole PR body for a change at a phase. Pure: reads files, contacts nothing.
     ``draft``: the PR is opened as a draft, which never takes the fast lane at intent."""
     root = Path(root).resolve()
-    phase = c.phase_name(phase)
     if phase not in c.PHASES:
         raise ValueError(f"phase must be one of {c.PHASES}, got {phase!r}")
     change_dir = c.find_change_dir(root, change_id)

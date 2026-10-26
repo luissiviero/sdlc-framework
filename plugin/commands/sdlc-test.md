@@ -36,8 +36,7 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase test`:
   if `allow` is false, stop and report its `reasons` (a `parked: ...` reason is the
   owner's item). Never judge `status.yaml` yourself.
-- `git fetch origin`, `git switch sdlc/<id>/build`, `git pull --ff-only origin sdlc/<id>/build`
-  (`sdlc/<id>/c` for a change started before the names).
+- `git fetch origin`, `git switch sdlc/<id>/build`, `git pull --ff-only origin sdlc/<id>/build`.
   The build, test and deploy phases share this branch and its PR (OPERATING_MODEL §8).
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase test`
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" set-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase test`
@@ -96,7 +95,7 @@ full suite; in CI the verifier reads the build gate's `commands` entry and the l
 of running the targets — never an earlier round's `gate-test.json`; its brief says when). Commit
 the evidence:
 `commit-phase ... --phase test --message "test(<id>): evidence"` and push
-(`git push origin sdlc/<id>/build`, or the change's `sdlc/<id>/c`).
+(`git push origin sdlc/<id>/build`).
 
 ## 5. Adversarial verdict and the test gate
 The reviewer has no shell, so write the diff it reads first, in one call (`<base>` is the

@@ -59,8 +59,7 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
   pushed, accepted by that act; read it as the merged one. Never write `fast_lane`: it is
   the runner's record, and a session that changes it parks.
 - Re-run (the branch already exists locally or on `origin`): `git switch sdlc/<id>/design`
-  (`sdlc/<id>/b` for a change started before the names) and `git pull --ff-only origin
-  <that branch>` when the remote has it. Read the existing
+  and `git pull --ff-only origin sdlc/<id>/design` when the remote has it. Read the existing
   `spec.md` and `plan.md`; they are the starting point, not a blank page. Read the review
   comments on the open PR (`gh pr view <n> --json reviews,comments` and, for the inline
   review threads, `gh api repos/<repo>/pulls/<n>/comments` when `gh` exists, else the
@@ -241,7 +240,7 @@ does not confirm, or a build dispatch GitHub refuses, waits with `sdlc:design-re
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase design
 ```
-Base: the default branch. Head: `sdlc/<id>/design` (or the change's `sdlc/<id>/b`). Title: `design(<id>): <title>`. The builder
+Base: the default branch. Head: `sdlc/<id>/design`. Title: `design(<id>): <title>`. The builder
 renders the ≤5-bullet summary from `status.yaml`, `spec.md`, `plan.md` and
 `evidence/gate-design.json`:
 1. what the change is and the design in one line;

@@ -592,12 +592,13 @@ def test_init_upgrade_adds_a_missing_nested_key_as_text(tmp_path):
     assert _run_init(root)["files"]["sdlc.yaml"] == "unchanged"
 
 
-def test_init_upgrade_never_adds_production_gate_beside_the_old_key(tmp_path):
-    """R45 (decision 39, row 55): a project whose sdlc.yaml still says ``deploy.production:
-    true`` is read as the production gate for one release; the upgrade must not insert the
-    template's ``production_gate: false`` beside it (the two would disagree and every reader
-    fail closed). The report names the rename for the owner."""
-    from hooks._common import production_gate  # noqa: PLC0415
+def test_init_upgrade_adds_production_gate_and_the_old_key_fails_closed(tmp_path):
+    """R45 (decision 39, row 55): ``deploy.production`` is refused since 1.0.48 (R45's sixth
+    PR): an upgrade adds the template's ``production_gate: false`` beside it like any missing
+    key, and every reader then fails closed on the old key until the owner removes it; the
+    report carries no ``legacy_keys``; neither the old key nor ``external_review`` is removed
+    by the install."""
+    from hooks._common import ConfigError, production_gate  # noqa: PLC0415
 
     root = tmp_path / "proj"
     shutil.copytree(FIXTURE, root)
@@ -610,29 +611,18 @@ def test_init_upgrade_never_adds_production_gate_beside_the_old_key(tmp_path):
 
     report = _run_init(root)
     new_text = (root / "sdlc.yaml").read_text(encoding="utf-8")
-    assert "production_gate" not in yamlish.loads(new_text)["deploy"]
-    assert "  production: true\n" in new_text
-    assert production_gate(yamlish.loads(new_text)) is True
-    pin = sdlc_init.PIN_NOTE  # the rename waits for a pin that reads the new key
-    assert report["legacy_keys"] == [
-        f"deploy.production: rename it deploy.production_gate (R45; the old key is read for "
-        f"one release{pin})",
-        f"external_review: rename it second_opinion (R45; the old key is read for one release"
-        f"{pin})",
-    ]
-    assert "1.0.45" in pin and "production gate off" in pin
-    # with both external_review and second_opinion the advice matches the runtime's note
-    both = new_text + "\nsecond_opinion:\n  model: gemini-4-argon\n  phases: [design]\n"
-    (root / "sdlc.yaml").write_text(both, encoding="utf-8")
-    assert (
-        "external_review: remove it, second_opinion is read (R45)" in _run_init(root)["legacy_keys"]
-    )
+    assert yamlish.loads(new_text)["deploy"]["production_gate"] is False
+    assert "  production: true\n" in new_text and "external_review:" in new_text
+    with pytest.raises(ConfigError, match="deploy.production is not read"):
+        production_gate(yamlish.loads(new_text))
+    assert "legacy_keys" not in report
+    assert not hasattr(sdlc_init, "PIN_NOTE") and not hasattr(sdlc_init, "keep_legacy_keys")
 
 
-def test_init_reports_the_old_ux_skill_paths_for_the_owner(tmp_path):
-    """R45 row 80 (N35): a project's policies/ux-conventions.md and .claude/skills/ux-conventions/
-    are guardrail paths: the report says each is still honoured for one release, and that a
-    settings rule naming sdlc:ux-conventions is not; nothing is renamed by the install."""
+def test_init_no_longer_reports_the_old_ux_skill_paths(tmp_path):
+    """R45 row 80 (N35): policies/ux-conventions.md and .claude/skills/ux-conventions/ are
+    refused since 1.0.48 (R45's sixth PR): they are not read, the report carries no
+    ``legacy_paths``, and the install renames or deletes nothing."""
     root = tmp_path / "proj"
     shutil.copytree(FIXTURE, root)
     assert "legacy_paths" not in _run_init(root)
@@ -644,19 +634,10 @@ def test_init_reports_the_old_ux_skill_paths_for_the_owner(tmp_path):
     data = json.loads(settings.read_text(encoding="utf-8"))
     data["permissions"]["allow"].append("Skill(sdlc:ux-conventions)")
     settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    lines = _run_init(root)["legacy_paths"]
-    assert len(lines) == 3
-    assert lines[0].startswith("policies/ux-conventions.md: the skill ux-conventions is ")
-    assert "still read for one release" in lines[0]
-    assert lines[1].startswith(".claude/skills/ux-conventions/: ")
-    assert "still honoured as the ux-and-brand override" in lines[1]
-    assert lines[2].startswith(".claude/settings.json names ux-conventions") and (
-        "not honoured" in lines[2] and "sdlc:ux-and-brand" in lines[2]
-    )
+    assert "legacy_paths" not in _run_init(root)
     assert override.is_file() and (root / "policies" / "ux-conventions.md").is_file()
     assert "Skill(sdlc:ux-conventions)" in settings.read_text(encoding="utf-8")
-    (root / "policies" / "ux-and-brand.md").write_text("Green.\n", encoding="utf-8")
-    assert "no longer read" in _run_init(root)["legacy_paths"][0]
+    assert not hasattr(sdlc_init, "legacy_skill_paths")
 
 
 # --- the SDLC workflows /sdlc-init installs (build guide step 30, task 30.8) -----------------

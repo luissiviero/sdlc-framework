@@ -34,10 +34,7 @@ if str(PLUGIN_DIR) not in sys.path:
 from state import conventions as c  # noqa: E402
 from state.unpark import is_owner_actor, owner_login  # noqa: E402
 
-# R45: the letter's label (``sdlc:c-ready``) an older plugin applied still waits, for a release
-WAITING_LABELS = frozenset(
-    {c.NEEDS_HUMAN_LABEL, *(label for p in c.PHASES for label in c.ready_labels(p))}
-)
+WAITING_LABELS = frozenset({c.NEEDS_HUMAN_LABEL, *(c.ready_label(p) for p in c.PHASES)})
 
 
 def is_waiting_label(label: str | None) -> bool:

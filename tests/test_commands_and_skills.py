@@ -18,9 +18,9 @@ COMMANDS = PLUGIN / "commands"
 REVIEW_PROMPT = PLUGIN / "review" / "REVIEW_PROMPT.md"
 # Every command file, so a command added later is covered without editing this list.
 COMMAND_FILES = sorted(path.name for path in COMMANDS.glob("*.md"))
-# R45 (decision 39, row 8; choice 273): a renamed command stays one release as a short command
-# that only points to its new name; it runs no phase, so the phase checks below skip it and
-# ``test_a_renamed_command_stays_one_release_and_points_to_its_new_name`` covers it.
+# R45 (decision 39, row 8; choice 273): a renamed command stayed one release as a short command
+# that only pointed to its new name; since 1.0.48 it is deleted, which
+# ``test_a_renamed_command_is_gone_since_1_0_48`` covers.
 RENAMED = {"sdlc-plan.md": "/sdlc-intent"}
 PHASE_COMMAND_FILES = [name for name in COMMAND_FILES if name not in RENAMED]
 # /sdlc-intent and /sdlc-init are the two attended commands: they talk to the owner. Every
@@ -94,21 +94,14 @@ def test_sdlc_intent_flow_matches_step_11():
 
 
 @pytest.mark.parametrize("name", sorted(RENAMED))
-def test_a_renamed_command_stays_one_release_and_points_to_its_new_name(name):
-    """R45 (decision 39, row 8; choice 273): `/sdlc-plan` stays one release as a command that
-    points to `/sdlc-intent`, and does nothing else: no script, no write, no PR."""
-    path = COMMANDS / name
+def test_a_renamed_command_is_gone_since_1_0_48(name):
+    """R45 (decision 39, row 8; choice 273): `/sdlc-plan` stayed one release as a command that
+    pointed to `/sdlc-intent`; since 1.0.48 (R45's sixth PR) it is deleted, and the new name's
+    command is the one there is."""
     new = RENAMED[name]
+    assert not (COMMANDS / name).exists(), name
+    assert name not in COMMAND_FILES
     assert (COMMANDS / f"{new.lstrip('/')}.md").is_file(), new
-    fm = frontmatter(path)
-    assert fm["disable-model-invocation"] == "true"
-    assert new in fm["description"] and "one release" in fm["description"]
-    assert fm["allowed-tools"] == "Read"
-    text = flat(path)
-    assert f"run `{new} $ARGUMENTS` instead" in text
-    assert "decision 39, row 8" in text
-    assert "${CLAUDE_PLUGIN_ROOT}" not in text and "upsert" not in text
-    assert "Never use bypass-permissions mode" in text and "Never notify" in text
 
 
 def test_sdlc_init_flow_matches_step_21():
@@ -576,7 +569,7 @@ def test_review_prompt_renders_with_str_format():
     rendered = REVIEW_PROMPT.read_text(encoding="utf-8").format(
         change_id="0001",
         title="Sample change",
-        branch="sdlc/0001/c",
+        branch="sdlc/0001/build",
         head="0" * 40,
         base="main",
         root="/tmp/project",

@@ -1175,21 +1175,20 @@ def test_a_re_run_of_the_commands_step_needs_half_its_budget_left(project):
     assert run_phase.commands_retryable(failed, change, "build", 2000, 3000) is False  # rewritten
 
 
-def test_a_gate_record_an_older_plugin_wrote_is_read_and_the_name_s_written(project):
-    """R45: a change in flight carries ``evidence/gate-c.json``; the round's mark is read
-    from it and written as ``gate-build.json``, and the round's phase is the name."""
+def test_a_gate_record_an_older_plugin_wrote_is_not_read_since_1_0_48(project):
+    """R45: a change in flight carried ``evidence/gate-c.json``, read for one release; since
+    1.0.48 (R45's sixth PR) the round reads and writes only ``gate-build.json``: the letter's
+    record is neither read nor rewritten, and the round's phase is the name."""
     _root, change = project
-    letter = "c"
-    path = change / "evidence" / f"gate-{letter}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(red_record(letter)), encoding="utf-8")
-    assert auto_round.gate_path(change, letter) == path
-    assert auto_round.gate_path(change, "build") == path
-    assert auto_round.gate_write_path(change, letter).name == "gate-build.json"
-    record = auto_round.mark_fixing(change, letter, {"round": 1, "cap": 3})
+    legacy = change / "evidence" / "gate-c.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps(red_record("c")), encoding="utf-8")
     written = change / "evidence" / "gate-build.json"
+    assert auto_round.gate_path(change, "build") == written
+    assert auto_round.gate_write_path(change, "build") == written
+    record = auto_round.mark_fixing(change, "build", {"round": 1, "cap": 3})
+    assert record["label"] == c.FIXING_LABEL and "checks" not in record  # gate-c.json unread
     assert json.loads(written.read_text(encoding="utf-8"))["label"] == c.FIXING_LABEL
-    assert record["label"] == c.FIXING_LABEL
-    assert auto_round.gate_path(change, "build") == written  # the name's from now on
+    assert json.loads(legacy.read_text(encoding="utf-8")) == red_record("c")
     assert status_mod.read_status(change).gate.phase == "build"
     assert auto_round.AUTO_ROUND_PHASES == ("build", "test", "deploy")

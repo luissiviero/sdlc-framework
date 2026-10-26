@@ -36,9 +36,9 @@ def test_labels():
     assert {"sdlc:triage", "sdlc:schedule", "sdlc:go"} <= set(labels)
     assert all(label.startswith("sdlc:") for label in labels)
     assert "incident" not in labels and "schedule" not in labels
-    # an open PR an older plugin labelled is still read for one release
-    assert c.TRIAGE_LABELS == {"sdlc:triage", "incident"}
-    assert c.SCHEDULE_LABELS == {"sdlc:schedule", "schedule"}
+    # the old labels an older plugin set are no longer read since 1.0.48 (R45's sixth PR)
+    assert not hasattr(c, "TRIAGE_LABELS") and not hasattr(c, "SCHEDULE_LABELS")
+    assert not hasattr(c, "LEGACY_TRIAGE_LABEL")
 
 
 def test_human_gates():
@@ -604,9 +604,9 @@ def test_show_and_list_word_the_derived_reason_from_deploy_production(repo, caps
     for key, production, reason in (
         ("production_gate", "false", status.MERGED_AT_GATE_E_REASON),
         ("production_gate", "true", status.MERGED_AT_GATE_E_PRODUCTION_REASON),
-        # R45 (decision 39, row 55): the old key is read for one release
+        # R45 (decision 39, row 55): the old key is not read since 1.0.48 (R45's sixth PR)
         ("production", "false", status.MERGED_AT_GATE_E_REASON),
-        ("production", "true", status.MERGED_AT_GATE_E_PRODUCTION_REASON),
+        ("production", "true", status.MERGED_AT_GATE_E_REASON),
     ):
         (root / "sdlc.yaml").write_text(
             f"deploy:\n  action: none\n  {key}: {production}\n", encoding="utf-8"
@@ -656,7 +656,7 @@ def test_commit_phase_commits_only_the_changed_paths(repo, capsys):
     (root / "src").mkdir()
     (root / "src" / "helper.py").write_text("x = 1\n", encoding="utf-8")
     rc, out, _ = _commit_phase(
-        root, "a", "intent(0001): tidy", capsys, ["src/helper.py", "ruff.toml"]
+        root, "intent", "intent(0001): tidy", capsys, ["src/helper.py", "ruff.toml"]
     )
     assert rc == 0 and out["commit"]
     assert _committed(root) == sorted(
@@ -1144,7 +1144,7 @@ def test_commit_phase_carries_the_review_pass_s_record(repo, capsys):
     assert rc == 0 and _committed(root) == [f"M {rel}/spec.md"]
 
 
-# --- R45 (decision 39, row 1): the phase names, and the letters read for one release ---------
+# --- R45 (decision 39, row 1): the phase names; letters are read by the history readers only
 def test_phase_name_reads_a_letter_as_its_name_and_leaves_the_rest():
     assert c.PHASES == ("intent", "design", "build", "test", "deploy", "maintain")
     assert (c.INTENT, c.DESIGN, c.BUILD, c.TEST, c.DEPLOY, c.MAINTAIN) == c.PHASES
@@ -1158,13 +1158,20 @@ def test_phase_name_reads_a_letter_as_its_name_and_leaves_the_rest():
         assert c.phase_name(other) == other
 
 
-def test_branches_are_written_with_the_name_and_read_in_both_forms():
+def test_branches_are_written_with_the_name_and_a_letter_is_refused_since_1_0_48():
+    """A live phase is a name since 1.0.48 (R45's sixth PR): ``branch_name`` and
+    ``work_branch`` refuse a letter and ``work_branches`` is gone; the readers of history
+    (``legacy_branch_name``, ``branch_names``, ``parse_branch``) keep reading letters."""
     assert c.branch_name("0001", "build") == "sdlc/0001/build"
-    assert c.branch_name("0001", "c") == "sdlc/0001/build"  # a letter in, the name out
+    with pytest.raises(ValueError):
+        c.branch_name("0001", "c")
+    with pytest.raises(ValueError):
+        c.work_branch("0001", "e")
+    assert c.work_branch("0001", "deploy") == "sdlc/0001/build"
+    assert c.work_branch("0001", "maintain") == "sdlc/0001/intent"
+    assert not hasattr(c, "work_branches")
     assert c.legacy_branch_name("0001", "build") == "sdlc/0001/c"
     assert c.branch_names("0001", "design") == ("sdlc/0001/design", "sdlc/0001/b")
-    assert c.work_branches("0001", "deploy") == ("sdlc/0001/build", "sdlc/0001/c")
-    assert c.work_branches("0001", "f") == ("sdlc/0001/intent", "sdlc/0001/a")
     for branch in ("sdlc/0042/c", "sdlc/0042/build"):
         assert c.parse_branch(branch) == ("0042", "build")
     assert c.parse_branch("sdlc/0042/a") == c.parse_branch("sdlc/0042/intent") == ("0042", "intent")
@@ -1172,62 +1179,79 @@ def test_branches_are_written_with_the_name_and_read_in_both_forms():
         assert c.parse_branch(other) is None
 
 
-def test_ready_labels_are_written_with_the_name_and_read_in_both_forms():
-    assert c.ready_label("e") == c.ready_label("deploy") == "sdlc:deploy-ready"
-    assert c.legacy_ready_label("deploy") == "sdlc:e-ready"
-    assert c.ready_labels("deploy") == {"sdlc:deploy-ready", "sdlc:e-ready"}
+def test_ready_labels_are_written_with_the_name_and_a_letter_is_refused_since_1_0_48():
+    """``sdlc:c-ready`` is no longer read and ``ready_label("e")`` raises since 1.0.48 (R45's
+    sixth PR); ``ready_labels`` and ``legacy_ready_label`` are gone."""
+    assert c.ready_label("deploy") == "sdlc:deploy-ready"
+    with pytest.raises(ValueError):
+        c.ready_label("e")
+    assert not hasattr(c, "ready_labels") and not hasattr(c, "legacy_ready_label")
     assert c.ready_label_phase("sdlc:build-ready") == "build"
-    assert c.ready_label_phase("sdlc:c-ready") == "build"
+    assert c.ready_label_phase("sdlc:c-ready") is None
     for other in ("sdlc:needs-human", "sdlc:z-ready", "incident", "sdlc:release-approved"):
         assert c.ready_label_phase(other) is None
     assert "sdlc:intent-ready" in c.all_labels() and "sdlc:a-ready" not in c.all_labels()
-    assert c.is_human_gate("e") and c.is_human_gate("deploy") and not c.is_human_gate("c")
+    assert c.is_human_gate("deploy") and not c.is_human_gate("build")
+    with pytest.raises(ValueError):
+        c.is_human_gate("a")
 
 
-def test_phase_file_reads_the_letter_s_file_only_when_the_name_s_is_missing(tmp_path):
+def test_phase_file_reads_only_the_name_s_file_and_merged_phase_file_reads_the_letter_s(
+    tmp_path,
+):
+    """Since 1.0.48 (R45's sixth PR) ``phase_file`` returns the name's file only; the letter's
+    file an older plugin wrote is read by ``merged_phase_file``, the reader of a merged
+    change's history (choice 273)."""
     pattern = "gate-{phase}.json"
     assert c.phase_file(tmp_path, pattern, "build") == tmp_path / "gate-build.json"
+    assert c.merged_phase_file(tmp_path, pattern, "build") == tmp_path / "gate-build.json"
     (tmp_path / "gate-c.json").write_text("{}", encoding="utf-8")
-    assert c.phase_file(tmp_path, pattern, "build") == tmp_path / "gate-c.json"
-    assert c.phase_file(tmp_path, pattern, "c") == tmp_path / "gate-c.json"
+    assert c.phase_file(tmp_path, pattern, "build") == tmp_path / "gate-build.json"
+    assert c.merged_phase_file(tmp_path, pattern, "build") == tmp_path / "gate-c.json"
+    assert c.merged_phase_file(tmp_path, pattern, "c") == tmp_path / "gate-c.json"
     (tmp_path / "gate-build.json").write_text("{}", encoding="utf-8")
     assert c.phase_file(tmp_path, pattern, "build") == tmp_path / "gate-build.json"
-    assert c.phase_file(tmp_path, "{phase}-{n}-reviewer.md", "b", n=2) == (
+    assert c.merged_phase_file(tmp_path, pattern, "build") == tmp_path / "gate-build.json"
+    assert c.phase_file(tmp_path, "{phase}-{n}-reviewer.md", "design", n=2) == (
+        tmp_path / "design-2-reviewer.md"
+    )
+    assert c.merged_phase_file(tmp_path, "{phase}-{n}-reviewer.md", "b", n=2) == (
         tmp_path / "design-2-reviewer.md"
     )
     # a run that is not a phase has one name: its file comes back as it is
     assert c.phase_file(tmp_path, pattern, "review") == tmp_path / "gate-review.json"
+    assert c.merged_phase_file(tmp_path, pattern, "review") == tmp_path / "gate-review.json"
 
 
-def test_existing_branch_keeps_a_change_in_flight_on_its_letter_branch(repo):
+def test_existing_branch_is_gone_since_1_0_48():
+    """A run never finds a letter branch since 1.0.48 (R45's sixth PR): the lookup that kept
+    a change in flight on ``sdlc/<id>/c`` is gone."""
     from state import gitops
 
-    names = c.work_branches("0001", "test")
-    assert gitops.existing_branch(repo, names) == "sdlc/0001/build"  # neither: the name
-    _git(repo, "branch", "sdlc/0001/c")
-    assert gitops.existing_branch(repo, names) == "sdlc/0001/c"  # in flight before R45
-    _git(repo, "branch", "sdlc/0001/build")
-    assert gitops.existing_branch(repo, names) == "sdlc/0001/build"  # the name first
+    assert not hasattr(gitops, "existing_branch")
 
 
-def test_commit_phase_reads_a_letter_and_keeps_the_letter_branch_of_a_change_in_flight(
+def test_commit_phase_refuses_a_letter_and_never_works_on_the_letter_branch_since_1_0_48(
     repo, capsys
 ):
-    """R45: ``--phase c`` is read as build, and a change whose build branch an older plugin
-    cut (``sdlc/0001/c``) keeps committing there; status.yaml is written with the name."""
+    """Since 1.0.48 (R45's sixth PR) ``--phase c`` exits 2, and a build or test commit goes
+    to ``sdlc/<id>/build`` even when a letter branch (``sdlc/0001/c``) exists."""
     assert cli.main(["new-change", "--root", str(repo), "--title", "Percent helper"]) == 0
     capsys.readouterr()
     change = c.find_change_dir(repo, "0001")
-    _git(repo, "checkout", "-q", "-b", "sdlc/0001/c")
     (change / "plan.md").write_text("# Plan\n", encoding="utf-8")
-    rc, out, _ = _commit_phase(repo, "c", "build(0001): on the letter branch", capsys)
-    assert rc == 0 and out["branch"] == "sdlc/0001/c"
+    with pytest.raises(SystemExit) as exc:
+        _commit_phase(repo, "c", "build(0001): a letter", capsys)
+    assert exc.value.code == 2
+    capsys.readouterr()
+    _git(repo, "branch", "sdlc/0001/c")
+    rc, out, _ = _commit_phase(repo, "build", "build(0001): on the name's branch", capsys)
+    assert rc == 0 and out["branch"] == "sdlc/0001/build"
     assert status.read_status(change).phase == "build"
     (change / "evidence").mkdir(exist_ok=True)
     (change / "evidence" / "test.log").write_text("# pytest\nok\n", encoding="utf-8")
     rc, out, _ = _commit_phase(repo, "test", "test(0001): evidence", capsys)
-    assert rc == 0 and out["branch"] == "sdlc/0001/c"
-    assert _git(repo, "branch", "--list", "sdlc/0001/build").strip() == ""
+    assert rc == 0 and out["branch"] == "sdlc/0001/build"
     assert "phase: test" in status.status_path(change).read_text(encoding="utf-8")
 
 

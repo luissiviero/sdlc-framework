@@ -229,8 +229,7 @@ def _item(change_dir: Path, phase: str, n: int) -> dict[str, Any] | None:
         return None
     for item in data.get("items") or []:
         if isinstance(item, dict) and item.get("n") == n:
-            # an items list an older plugin wrote says ``escalate`` (R45 row 62)
-            return ledger.normalize(item)
+            return item
     return None
 
 
@@ -242,7 +241,6 @@ def render_prompt(
         "advocate": prompts_mod.ADVOCATE,
         "conciliator": prompts_mod.CONCILIATOR,
     }[member]
-    phase = c.phase_name(phase)
     n = int(item["n"])
     kind = str(item.get("kind"))
     return template.format(
@@ -404,7 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
         s = sub.add_parser(name)
         s.add_argument("--root", default=".")
         s.add_argument("--id", required=True)
-        s.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
+        s.add_argument("--phase", required=True, choices=c.PHASES)
         if name == "items":
             s.add_argument("--base", default=None, help="base ref for the diff")
         if name in ("prompt", "record", "overturn"):
@@ -423,7 +421,7 @@ def build_parser() -> argparse.ArgumentParser:
         s.set_defaults(fn=fn)
     s = sub.add_parser("models")
     s.add_argument("--root", default=".")
-    s.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
+    s.add_argument("--phase", required=True, choices=c.PHASES)
     s.set_defaults(fn=cmd_models)
     return p
 

@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "sdlc",
-  "version": "1.0.47",
-  "description": "Drives a project through plan, design, build, test, deploy and maintain with human gates at (a), (b) and (e) (AI-Native SDLC playbook).",
+  "version": "1.0.48",
+  "description": "Drives a project through intent, design, build, test, deploy and maintain with human gates at intent, design and deploy (AI-Native SDLC playbook).",
   "author": {
     "name": "Luis Siviero"
   },

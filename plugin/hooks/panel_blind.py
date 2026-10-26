@@ -63,13 +63,8 @@ import re
 import sys
 from pathlib import Path
 
-# R45: the phase in a file name is its name (``design-1-reviewer.md``) or, in a file a plugin
-# before R45 wrote, its letter (``b-1-reviewer.md``); both are read, the name is written. The
-# fast path imports nothing from the plugin, so the two forms are spelled out here.
-PHASE_NAMES = dict(
-    zip("abcdef", ("intent", "design", "build", "test", "deploy", "maintain"), strict=True)
-)
-PHASE_LETTERS = {name: letter for letter, name in PHASE_NAMES.items()}
+# R45: the phase in a file name is its name (``design-1-reviewer.md``); the fast path imports
+# nothing from the plugin, so the token is any lowercase word.
 PHASE_TOKEN = "[a-z]+"
 PANEL_FILE_RE = re.compile(
     rf"(?:^|/)changes/[^/]+/evidence/panel/({PHASE_TOKEN})-(\d+)-(reviewer|advocate)\.md$",
@@ -133,20 +128,9 @@ def _slash(path: str) -> str:
     return str(path).replace("\\", "/")
 
 
-def phase_name(token: str) -> str:
-    """The phase name of a file name's phase token: a letter becomes its name (R45)."""
-    token = token.lower()
-    return PHASE_NAMES.get(token, token)
-
-
 def counterparts(phase: str, n: str, member: str) -> tuple[str, ...]:
-    """The names the other member's verdict may have: with the same phase token, and with
-    the other form of it (a reviewer's ``b-1-reviewer.md`` from an older plugin, an
-    advocate's ``design-1-advocate.md`` from this one: R45)."""
-    token = phase.lower()
-    other = PHASE_LETTERS.get(token) or PHASE_NAMES.get(token)
-    tokens = (token,) if other is None else (token, other)
-    return tuple(f"{t}-{n}-{OTHER[member]}.md" for t in tokens)
+    """The name the other member's verdict has: the same phase token and item number."""
+    return (f"{phase.lower()}-{n}-{OTHER[member]}.md",)
 
 
 def project_root(payload: dict, env: dict[str, str] | None = None) -> str:
@@ -184,7 +168,7 @@ def one_sided(root: str) -> list[tuple[Path, str, str, str, Path]]:
             phase, n, member = m.group(1).lower(), m.group(2), m.group(3).lower()
             names = counterparts(phase, n, member)
             if not any(other in present for other in names):
-                found.append((panel / name, phase_name(phase), n, member, panel / names[0]))
+                found.append((panel / name, phase, n, member, panel / names[0]))
     return found
 
 
@@ -302,7 +286,7 @@ def record_advocate_model(payload: dict, verdict_path: str, phase: str, n: str) 
     """Write ``<phase>-<n>-advocate.model.json`` beside the advocate's verdict: who wrote it
     (``agent_type``) and on which model, read from the writer's own transcript. ``record``
     and the gate's ``panel`` check require it; ``reason`` says why ``models`` is empty."""
-    phase = phase_name(phase)  # R45: the record carries the name, beside a letter's verdict too
+    phase = phase.lower()
     record = {"schema_version": 1, "phase": phase, "n": int(n), "member": "advocate"}
     record.update(writer_record(payload))
     path = Path(verdict_path).with_name(MODEL_RECORD.format(phase=phase, n=n))
@@ -323,7 +307,7 @@ def record_reviewer_model(payload: dict, verdict_path: str, phase: str) -> Path:
     """Write ``adversarial-review-<phase>.model.json`` beside the reviewer's verdict (R7):
     the writer and its models as for the advocate, the ``head`` the verdict names and the
     real time it was written. The gate's ``reviewer_model`` check requires it."""
-    phase = phase_name(phase)
+    phase = phase.lower()
     record = {"schema_version": 1, "phase": phase, "member": "reviewer"}
     record["head"] = verdict_head(payload.get("tool_input") or {})
     record.update(writer_record(payload))
@@ -371,7 +355,6 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None):
             if any(Path(candidate).with_name(other).is_file() for other in names):
                 continue
             counterpart = Path(candidate).with_name(names[0])
-            phase = phase_name(phase)
             rel = common.rel_to(root, candidate) or candidate
             other_rel = common.rel_to(root, common.norm(str(counterpart))) or str(counterpart)
             return common.Decision.deny(
@@ -396,9 +379,7 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None):
             if not m:
                 continue
             try:
-                record_advocate_model(
-                    payload, common.fs_path(path), phase_name(m.group(1)), m.group(2)
-                )
+                record_advocate_model(payload, common.fs_path(path), m.group(1), m.group(2))
             except (OSError, ValueError):
                 # never refuse the verdict itself: with no record, `record` refuses the item
                 # and it parks for the owner
@@ -408,7 +389,7 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None):
             if not m:
                 continue
             try:
-                record_reviewer_model(payload, common.fs_path(path), phase_name(m.group(1)))
+                record_reviewer_model(payload, common.fs_path(path), m.group(1))
             except (OSError, ValueError):
                 pass  # with no record, the gate's reviewer_model check parks when it applies
         return common.Decision.allow()

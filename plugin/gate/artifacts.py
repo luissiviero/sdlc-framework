@@ -98,12 +98,11 @@ REVIEW_FINDINGS = "review-findings.json"  # the review passes' machine-readable 
 ADVERSARIAL_VERDICT = "adversarial-review-{phase}.json"  # the agent of step 17, per gate
 # The adversarial reviewer's verdict, and its verdict on each risk-list item in the brief (R45
 # row 62, N17): ``continue`` or ``park``, the word the gate's result and the state use for the
-# same event (decision 11: nobody is paged). An older plugin wrote ``escalate``; a verdict file,
-# a ledger line or a brief that says it is read as ``park`` for one release (``verdict_word``).
+# same event (decision 11: nobody is paged). Until plugin 1.0.43 it was ``escalate``, which
+# plugins 1.0.44 to 1.0.47 also read; since 1.0.48 it is not a verdict.
 VERDICT_CONTINUE = "continue"
 VERDICT_PARK = "park"
 VERDICTS = (VERDICT_CONTINUE, VERDICT_PARK)
-VERDICT_ALIASES = {"escalate": VERDICT_PARK}
 GATE_RESULT = "gate-{phase}.json"  # written by the gate itself, read by the PR summary (B3)
 
 # Which artifacts and evidence each gate requires. The key is the phase that just finished.
@@ -144,14 +143,10 @@ EVAL_CHECKS = "checks.yaml"
 
 
 def verdict_word(value: Any) -> str | None:
-    """The reviewer's verdict ``value`` as this plugin names it: ``continue`` or ``park``
-    (``escalate``, an older plugin's word, reads as ``park``: R45, for one release), or None
-    when it is neither. The match is exact: a reader that tolerates case or markup (the
-    brief's ``- Verdict:`` line) tidies the value first."""
-    if not isinstance(value, str):
-        return None
-    word = VERDICT_ALIASES.get(value, value)
-    return word if word in VERDICTS else None
+    """The reviewer's verdict ``value``: ``continue`` or ``park``, or None when it is neither.
+    The match is exact: a reader that tolerates case or markup (the brief's ``- Verdict:``
+    line) tidies the value first."""
+    return value if isinstance(value, str) and value in VERDICTS else None
 
 
 def target_logs(drive_set: bool) -> dict[str, str]:
@@ -166,7 +161,7 @@ def target_logs(drive_set: bool) -> dict[str, str]:
 def required_evidence(phase: str, drive_set: bool) -> tuple[str, ...]:
     """``REQUIRED_EVIDENCE`` of ``phase``, with ``drive.log`` at test and deploy when the drive is
     set (change 0004, R7)."""
-    required = REQUIRED_EVIDENCE.get(c.phase_name(phase), ())
+    required = REQUIRED_EVIDENCE.get(phase, ())
     if drive_set and EVIDENCE_TEST in required:
         return (*required, EVIDENCE_DRIVE)
     return required

@@ -411,22 +411,26 @@ def test_plan_sync_rules():
     exempt = list(plan_sync.DEFAULT_EXEMPT)
     ok = plan_sync.check
     assert not ok("main", ["src/a.py"], exempt).block  # not an sdlc branch
-    assert not ok("sdlc/0001/a", ["src/a.py"], exempt).block  # only phase c is enforced
-    assert not ok("sdlc/0001/c", ["changes/0001-x/status.yaml"], exempt).block  # no source
-    assert ok("sdlc/0001/c", ["src/a.py"], exempt).block
-    assert not ok("sdlc/0001/c", ["src/a.py", "changes/0001-x/plan.md"], exempt).block
-    assert ok("sdlc/0001/c", ["src/a.py", "changes/0002-y/plan.md"], exempt).block  # wrong change
-    assert not ok("sdlc/0001/c", ["docs/x.md"], exempt + ["docs/**"]).block
+    assert not ok(
+        "sdlc/0001/intent", ["src/a.py"], exempt
+    ).block  # only the build phase is enforced
+    assert not ok("sdlc/0001/build", ["changes/0001-x/status.yaml"], exempt).block  # no source
+    assert ok("sdlc/0001/build", ["src/a.py"], exempt).block
+    assert not ok("sdlc/0001/build", ["src/a.py", "changes/0001-x/plan.md"], exempt).block
+    assert ok(
+        "sdlc/0001/build", ["src/a.py", "changes/0002-y/plan.md"], exempt
+    ).block  # wrong change
+    assert not ok("sdlc/0001/build", ["docs/x.md"], exempt + ["docs/**"]).block
     # the departure rule (article p.16 step 7): a commit whose source files are all listed
     # under "## Files that change" needs no plan.md; one that touches an unlisted file does
     planned = ["src/a.py", "tests/test_a.py"]
-    assert not ok("sdlc/0001/c", ["src/a.py"], exempt, planned).block
-    assert not ok("sdlc/0001/c", ["src/a.py", "tests/test_a.py"], exempt, planned).block
-    d = ok("sdlc/0001/c", ["src/a.py", "src/b.py"], exempt, planned)
+    assert not ok("sdlc/0001/build", ["src/a.py"], exempt, planned).block
+    assert not ok("sdlc/0001/build", ["src/a.py", "tests/test_a.py"], exempt, planned).block
+    d = ok("sdlc/0001/build", ["src/a.py", "src/b.py"], exempt, planned)
     assert d.block and "src/b.py" in d.reason and "src/a.py" not in d.reason
-    assert not ok("sdlc/0001/c", ["src/b.py", "changes/0001-x/plan.md"], exempt, planned).block
-    assert not ok("sdlc/0001/c", ["src/sub/x.py"], exempt, ["src/"]).block  # a directory entry
-    assert not ok("sdlc/0001/c", ["SRC/A.py"], exempt, planned).block  # case, as the gate
+    assert not ok("sdlc/0001/build", ["src/b.py", "changes/0001-x/plan.md"], exempt, planned).block
+    assert not ok("sdlc/0001/build", ["src/sub/x.py"], exempt, ["src/"]).block  # a directory entry
+    assert not ok("sdlc/0001/build", ["SRC/A.py"], exempt, planned).block  # case, as the gate
 
 
 def test_plan_sync_allows_a_commit_inside_the_plan_in_a_real_repo(tmp_path):
@@ -445,7 +449,7 @@ def test_plan_sync_allows_a_commit_inside_the_plan_in_a_real_repo(tmp_path):
     )
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-q", "-m", "init")
-    _git(tmp_path, "checkout", "-q", "-b", "sdlc/0001/c")
+    _git(tmp_path, "checkout", "-q", "-b", "sdlc/0001/build")
     (tmp_path / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")
     _git(tmp_path, "add", "src/a.py")
     payload = {**pre("Bash", command="git commit -m 'change'"), "cwd": str(tmp_path)}
@@ -475,7 +479,7 @@ def test_plan_sync_only_on_commit_commands():
 
     def fake_git(root, *args):
         calls.append(args)
-        return "sdlc/0001/c\n" if args[0] == "rev-parse" else "src/a.py\n"
+        return "sdlc/0001/build\n" if args[0] == "rev-parse" else "src/a.py\n"
 
     assert not plan_sync.decide(
         pre("Bash", command="git status"), [], env={"CLAUDE_PROJECT_DIR": "/p"}, git=fake_git
@@ -511,7 +515,7 @@ def test_plan_sync_end_to_end_in_a_real_repo(tmp_path):
     (plan / "plan.md").write_text("# Plan\n", encoding="utf-8")
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-q", "-m", "init")
-    _git(tmp_path, "checkout", "-q", "-b", "sdlc/0001/c")
+    _git(tmp_path, "checkout", "-q", "-b", "sdlc/0001/build")
     (tmp_path / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")
     _git(tmp_path, "add", "src/a.py")
     payload = {**pre("Bash", command="git commit -m 'change'"), "cwd": str(tmp_path)}
@@ -667,7 +671,7 @@ def test_plan_sync_pathspec_commit_is_checked(tmp_path):
     (tmp_path / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-q", "-m", "init")
-    _git(tmp_path, "checkout", "-q", "-b", "sdlc/0002/c")
+    _git(tmp_path, "checkout", "-q", "-b", "sdlc/0002/build")
     (tmp_path / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")  # unstaged
     payload = {**pre("Bash", command="git commit -m 'x' src/a.py"), "cwd": str(tmp_path)}
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(tmp_path)}
@@ -683,7 +687,7 @@ def test_plan_sync_pathspec_commit_is_checked(tmp_path):
 
 def test_plan_sync_tolerates_bad_config_and_quotes():
     def fake_git(root, *args):
-        return "sdlc/0001/c\n" if args[0] == "rev-parse" else "src/a.py\0"
+        return "sdlc/0001/build\n" if args[0] == "rev-parse" else "src/a.py\0"
 
     assert plan_sync.exempt_patterns({"plan_sync": True}) == list(plan_sync.DEFAULT_EXEMPT)
     d = plan_sync.decide(
@@ -742,7 +746,7 @@ def _lock_project(
     tmp_path,
     change_type="fix",
     locked=True,
-    branch="sdlc/0001/c",
+    branch="sdlc/0001/build",
     test_paths=DEFAULT_TEST_PATHS_BLOCK,
 ):
     """A git repo on `branch` holding change 0001 and a test file the lock can cover."""
@@ -904,7 +908,7 @@ class FakeGitHub:
             return {"ok": False, "number": None, "reason": self.reason}
         return {
             "ok": True, "number": number, "state": "open", "merged": False,
-            "merge_commit_sha": None, "head_ref": "sdlc/0001/c", "head_sha": "abc1234def5678",
+            "merge_commit_sha": None, "head_ref": "sdlc/0001/build", "head_sha": "abc1234def5678",
             "labels": self.labels, "reason": "",
         }  # fmt: skip
 
@@ -915,7 +919,9 @@ class FakeGitHub:
         return {"ok": True, "actor": self.actor, "reason": ""}
 
 
-def gate_git(tags=(), verify_ok=False, branch="sdlc/0001/c", remote="https://github.com/o/r.git"):
+def gate_git(
+    tags=(), verify_ok=False, branch="sdlc/0001/build", remote="https://github.com/o/r.git"
+):
     """A git runner answering the calls the hook and the approval make: (exit, stdout)."""
 
     def git(root, *args):
@@ -1003,7 +1009,7 @@ def test_production_gate_allows_with_the_label_applied_by_a_person(tmp_path):
 
 def test_production_gate_reads_the_recorded_build_pr_of_the_checked_out_change(tmp_path):
     """The readiness review's group B (0.2.27): the hook found the PR by the branch's name,
-    so a checkout of another change's ``sdlc/<id>/c`` inherited its approval. Now the hook
+    so a checkout of another change's ``sdlc/<id>/build`` inherited its approval. Now the hook
     passes the change it resolved, the approval reads that change's recorded build PR, and
     a change with no record, or a checkout that is not the PR's head, is blocked."""
     root, env, log = _gate_project(tmp_path)
@@ -1013,13 +1019,13 @@ def test_production_gate_reads_the_recorded_build_pr_of_the_checked_out_change(t
     st.build_pr = 9
     status.write_status(change_dir, st)
     gh = FakeGitHub(actor="luissiviero", number=9)
-    d = _gate(root, env, "twine upload dist/*", github=gh, git=gate_git(branch="sdlc/0002/c"))
-    assert d.block and "#9 (head sdlc/0001/c) is not the build PR sdlc/0002/build" in d.reason
+    d = _gate(root, env, "twine upload dist/*", github=gh, git=gate_git(branch="sdlc/0002/build"))
+    assert d.block and "#9 (head sdlc/0001/build) is not the build PR sdlc/0002/build" in d.reason
     assert ("pr_by_number", "o/r", 9) in gh.calls and ("pr_by_number", "o/r", 7) not in gh.calls
     # no record at all: the branch name alone finds nothing
     st.build_pr = None
     status.write_status(change_dir, st)
-    d = _gate(root, env, "twine upload dist/*", github=gh, git=gate_git(branch="sdlc/0002/c"))
+    d = _gate(root, env, "twine upload dist/*", github=gh, git=gate_git(branch="sdlc/0002/build"))
     assert d.block and "records no build pull request" in d.reason
     # change 0001 at a commit that is not its PR's head: blocked
     gh = FakeGitHub(actor="luissiviero")
@@ -1405,7 +1411,7 @@ def test_log_decision_defaults_to_the_change_evidence_on_a_change_branch(tmp_pat
     _git(tmp_path, "config", "user.name", "t")
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-q", "-m", "init")
-    _git(tmp_path, "checkout", "-q", "-b", "sdlc/0001/c")
+    _git(tmp_path, "checkout", "-q", "-b", "sdlc/0001/build")
     payload = {**pre("Bash", command="ls"), "cwd": str(tmp_path)}
     path = _common.log_decision(
         "t", "allow", "why", payload, env={"CLAUDE_PROJECT_DIR": str(tmp_path)}
@@ -1540,31 +1546,37 @@ def test_production_gate_fails_closed_on_a_production_flag_that_is_not_a_boolean
     assert line["verdict"] == "block" and "fail closed" in line["reason"]
 
 
-def test_production_gate_reads_the_old_key_for_one_release(tmp_path):
-    """R45 (decision 39, row 55): a project whose sdlc.yaml still says ``deploy.production:
-    true`` keeps its production gate: the guarded command is blocked without the approval."""
-    root, env, log = _gate_project(tmp_path, key="production")
-    assert "  production: true\n" in (root / "sdlc.yaml").read_text(encoding="utf-8")
-    assert _gate(root, env, "twine upload dist/*").block
-    assert _log_lines(log)[-1]["verdict"] == "block"
-    (tmp_path / "off").mkdir()
-    off_root, off_env, off_log = _gate_project(tmp_path / "off", production=False, key="production")
-    assert not _gate(off_root, off_env, "twine upload dist/*").block
-    assert not off_log.exists()
+def test_production_gate_refuses_the_old_key_and_fails_closed(tmp_path):
+    """R45 (decision 39, row 55): since 1.0.48 (R45's sixth PR) ``deploy.production`` is not
+    read but refused: whatever its value, the hook blocks on the configuration error and logs
+    it, so a project whose pin moved past 1.0.47 with the old key never runs with the
+    production gate silently off (the review of the sixth PR)."""
+    for name, production in (("on", True), ("off", False)):
+        (tmp_path / name).mkdir()
+        root, env, log = _gate_project(tmp_path / name, production=production, key="production")
+        assert f"  production: {str(production).lower()}\n" in (root / "sdlc.yaml").read_text(
+            encoding="utf-8"
+        )
+        with pytest.raises(_common_config_error()) as exc:
+            _gate(root, env, "twine upload dist/*")
+        assert "deploy.production is not read since plugin 1.0.48" in str(exc.value)
+        (line,) = _log_lines(log)
+        assert line["verdict"] == "block" and "fail closed" in line["reason"]
 
 
-def test_production_gate_fails_closed_when_the_old_and_new_keys_disagree(tmp_path):
-    """Both keys set to different values: the hook does not guess which one the owner meant,
-    it blocks on the config error that names both."""
-    root, env, log = _gate_project(tmp_path, production=False)
-    path = root / "sdlc.yaml"
-    path.write_text(path.read_text(encoding="utf-8") + "  production: true\n", encoding="utf-8")
-    with pytest.raises(_common_config_error()) as exc:
-        _gate(root, env, "twine upload dist/*")
-    assert "deploy.production_gate is false" in str(exc.value)
-    assert "deploy.production is true" in str(exc.value)
-    (line,) = _log_lines(log)
-    assert line["verdict"] == "block" and "fail closed" in line["reason"]
+def test_production_gate_refuses_the_old_key_beside_the_new_one(tmp_path):
+    """Both keys set: since 1.0.48 (R45's sixth PR) the old ``deploy.production`` is refused
+    whatever the new key says, so the owner keeps ``deploy.production_gate`` only."""
+    for name, gate_on, old in (("a", False, "true"), ("b", True, "false")):
+        (tmp_path / name).mkdir()
+        root, env, log = _gate_project(tmp_path / name, production=gate_on)
+        path = root / "sdlc.yaml"
+        path.write_text(
+            path.read_text(encoding="utf-8") + f"  production: {old}\n", encoding="utf-8"
+        )
+        with pytest.raises(_common_config_error()):
+            _gate(root, env, "twine upload dist/*")
+        assert _log_lines(log)[-1]["verdict"] == "block"
 
 
 # --- the review panel's blindness (0.2.30) -------------------------------------------------
@@ -1573,12 +1585,12 @@ PANEL_HOOK = HOOKS_DIR / "panel_blind.py"
 
 @pytest.fixture
 def panel_project(tmp_path):
-    """A project mid-panel: item 1 of phase (b) has the reviewer's verdict, not the
+    """A project mid-panel: item 1 of the design phase has the reviewer's verdict, not the
     advocate's yet (the window)."""
     (tmp_path / "sdlc.yaml").write_text("profile: standard\n", encoding="utf-8")
     panel = tmp_path / "changes" / "0001-sample" / "evidence" / "panel"
     panel.mkdir(parents=True)
-    (panel / "b-1-reviewer.md").write_text("## Verdict\nkeep half-up\n", encoding="utf-8")
+    (panel / "design-1-reviewer.md").write_text("## Verdict\nkeep half-up\n", encoding="utf-8")
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "calc.py").write_text("x = 1\n", encoding="utf-8")
     return tmp_path, panel
@@ -1590,26 +1602,30 @@ def _blind(root, payload):
 
 def test_panel_blind_refuses_a_read_of_a_verdict_in_its_window(panel_project):
     root, panel = panel_project
-    decision = _blind(root, pre("Read", file_path=str(panel / "b-1-reviewer.md")))
+    decision = _blind(root, pre("Read", file_path=str(panel / "design-1-reviewer.md")))
     assert decision.block
-    assert "b-1-reviewer.md is the reviewer's verdict on item 1" in decision.reason
-    assert "b-1-advocate.md is missing" in decision.reason
+    assert "design-1-reviewer.md is the reviewer's verdict on item 1" in decision.reason
+    assert "design-1-advocate.md is missing" in decision.reason
     # Windows spelling and case of the same file
-    spelled = str(panel / "B-1-Reviewer.md").replace("/", "\\")
+    spelled = str(panel / "Design-1-Reviewer.md").replace("/", "\\")
     assert _blind(root, pre("Read", file_path=spelled)).block or os.name != "nt"
     # once the advocate has written, the conciliator reads both
-    (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
-    assert not _blind(root, pre("Read", file_path=str(panel / "b-1-reviewer.md"))).block
-    assert not _blind(root, pre("Read", file_path=str(panel / "b-1-advocate.md"))).block
+    (panel / "design-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    assert not _blind(root, pre("Read", file_path=str(panel / "design-1-reviewer.md"))).block
+    assert not _blind(root, pre("Read", file_path=str(panel / "design-1-advocate.md"))).block
 
 
 def test_panel_blind_is_symmetric_and_leaves_other_files_alone(panel_project):
     root, panel = panel_project
-    (panel / "b-1-reviewer.md").unlink()
-    (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
-    decision = _blind(root, pre("Read", file_path=str(panel / "b-1-advocate.md")))
+    (panel / "design-1-reviewer.md").unlink()
+    (panel / "design-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    decision = _blind(root, pre("Read", file_path=str(panel / "design-1-advocate.md")))
     assert decision.block and "the reviewer has not written its own yet" in decision.reason
-    for other in (panel / "b-1-conciliator.json", panel / "b-items.json", root / "src/calc.py"):
+    for other in (
+        panel / "design-1-conciliator.json",
+        panel / "design-items.json",
+        root / "src/calc.py",
+    ):
         assert not _blind(root, pre("Read", file_path=str(other))).block, other
 
 
@@ -1617,7 +1633,7 @@ def test_panel_blind_follows_a_symlink_to_a_verdict(panel_project):
     root, panel = panel_project
     link = root / "notes.md"
     try:
-        link.symlink_to(panel / "b-1-reviewer.md")
+        link.symlink_to(panel / "design-1-reviewer.md")
     except (OSError, NotImplementedError):
         pytest.skip("symlinks are not available here")
     assert _blind(root, pre("Read", file_path=str(link))).block
@@ -1628,7 +1644,7 @@ def test_panel_blind_follows_a_symlink_to_a_verdict(panel_project):
     [
         ({}, True),  # the whole project, no filter: would read the verdict
         ({"path": "changes"}, True),
-        ({"path": "changes/0001-sample/evidence/panel/b-1-reviewer.md"}, True),
+        ({"path": "changes/0001-sample/evidence/panel/design-1-reviewer.md"}, True),
         ({"type": "markdown"}, True),
         ({"glob": "*.md"}, True),
         ({"glob": "**/*.{md,py}"}, True),  # braces: not proven to exclude it
@@ -1645,12 +1661,12 @@ def test_panel_blind_refuses_only_a_grep_that_would_read_the_verdict(panel_proje
     decision = _blind(root, pre("Grep", pattern="half-up", **grep))
     assert decision.block is blocked, (grep, decision.reason)
     if blocked:
-        assert "b-1-reviewer.md" in decision.reason and 'glob: "*.py"' in decision.reason
+        assert "design-1-reviewer.md" in decision.reason and 'glob: "*.py"' in decision.reason
 
 
 def test_panel_blind_allows_every_grep_outside_a_window(panel_project):
     root, panel = panel_project
-    (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    (panel / "design-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
     assert not _blind(root, pre("Grep", pattern="half-up")).block
     # Glob lists names, never contents: not the hook's
     assert not _blind(root, pre("Glob", pattern="**/*.md")).block
@@ -1672,7 +1688,7 @@ def test_panel_blind_script_blocks_logs_and_stays_silent_otherwise(panel_project
 
     proc = run(pre("Read", file_path=str(root / "src" / "calc.py")))
     assert proc.returncode == 0 and proc.stdout == "" and not log.exists()  # no allow lines
-    proc = run(pre("Read", file_path=str(panel / "b-1-reviewer.md")))
+    proc = run(pre("Read", file_path=str(panel / "design-1-reviewer.md")))
     assert proc.returncode == 2, proc.stderr
     out = json.loads(proc.stdout)["hookSpecificOutput"]
     assert out["permissionDecision"] == "deny" and "decision 21" in out["permissionDecisionReason"]
@@ -1698,10 +1714,10 @@ def test_hooks_json_registers_the_panel_blindness_on_read_and_grep():
 @pytest.mark.parametrize(
     ("command", "blocked"),
     [
-        ("cat changes/0001-sample/evidence/panel/b-1-reviewer.md", True),
-        ("type changes\\0001-sample\\evidence\\panel\\B-1-Reviewer.md", True),
+        ("cat changes/0001-sample/evidence/panel/design-1-reviewer.md", True),
+        ("type changes\\0001-sample\\evidence\\panel\\Design-1-Reviewer.md", True),
         ("cat changes/0001-sample/evidence/panel/*", True),
-        ("git show HEAD:changes/0001-sample/evidence/panel/b-1-reviewer.md", True),
+        ("git show HEAD:changes/0001-sample/evidence/panel/design-1-reviewer.md", True),
         ("python plugin/panel/cli.py prompt --member advocate --item 1", False),
         ("python -m pytest", False),
         ("git status", False),
@@ -1713,13 +1729,13 @@ def test_panel_blind_refuses_a_shell_command_that_names_a_verdict(panel_project,
         decision = _blind(root, pre(tool, command=command))
         assert decision.block is blocked, (tool, command, decision.reason)
         if blocked:
-            assert "b-1-reviewer.md" in decision.reason
+            assert "design-1-reviewer.md" in decision.reason
 
 
 def test_panel_blind_allows_shell_commands_outside_a_window(panel_project):
     root, panel = panel_project
-    (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
-    cmd = "cat changes/0001-sample/evidence/panel/b-1-reviewer.md"
+    (panel / "design-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    cmd = "cat changes/0001-sample/evidence/panel/design-1-reviewer.md"
     assert not _blind(root, pre("Bash", command=cmd)).block
 
 
@@ -1747,7 +1763,7 @@ def test_panel_blind_records_the_model_that_wrote_the_advocate_verdict(
 ):
     root, panel = panel_project
     transcript = _transcripts(tmp_path, "a1b2", ["claude-opus-5"], nested=nested)
-    target = str(panel / "b-1-advocate.md")
+    target = str(panel / "design-1-advocate.md")
     tool_input = (
         {"edits": [{"file_path": target, "old_string": "a", "new_string": "b"}]}
         if tool == "MultiEdit"
@@ -1760,7 +1776,6 @@ def test_panel_blind_records_the_model_that_wrote_the_advocate_verdict(
         "transcript_path": str(transcript),
     }
     assert not _blind(root, payload).block  # recording never refuses the verdict
-    # R45: the record carries the phase's name, beside a verdict an older plugin named by letter
     record = json.loads((panel / "design-1-advocate.model.json").read_text(encoding="utf-8"))
     assert record["models"] == ["claude-opus-5"] and record["reason"] is None
     assert record["phase"] == "design"
@@ -1769,7 +1784,7 @@ def test_panel_blind_records_the_model_that_wrote_the_advocate_verdict(
 
 def test_panel_blind_says_why_a_model_could_not_be_recorded(panel_project, tmp_path):
     root, panel = panel_project
-    target = str(panel / "b-1-advocate.md")
+    target = str(panel / "design-1-advocate.md")
     path = panel / "design-1-advocate.model.json"
     # the main session wrote the advocate's file itself: no sub-agent, no advocate
     assert not _blind(root, pre("Write", file_path=target, content="x")).block
@@ -1790,11 +1805,11 @@ def test_panel_blind_says_why_a_model_could_not_be_recorded(panel_project, tmp_p
 def test_panel_blind_refuses_a_tool_write_of_a_model_record(panel_project):
     root, panel = panel_project
     for tool in ("Write", "Edit"):
-        decision = _blind(root, pre(tool, file_path=str(panel / "b-1-advocate.model.json")))
+        decision = _blind(root, pre(tool, file_path=str(panel / "design-1-advocate.model.json")))
         assert decision.block and "only the panel_blind hook writes it" in decision.reason
     # an ordinary edit elsewhere is left alone, and writes no record
     assert not _blind(root, pre("Write", file_path=str(root / "src" / "calc.py"))).block
-    assert not (panel / "b-1-reviewer.model.json").exists()
+    assert not (panel / "design-1-reviewer.model.json").exists()
 
 
 # --- R7: which model wrote the adversarial reviewer's verdict -------------------------------------
@@ -1802,16 +1817,15 @@ def test_panel_blind_records_the_reviewer_s_model_head_and_time(panel_project, t
     root, panel = panel_project
     evidence = panel.parent
     transcript = _transcripts(tmp_path, "r1", ["claude-opus-5-5"])
-    verdict = {"schema_version": 1, "phase": "c", "head": "abc1234def", "verdict": "continue"}
+    verdict = {"schema_version": 1, "phase": "build", "head": "abc1234def", "verdict": "continue"}
     payload = {
-        **pre("Write", file_path=str(evidence / "adversarial-review-c.json"),
+        **pre("Write", file_path=str(evidence / "adversarial-review-build.json"),
               content=json.dumps(verdict)),
         "agent_id": "r1",
         "agent_type": "sdlc:adversarial-reviewer",
         "transcript_path": str(transcript),
     }  # fmt: skip
     assert not _blind(root, payload).block  # recording never refuses the verdict
-    # R45: a verdict file named by the letter gets the record under the phase's name
     record = json.loads((evidence / "adversarial-review-build.model.json").read_text("utf-8"))
     assert record["models"] == ["claude-opus-5-5"] and record["reason"] is None
     assert record["head"] == "abc1234def" and record["member"] == "reviewer"
@@ -1819,7 +1833,7 @@ def test_panel_blind_records_the_reviewer_s_model_head_and_time(panel_project, t
     assert record["at"].endswith("Z")  # the hook's clock, not the reviewer's
     # the main session writing the verdict itself is recorded as such; a write that is not
     # whole JSON records no head
-    assert not _blind(root, pre("Write", file_path=str(evidence / "adversarial-review-c.json"),
+    assert not _blind(root, pre("Write", file_path=str(evidence / "adversarial-review-build.json"),
                                 content="not json")).block  # fmt: skip
     record = json.loads((evidence / "adversarial-review-build.model.json").read_text("utf-8"))
     assert record["head"] is None and "main session" in record["reason"]
@@ -1827,12 +1841,12 @@ def test_panel_blind_records_the_reviewer_s_model_head_and_time(panel_project, t
 
 def test_panel_blind_refuses_a_tool_write_of_the_reviewer_s_model_record(panel_project):
     root, panel = panel_project
-    path = panel.parent / "adversarial-review-b.model.json"
+    path = panel.parent / "adversarial-review-design.model.json"
     for tool in ("Write", "Edit"):
         decision = _blind(root, pre(tool, file_path=str(path), content="{}"))
         assert decision.block and "only the panel_blind hook writes it" in decision.reason
     # the verdict file itself is never refused, and other evidence is not recorded
-    assert not _blind(root, pre("Write", file_path=str(panel.parent / "gate-b.json"))).block
+    assert not _blind(root, pre("Write", file_path=str(panel.parent / "gate-design.json"))).block
     assert not path.exists()
 
 
@@ -1841,17 +1855,17 @@ def test_panel_blind_refuses_a_shell_command_that_names_a_model_record(panel_pro
     """The review of R7's diff: a redirect or a script could rewrite what only the hook
     writes, outside any panel window; the fast path sends such a command to the check."""
     root, panel = panel_project
-    (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    (panel / "design-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
     for command in (
-        "echo {} > changes/0001-sample/evidence/adversarial-review-c.model.json",
-        "python -c \"open('Changes\\\\0001\\\\evidence\\\\b-1-advocate.MODEL.json', 'w')\"",
+        "echo {} > changes/0001-sample/evidence/adversarial-review-build.model.json",
+        "python -c \"open('Changes\\\\0001\\\\evidence\\\\design-1-advocate.MODEL.json', 'w')\"",
     ):
         payload = pre(tool, command=command)
         assert panel_blind.may_concern_panel({**payload, "cwd": str(root)}, _env(root))
         decision = _blind(root, payload)
         assert decision.block and "only the panel_blind hook writes it" in decision.reason
     # the verdict's own path takes the fast path to the recorder; other commands do not
-    write = pre("Write", file_path="C:\\p\\changes\\0001-x\\evidence\\adversarial-review-d.json")
+    write = pre("Write", file_path="C:\\p\\changes\\0001-x\\evidence\\adversarial-review-test.json")
     assert panel_blind.may_concern_panel({**write, "cwd": str(root)}, _env(root))
     assert not panel_blind.may_concern_panel({**pre(tool, command="git status"), "cwd": str(root)})
 
@@ -2572,22 +2586,25 @@ def test_test_file_lock_denies_a_test_edit_on_the_named_build_branch(tmp_path):
     assert proc.returncode == 2, proc.stderr
 
 
-def test_panel_blind_reads_both_forms_of_the_phase_in_a_file_name(panel_project):
-    """A named verdict in its window is refused as a lettered one is; a counterpart in the
-    other form (the reviewer's ``b-1-reviewer.md`` from an older plugin, the advocate's
-    ``design-1-advocate.md`` from this one) closes the window."""
+def test_panel_blind_no_longer_pairs_a_letter_verdict_with_a_named_one(panel_project):
+    """A named verdict in its window is refused; since 1.0.48 (R45's sixth PR) a counterpart
+    named by the phase's letter (``b-1-advocate.md``, as a plugin before R45 wrote it) no
+    longer closes the window: only the same phase token and item number pair up."""
     root, panel = panel_project
-    (panel / "b-1-reviewer.md").unlink()
-    (panel / "design-1-reviewer.md").write_text("## Verdict\nkeep half-up\n", encoding="utf-8")
     decision = _blind(root, pre("Read", file_path=str(panel / "design-1-reviewer.md")))
     assert decision.block and "item 1 of the design phase" in decision.reason
     assert [(p, n, m) for _f, p, n, m, _c in panel_blind.one_sided(str(root))] == [
         ("design", "1", "reviewer")
     ]
     (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    assert _blind(root, pre("Read", file_path=str(panel / "design-1-reviewer.md"))).block
+    assert sorted((p, n, m) for _f, p, n, m, _c in panel_blind.one_sided(str(root))) == [
+        ("b", "1", "advocate"),
+        ("design", "1", "reviewer"),
+    ]
+    (panel / "design-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
     assert not _blind(root, pre("Read", file_path=str(panel / "design-1-reviewer.md"))).block
-    assert not _blind(root, pre("Read", file_path=str(panel / "b-1-advocate.md"))).block
-    assert panel_blind.one_sided(str(root)) == []
+    assert not _blind(root, pre("Read", file_path=str(panel / "design-1-advocate.md"))).block
 
 
 @pytest.mark.parametrize(
@@ -2596,30 +2613,31 @@ def test_panel_blind_reads_both_forms_of_the_phase_in_a_file_name(panel_project)
         ({}, False),
         ({"production_gate": True}, True),
         ({"production_gate": False}, False),
-        ({"production": True}, True),
+        ({"production": True}, False),
         ({"production": False}, False),
         ({"production_gate": True, "production": True}, True),
-        ({"production_gate": None, "production": True}, True),
+        ({"production_gate": None, "production": True}, False),
         ({"production_gate": False, "production": None}, False),
+        ({"production_gate": True, "production": False}, True),
+        ({"production_gate": False, "production": True}, False),
+        ({"production": "yes"}, False),
+        ({"production_gate": True, "production": "yes"}, True),
     ],
 )
-def test_the_production_gate_key_reads_the_new_name_then_the_old(deploy, expected):
-    """R45 (decision 39, row 55): ``deploy.production_gate``, else ``deploy.production`` for
-    one release, by ``config_flag``'s rule."""
+def test_the_production_gate_key_reads_the_new_name_and_refuses_the_old(deploy, expected):
+    """R45 (decision 39, row 55): only ``deploy.production_gate`` is read, by
+    ``config_flag``'s rule; since 1.0.48 (R45's sixth PR) the old ``deploy.production``, with
+    any value, is a ``ConfigError`` (fail closed) instead of being read."""
     common = sys.modules["_common"]
-    assert common.production_gate({"deploy": deploy}) is expected
+    if "production" in deploy:
+        with pytest.raises(common.ConfigError, match="deploy.production is not read"):
+            common.production_gate({"deploy": deploy})
+    else:
+        assert common.production_gate({"deploy": deploy}) is expected
 
 
-@pytest.mark.parametrize(
-    "deploy",
-    [
-        {"production_gate": True, "production": False},
-        {"production_gate": False, "production": True},
-        {"production": "yes"},
-        {"production_gate": True, "production": "yes"},
-    ],
-)
-def test_the_production_gate_key_fails_closed_on_a_conflict_or_a_non_boolean(deploy):
+@pytest.mark.parametrize("deploy", [{"production_gate": "yes"}, {"production_gate": 1}])
+def test_the_production_gate_key_fails_closed_on_a_non_boolean(deploy):
     common = sys.modules["_common"]
     with pytest.raises(common.ConfigError):
         common.production_gate({"deploy": deploy})

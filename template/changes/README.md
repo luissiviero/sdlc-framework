@@ -17,7 +17,8 @@ kebab-case title.
 Phases: `intent`, `design`, `build`, `test`, `deploy`, `maintain` (the letters `a` to `f` of
 older changes are read as these names). Branches: `sdlc/<id>/intent` (intent PR),
 `sdlc/<id>/design` (spec+plan PR), `sdlc/<id>/build` (build PR, kept open through test and
-review); a change started before the names finishes on its letter branch (`sdlc/<id>/c`).
+review); since plugin 1.0.48 a run works only on these (a letter branch, `sdlc/<id>/c`, is
+history).
 Labels: `sdlc:<phase>-ready` (waiting at a human gate, e.g. `sdlc:design-ready`),
 `sdlc:release-approved` (the release manager's release
 approval on a declared production), `sdlc:needs-human` (parked); the owner's un-park verbs

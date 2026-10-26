@@ -100,6 +100,8 @@ def test_is_waiting_label():
     assert rr.is_waiting_label(c.NEEDS_HUMAN_LABEL)
     for label in (None, "", c.FIXING_LABEL, "sdlc:d-approved", c.GO_LABEL, "sdlc:x-ready"):
         assert not rr.is_waiting_label(label)
+    # a letter's label an older plugin applied no longer waits, since 1.0.48 (R45's sixth PR)
+    assert not rr.is_waiting_label("sdlc:c-ready")
 
 
 # --- 2. the skips -----------------------------------------------------------------------------
@@ -204,7 +206,7 @@ def upsert(capsys, root: Path, *extra: str) -> dict:
 def test_upsert_requests_the_review_only_with_the_flag(project, capsys, fake_routes):
     root, change = project
     git(root, "remote", "add", "origin", "https://github.com/o/r.git")
-    gate_json(change, "b", "wait", c.ready_label("design"))
+    gate_json(change, "design", "wait", c.ready_label("design"))
     out = upsert(capsys, root)
     assert out["created"] is True and "review_request" not in out
     assert fake_routes["calls"] == []  # the model's in-session upserts request nothing
@@ -223,7 +225,7 @@ def test_upsert_requests_the_review_only_with_the_flag(project, capsys, fake_rou
     # a later publication on the same PR, now carrying sdlc:fixing: the request is withdrawn
     fake_routes["calls"].clear()
     fake_routes["existing"] = {**pr(pending=True), "number": 9, "labels": [c.ready_label("design")]}
-    gate_json(change, "b", "wait", c.FIXING_LABEL)
+    gate_json(change, "design", "wait", c.FIXING_LABEL)
     out = upsert(capsys, root, "--request-review")
     assert out["review_request"]["action"] == "withdrawn" and out["label"] == c.FIXING_LABEL
     assert fake_routes["calls"] == [("remove", 9, [OWNER])]
@@ -232,7 +234,7 @@ def test_upsert_requests_the_review_only_with_the_flag(project, capsys, fake_rou
 def test_a_failed_request_does_not_change_the_upsert(project, capsys, fake_routes, monkeypatch):
     root, change = project
     git(root, "remote", "add", "origin", "https://github.com/o/r.git")
-    gate_json(change, "b", "park", c.NEEDS_HUMAN_LABEL)
+    gate_json(change, "design", "park", c.NEEDS_HUMAN_LABEL)
     monkeypatch.setattr(
         github, "request_reviewers", lambda *a, **k: {"ok": False, "reason": "HTTP 422"}
     )
@@ -267,7 +269,7 @@ def _runner_project(root: Path, monkeypatch, default_owner: str | None) -> None:
 def test_on_a_runner_the_default_branch_names_the_owner(project, capsys, fake_routes, monkeypatch):
     root, change = project
     _runner_project(root, monkeypatch, "realowner")
-    gate_json(change, "b", "park", c.NEEDS_HUMAN_LABEL)
+    gate_json(change, "design", "park", c.NEEDS_HUMAN_LABEL)
     out = upsert(capsys, root, "--request-review")
     assert out["review_request"]["owner"] == "realowner"
     assert fake_routes["calls"] == [("request", 9, ["realowner"])]
@@ -287,7 +289,7 @@ def test_on_a_runner_a_default_copy_without_owner_falls_to_the_repository_owner(
     git(root, "commit", "-q", "-am", "the head names its own owner")
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "main")
-    gate_json(change, "b", "park", c.NEEDS_HUMAN_LABEL)
+    gate_json(change, "design", "park", c.NEEDS_HUMAN_LABEL)
     out = upsert(capsys, root, "--request-review")
     assert out["review_request"]["owner"] == OWNER
     assert fake_routes["calls"] == [("request", 9, [OWNER])]
@@ -299,7 +301,7 @@ def test_a_new_pr_that_cannot_be_read_back_is_requested_as_nobody_s(
     """The re-read of a just-created PR failed: it is open and nobody is requested yet."""
     root, change = project
     git(root, "remote", "add", "origin", "https://github.com/o/r.git")
-    gate_json(change, "b", "wait", c.ready_label("design"))
+    gate_json(change, "design", "wait", c.ready_label("design"))
     monkeypatch.setattr(github, "pr_by_number", lambda *a, **k: {"ok": False, "reason": "HTTP 502"})
     out = upsert(capsys, root, "--request-review")
     assert out["created"] is True and out["review_request"]["action"] == "requested"
@@ -309,7 +311,7 @@ def test_a_new_pr_that_cannot_be_read_back_is_requested_as_nobody_s(
 def test_an_error_in_the_sync_never_changes_the_upsert(project, capsys, fake_routes, monkeypatch):
     root, change = project
     git(root, "remote", "add", "origin", "https://github.com/o/r.git")
-    gate_json(change, "b", "park", c.NEEDS_HUMAN_LABEL)
+    gate_json(change, "design", "park", c.NEEDS_HUMAN_LABEL)
 
     def boom(*_a, **_k):
         raise RuntimeError("unexpected")
@@ -328,7 +330,7 @@ def test_on_a_runner_without_the_default_branch_copy_nobody_is_requested(
 ):
     root, change = project
     _runner_project(root, monkeypatch, None)
-    gate_json(change, "b", "park", c.NEEDS_HUMAN_LABEL)
+    gate_json(change, "design", "park", c.NEEDS_HUMAN_LABEL)
     out = upsert(capsys, root, "--request-review")
     assert out["route"] == "api" and "decision 34" in out["review_request"]["skipped"]
     assert fake_routes["calls"] == []
@@ -355,10 +357,10 @@ def test_the_runner_s_publishers_pass_request_review(tmp_path, monkeypatch):
     monkeypatch.setattr(run_phase, "_github", lambda: Client)
     monkeypatch.setattr(run_phase, "park", lambda *a, **k: {"ok": True})
     monkeypatch.setattr(run_phase, "write_park_result", lambda *a, **k: None)
-    out = run_phase.ensure_pr(tmp_path, tmp_path, "0001", "c", REPO, {"GITHUB_TOKEN": "t"})
+    out = run_phase.ensure_pr(tmp_path, tmp_path, "0001", "build", REPO, {"GITHUB_TOKEN": "t"})
     assert out["ok"] and seen[-1][0] == "upsert" and seen[-1][-1] == "--request-review"
     st = type("St", (), {"phase": "build", "id": "0001"})()
-    run_phase.park_and_publish(tmp_path, tmp_path, tmp_path, st, "c", "gate: red")
+    run_phase.park_and_publish(tmp_path, tmp_path, tmp_path, st, "build", "gate: red")
     upserts = [argv for argv in seen if argv[0] == "upsert"]
     assert len(upserts) == 2 and "--request-review" in upserts[-1]
 

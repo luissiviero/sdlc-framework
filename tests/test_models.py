@@ -258,14 +258,16 @@ def test_an_unrecognized_model_that_ran_all_the_same_is_not_reported():
     ]
 
 
-def test_session_model_reads_the_letter_keys_of_an_older_sdlc_yaml():
-    """R45: ``session_model: {c: ...}`` still names the build run's model; the name's entry
-    wins over the letter's when both are there, and a letter passed as the phase works too."""
+def test_session_model_no_longer_reads_the_letter_keys_since_1_0_48():
+    """R45: since 1.0.48 (R45's sixth PR) ``session_model: {c: ...}`` names no run's model:
+    the build run falls back to ``default``, and only the name's entry is read."""
     old = {"session_model": {"default": "claude-opus-5-5", "c": "claude-fable-5-1"}}
-    assert models.session_model(old, "build") == "claude-fable-5-1"
-    assert models.session_model(old, "c") == "claude-fable-5-1"
+    assert models.session_model(old, "build") == "claude-opus-5-5"
     assert models.session_model(old, "test") == "claude-opus-5-5"
+    assert models.session_model({"session_model": {"c": "claude-fable-5-1"}}, "build") is None
     both = {"session_model": {"c": "claude-fable-5-1", "build": "claude-sonnet-5"}}
     assert models.session_model(both, "build") == "claude-sonnet-5"
     review = {"session_model": {"default": "claude-opus-5-5", "e": "claude-fable-5-1"}}
-    assert models.session_model(review, "review") == "claude-fable-5-1"  # review is deploy's
+    assert models.session_model(review, "review") == "claude-opus-5-5"  # review is deploy's
+    named = {"session_model": {"default": "claude-opus-5-5", "deploy": "claude-fable-5-1"}}
+    assert models.session_model(named, "review") == "claude-fable-5-1"

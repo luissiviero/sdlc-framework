@@ -127,7 +127,7 @@ def drive_timeout_seconds(config: Any, gate_phase: str | None) -> int | None:
     if checks.drive_from_config(config) is None:
         return None
     seconds = checks.configured_drive_timeout(config)
-    if c.phase_name(gate_phase) != DRIVE_PHASE:
+    if gate_phase != DRIVE_PHASE:
         seconds = min(seconds, DRIVE_TIMEOUT_MAX_SECONDS)
     return seconds
 
@@ -192,19 +192,21 @@ def panel_cap(ctx: GateContext) -> int:
 def classification_for(ctx: GateContext) -> str | None:
     """The adversarial reviewer's routine/non-routine call for this phase, or the latest one
     from an earlier gate (a classification made at (design) tightens build and test)."""
-    return classification_in(ctx.evidence_dir, ctx.phase)
+    return classification_in(ctx.evidence_dir, ctx.phase, merged=False)
 
 
-def classification_in(evidence_dir: Path, phase: str) -> str | None:
+def classification_in(evidence_dir: Path, phase: str, merged: bool = True) -> str | None:
     """``classification_for`` over an evidence folder: the counters read a shipped change's
-    class the way the cap does (R26 part 2)."""
+    class the way the cap does (R26 part 2). With ``merged`` (the counters), a reader of
+    history too (choice 273): a change merged before R45 keeps ``adversarial-review-c.json``,
+    read for good; the cap of a live change reads the name's file only."""
     from gate.checks import load_verdict
 
+    find = c.merged_phase_file if merged else c.phase_file
     for at in dict.fromkeys((c.phase_name(phase), c.TEST, c.BUILD, c.DESIGN)):
         if at not in c.PHASES:
             continue
-        # R45: the verdict an older plugin wrote (``adversarial-review-c.json``) is read too
-        data, _ = load_verdict(c.phase_file(evidence_dir, art.ADVERSARIAL_VERDICT, at))
+        data, _ = load_verdict(find(evidence_dir, art.ADVERSARIAL_VERDICT, at))
         if data is not None:
             return data.get("classification")
     return None
@@ -213,7 +215,7 @@ def classification_in(evidence_dir: Path, phase: str) -> str | None:
 def read_run(ctx: GateContext) -> dict[str, Any]:
     import json
 
-    path = c.phase_file(ctx.evidence_dir, RUN_FILE, ctx.phase)  # ``run-c.json`` from before R45
+    path = c.phase_file(ctx.evidence_dir, RUN_FILE, ctx.phase)
     if not path.is_file():
         return {}
     try:
@@ -249,12 +251,8 @@ def read_spend_ledger(evidence_dir: Path) -> dict[str, Any]:
         return empty
     if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
         return empty
-    # R45: a ``run`` an older plugin wrote as a letter (``c``) or as ``triage`` is read as
-    # its current name
     entries = [
-        {**e, "run": _run_name(e.get("run"))} if isinstance(e.get("run"), str) else e
-        for e in data["entries"]
-        if isinstance(e, dict) and _spend(e.get("usd")) is not None
+        e for e in data["entries"] if isinstance(e, dict) and _spend(e.get("usd")) is not None
     ]
     return {"total_usd": round(sum(float(e["usd"]) for e in entries), 6), "entries": entries}
 
@@ -263,7 +261,7 @@ def record_spend_entry(
     evidence_dir: Path, run: str, source: str | None, usd: float, at: str | None = None
 ) -> dict[str, Any]:
     """Add one session's cost to the change's ledger and return the ledger. ``run`` names
-    the run that spent it (``build``, ``review``, ``fix``; a letter is written as its name);
+    the run that spent it (``build``, ``review``, ``fix``);
     ``source`` the stored result it was read from (``claude-fix-2.json``), which makes the entry
     unique: a second record of the same source (a repeated step) replaces its entry instead of
     counting it twice."""
@@ -273,7 +271,7 @@ def record_spend_entry(
         raise ValueError(f"a spend figure must be a finite, non-negative number, not {usd!r}")
     ledger = read_spend_ledger(evidence_dir)
     at = at or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    entry = {"run": c.phase_name(run), "source": source, "usd": float(usd), "at": at}
+    entry = {"run": run, "source": source, "usd": float(usd), "at": at}
     entries = [e for e in ledger["entries"] if not (source and e.get("source") == source)] + [entry]
     ledger = {"total_usd": round(sum(float(e["usd"]) for e in entries), 6), "entries": entries}
     path = Path(evidence_dir) / SPEND_FILE
@@ -295,9 +293,6 @@ def record_spend_entry(
 # On the subscription token a run cannot be capped in dollars (NOTES §2), so its lines are
 # counted in runs and time.
 RUN_RECORD_RE = re.compile(r"^claude-(?P<run>[a-z]+)(?:-(?P<n>\d+))?\.json$")
-# R45's PR 2: the explain step's result was ``claude-triage[-<n>].json`` before it; read for
-# one release as the ``explain`` run's
-LEGACY_RUN_NAMES = {"triage": "explain"}
 RUN_META = "sdlc_run"
 CREDENTIAL_WORDS = {"oauth": "subscription token", "api_key": "API key"}
 
@@ -311,12 +306,6 @@ def run_record_paths(evidence_dir: Path) -> list[Path]:
     """The stored session results in ``evidence_dir``, ordered by run and number."""
     found = [p for p in Path(evidence_dir).glob("claude-*.json") if RUN_RECORD_RE.match(p.name)]
     return sorted(found, key=_record_order)
-
-
-def _run_name(run: str) -> str:
-    """The run a stored result's name says, under its current name (R45)."""
-    name = c.phase_name(run)
-    return LEGACY_RUN_NAMES.get(name, name)
 
 
 def run_lines(evidence_dir: Path) -> list[dict[str, Any]]:
@@ -343,9 +332,7 @@ def run_lines(evidence_dir: Path) -> list[dict[str, Any]]:
         lines.append(
             {
                 "source": path.name,
-                # R45: ``claude-c.json`` from an older plugin is the build run's, and
-                # ``claude-triage.json`` the explain step's
-                "run": _run_name(RUN_RECORD_RE.match(path.name).group("run")),
+                "run": RUN_RECORD_RE.match(path.name).group("run"),
                 "usd": _spend(data.get("total_cost_usd")),
                 "credential": meta.get("credential"),
                 "seconds": round(seconds, 1) if seconds is not None else None,

@@ -21,9 +21,8 @@ This module holds the parts the gate, the PR description, the runner and the rel
   the file the Security & policy role owns once R28 builds it, written until then by the
   adversarial reviewer at design to test and by the REVIEW.md pass at (deploy): one ``## <item>``
   section per hit item, with the reviewer's verdict on it (``- Verdict: continue|park``) and
-  what the change does to it, what could break and how to undo it. A brief an older plugin
-  wrote names the field ``Word`` and the word ``escalate``: both read as today's for one
-  release (R45 rows 62 and N17);
+  what the change does to it, what could break and how to undo it (R45 rows 62 and N17: the
+  field was ``Word`` and the word ``escalate`` until plugin 1.0.43);
 - **the park** (``parked_items``): the brief's verdict ``park`` on a hit item, or a ``park``
   verdict whose reasons name a hit item;
 - **the banner** (``banner_entries``, ``banner_lines``, ``banner_shown``) and **the
@@ -56,9 +55,8 @@ CHANGES_PREFIX = "changes/"
 BRIEF_DIR = "roles"
 BRIEF_FILE = "security-policy-{phase}.md"
 BRIEF_FIELDS = ("What the change does to it", "What could break", "How to undo it")
-# the brief's field that holds the reviewer's verdict on the item, ``- Verdict:``; ``Word`` is
-# the name an older plugin wrote, read for one release (R45 row N17)
-VERDICT_FIELDS = ("verdict", "word")
+# the brief's field that holds the reviewer's verdict on the item, ``- Verdict:`` (R45 row N17)
+VERDICT_FIELD = "verdict"
 BANNER_HEADING = "**Needs your close look**"
 ACCEPT_ACT = "risk accepted"
 ACCEPT_VIA = "merge"
@@ -174,14 +172,13 @@ def _as_item(raw: RiskItem | str | dict[str, Any]) -> RiskItem | None:
 
 # --- the brief per hit item ---------------------------------------------------------------------
 def brief_path(change_dir: Path, phase: str) -> Path:
-    """The brief of ``phase``'s gate to read: ``security-policy-<name>.md``, or the letter's
-    an older plugin's reviewer wrote (``security-policy-c.md``) when only that exists (R45)."""
+    """The brief of ``phase``'s gate: ``security-policy-<name>.md``."""
     return c.phase_file(Path(change_dir) / art.EVIDENCE_DIR / BRIEF_DIR, BRIEF_FILE, phase)
 
 
 def brief_rel(phase: str) -> str:
-    """Where the reviewer writes the brief: always under the phase's name (R45)."""
-    name = BRIEF_FILE.format(phase=c.phase_name(phase))
+    """Where the reviewer writes the brief, relative to the change folder."""
+    name = BRIEF_FILE.format(phase=phase)
     return f"{art.EVIDENCE_DIR}/{BRIEF_DIR}/{name}"
 
 
@@ -192,8 +189,7 @@ def parse_brief(text: str | None) -> dict[str, dict[str, str]]:
     """``{item lowercased: {"item", "verdict", <field>: <text>}}`` from a brief file: one
     ``## `` section per item, its lines ``- Verdict: continue|park`` and ``- <field>: <text>``
     (``BRIEF_FIELDS``). A section without a valid verdict reads as ``continue``; a missing
-    field is absent. Unreadable or empty text gives {}. A brief an older plugin wrote, with
-    ``- Word: continue|escalate``, reads the same (``art.verdict_word``; R45, one release)."""
+    field is absent. Unreadable or empty text gives {}."""
     out: dict[str, dict[str, str]] = {}
     for heading, body in art.split_sections(text or "").items():
         if not heading.startswith("## "):
@@ -207,7 +203,7 @@ def parse_brief(text: str | None) -> dict[str, dict[str, str]]:
             if not m:
                 continue
             key, value = m.group("key").strip(), m.group("value").strip()
-            if key.lower() in VERDICT_FIELDS:
+            if key.lower() == VERDICT_FIELD:
                 word = art.verdict_word(value.strip("`*").strip().lower())
                 entry["verdict"] = word or art.VERDICT_CONTINUE
             else:
@@ -227,7 +223,7 @@ def parked_items(
 ) -> list[str]:
     """The hit items the gate's reviewer says park on: the brief's verdict ``park`` on the
     item, or a ``park`` verdict of the adversarial reviewer whose reasons name it (its
-    words, as the item match reads them). ``escalate``, an older plugin's word, is ``park``."""
+    words, as the item match reads them)."""
     reasons: list[str] = []
     if isinstance(verdict, dict) and art.verdict_word(verdict.get("verdict")) == art.VERDICT_PARK:
         reasons = [str(r) for r in verdict.get("reasons") or []]
@@ -293,7 +289,7 @@ def acceptance_line(
         "pr": int(pr),
         "head": head or None,
         "details": {
-            "phase": c.phase_name(phase),
+            "phase": phase,
             "items": list(items),
             "banner_shown": bool(banner_shown),
         },
@@ -350,7 +346,6 @@ def record_acceptance(st: Any, line: dict[str, Any]) -> bool:
 
 # --- the banner ---------------------------------------------------------------------------------
 def _gate_record(change_dir: Path, phase: str) -> dict[str, Any] | None:
-    # R45: ``gate-build.json``, or ``gate-c.json`` from an older plugin
     path = c.phase_file(Path(change_dir) / art.EVIDENCE_DIR, art.GATE_RESULT, phase)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -389,7 +384,6 @@ def banner_entries(change_dir: Path, phase: str, st: Any) -> list[dict[str, Any]
     order first found: ``{item, first, where, accepted, brief, brief_phase}``. ``accepted`` is
     how an earlier act accepted it, or None when the PR's merge is asked to; ``brief`` is the
     newest brief on it among those gates (None when no reviewer wrote one)."""
-    phase = c.phase_name(phase)
     phases = BANNER_PHASES.get(phase, ())
     if phase == c.INTENT and str(getattr(st, "id", "")) != c.INIT_CHANGE_ID:
         return []  # a change's own folder never hits; (intent) asks only on the install PR
@@ -432,7 +426,7 @@ def plan_grown(change_dir: Path, phase: str) -> list[str] | None:
     port, no park and no cap change). The newest record with a ``plan_sync`` check decides,
     never an older one behind it; None when it holds no growth (a record written before
     1.0.39, or no approved copy), at intent and design, and before any such record."""
-    for gate_phase in reversed(BANNER_PHASES.get(c.phase_name(phase), ())):
+    for gate_phase in reversed(BANNER_PHASES.get(phase, ())):
         if gate_phase not in (c.BUILD, c.TEST, c.DEPLOY):
             continue
         for check in (_gate_record(change_dir, gate_phase) or {}).get("checks") or []:
@@ -449,7 +443,6 @@ def banner_lines(change_dir: Path, phase: str, st: Any) -> list[str]:
     """The banner's risk lines for the phase's PR, or [] when nothing hit. The first line
     carries ``BANNER_HEADING``; each item's line starts with ``- `<item>```, which
     ``banner_shown`` looks for."""
-    phase = c.phase_name(phase)
     entries = banner_entries(change_dir, phase, st)
     declared: list[str] = []
     for gate_phase in BANNER_PHASES.get(phase, ()):

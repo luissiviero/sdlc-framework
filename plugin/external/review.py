@@ -9,8 +9,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from state.conventions import phase_name
-
 BRIEFS = Path(__file__).resolve().parent / "briefs"
 PROVIDER = "gemini"
 MARKER = "<!-- sdlc:second-opinion -->"
@@ -47,10 +45,9 @@ SCHEMA: dict[str, Any] = {
 
 
 def prompt(phase: str, change_id: str, pieces: list[dict[str, str]], left_out: list[Any]) -> str:
-    """The brief of ``phase`` (``briefs/design.md``, ``briefs/deploy.md``; a letter is read as
-    its name, R45), the change's pieces after it."""
-    name = phase_name(phase)
-    brief = (BRIEFS / f"{name}.md").read_text(encoding="utf-8").replace("{change_id}", change_id)
+    """The brief of ``phase`` (``briefs/design.md``, ``briefs/deploy.md``), the change's pieces
+    after it."""
+    brief = (BRIEFS / f"{phase}.md").read_text(encoding="utf-8").replace("{change_id}", change_id)
     parts = [brief]
     if left_out:
         names = "; ".join(f"{x['path']} ({x['why']})" for x in left_out)
@@ -120,8 +117,6 @@ def comment(record: dict[str, Any]) -> str:
         f"phase ({record.get('phase')}), commit `{head}`**",
         "",
     ]
-    if record.get("config_note"):  # R45: the old key ``external_review``, said once per record
-        lines += [f"{_plain(record['config_note'])}.", ""]
     if not record.get("ran"):
         lines.append(f"Not run: {_plain(record.get('reason') or 'no reason recorded')}.")
         return "\n".join(lines) + "\n"

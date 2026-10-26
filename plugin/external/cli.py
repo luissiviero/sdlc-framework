@@ -12,15 +12,12 @@ strips it) and its sandbox does not reach the Gemini host. By hand it runs the s
 a terminal where the owner set the key for that window only.
 
 On: ``sdlc.yaml: second_opinion: {model: <id>, phases: [design, deploy]}`` on the default
-branch (``--ref``), as the pin is read (R45: the letters ``[b, e]`` an older file holds are
-read as the names); absent means off and the command says so and stops. Until plugin 1.0.44
-the key was ``external_review`` (R45, decision 39, row N11): a file that still holds it is
-read as ``second_opinion`` for one release; with both keys present ``second_opinion`` is
-read, and either way the record's ``config_note`` names the old key once, never a refusal
-(as ``conventions.retired_settings_note`` treats a retired key).
+branch (``--ref``), as the pin is read; absent means off and the command says so and stops.
+Until plugin 1.0.44 the key was ``external_review`` and the phases the letters ``[b, e]``
+(R45, decision 39, row N11); since 1.0.48 neither is read.
 ``--model`` runs it by hand whatever ``sdlc.yaml`` says. With ``--repo`` it reviews the head
 of the change's open pull request (``sdlc/<id>/design`` at design, ``sdlc/<id>/build`` at
-deploy, or the letter branch of a change in flight before R45) and
+deploy) and
 ``--post`` puts the record on that pull request as one comment. Every failure is the
 record's "not run: <reason>"; the exit code is 0 whenever the arguments parse. An "off"
 record writes no file and posts nothing: the printed record is the only trace (1.0.24).
@@ -53,34 +50,19 @@ from state.conventions import SUPERSEDED_LABEL  # noqa: E402
 
 PHASES = (conv.DESIGN, conv.DEPLOY)
 CONFIG_KEY = "second_opinion"
-# R45 (decision 39, row N11): the key until plugin 1.0.44, read for one release
-LEGACY_CONFIG_KEY = "external_review"
 # who posts the record: the job's `GITHUB_TOKEN` is the workflow token
 WORKFLOW_BOT = "github-actions[bot]"
-
-
-def branches(phase: str, change_id: str) -> tuple[str, str]:
-    """The heads of the change's pull request at ``phase``: the name's branch
-    (``sdlc/<id>/design``, ``sdlc/<id>/build``), then the letter's an older plugin cut (R45)."""
-    return conv.work_branches(change_id, phase)
 
 
 def _find_pr(
     github: Any, repo: str, phase: str, change_id: str, state: str, root: Path
 ) -> tuple[str, dict[str, Any]]:
-    """``(branch, found)``: the first of ``branches`` with a pull request in ``state``; the
-    name's branch and its answer when neither has one."""
-    heads = branches(phase, change_id)
-    first: dict[str, Any] | None = None
-    for head in heads:
-        if state == "open":
-            found = github.find_open_pr(repo, head, cwd=root)
-        else:
-            found = github.find_pr(repo, head, state, cwd=root)
-        if found.get("number"):
-            return head, found
-        first = found if first is None else first
-    return heads[0], first or {}
+    """``(branch, found)``: the head of the change's pull request at ``phase``
+    (``sdlc/<id>/design``, ``sdlc/<id>/build``) and the pull request in ``state`` it has."""
+    head = conv.work_branch(change_id, phase)
+    if state == "open":
+        return head, github.find_open_pr(repo, head, cwd=root)
+    return head, github.find_pr(repo, head, state, cwd=root)
 
 
 def _github():
@@ -107,34 +89,15 @@ def read_config(root: Path, ref: str | None) -> dict[str, Any]:
 
 
 def settings(config: dict[str, Any]) -> dict[str, Any]:
-    """The ``second_opinion`` block, else the old ``external_review`` one (R45, one release);
-    {} when neither is a mapping."""
+    """The ``second_opinion`` block; {} when it is not a mapping."""
     value = config.get(CONFIG_KEY)
-    if value is None:
-        value = config.get(LEGACY_CONFIG_KEY)
     return value if isinstance(value, dict) else {}
 
 
-def config_note(config: dict[str, Any]) -> str:
-    """One line naming the old key when ``sdlc.yaml`` still holds it, or ``""``: read as the
-    new one when alone, not read beside it. Never a refusal: the second opinion is advisory
-    and a retired key is reported, not refused (``conventions.retired_settings_note``)."""
-    if config.get(LEGACY_CONFIG_KEY) is None:
-        return ""
-    if config.get(CONFIG_KEY) is None:
-        return (
-            f"sdlc.yaml: {LEGACY_CONFIG_KEY} is read as {CONFIG_KEY} for one release (R45); "
-            f"rename the key to {CONFIG_KEY}"
-        )
-    return f"sdlc.yaml: {LEGACY_CONFIG_KEY} is not read beside {CONFIG_KEY}; remove it"
-
-
 def turned_on(config: dict[str, Any], phase: str) -> bool:
-    """``phase`` is listed in ``second_opinion.phases``: by name, or by the letter an older
-    file holds (``[b, e]``, R45)."""
+    """``phase`` is listed in ``second_opinion.phases`` by its name."""
     phases = settings(config).get("phases")
-    listed = [conv.phase_name(str(p)) for p in phases] if isinstance(phases, list) else []
-    return conv.phase_name(phase) in listed
+    return isinstance(phases, list) and phase in [str(p).strip() for p in phases]
 
 
 def max_chars(config: dict[str, Any]) -> int:
@@ -158,7 +121,6 @@ def given_on_head(repo: str, pr: int, head: str, root: Path) -> str | None:
 def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
     root = Path(args.root).resolve()
     config = read_config(root, args.ref)
-    args.phase = conv.phase_name(args.phase)
     if not args.id:
         parsed = conv.parse_branch(args.head_ref or "")
         args.id = parsed[0] if parsed else ""
@@ -171,9 +133,6 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
         "model": args.model or settings(config).get("model"),
         "pr": None,
     }
-    note = config_note(config)
-    if note:
-        record["config_note"] = note
     if not args.model and settings(config) and not isinstance(settings(config).get("phases"), list):
         # a block the owner wrote but that turns nothing on is said, never silent (1.0.24)
         record["reason"] = f"sdlc.yaml {CONFIG_KEY}.phases is not a list, as [design, deploy]"
@@ -258,8 +217,7 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
 
 
 def _fast_lane_b(root: Path, head: str, change_id: str) -> dict[str, Any] | None:
-    """``fast_lane.design`` (or the letter's ``fast_lane.b`` an older plugin wrote, R45) of
-    the change's ``status.yaml`` at ``head``: the record of a build the
+    """``fast_lane.design`` of the change's ``status.yaml`` at ``head``: the record of a build the
     fast lane started (decision 30), None off the fast lane or when unreadable. Its ``pr``,
     the design PR, is optional (``state/status.py FAST_LANE_REQUIRED``)."""
     folder = bundle.change_folder(root, head, change_id)
@@ -271,7 +229,7 @@ def _fast_lane_b(root: Path, head: str, change_id: str) -> dict[str, Any] | None
     fast = status.get("fast_lane") if isinstance(status, dict) else None
     entry = None
     if isinstance(fast, dict):
-        entry = fast.get(conv.DESIGN, fast.get(conv.PHASE_LETTERS[conv.DESIGN]))
+        entry = fast.get(conv.DESIGN)
     return entry if isinstance(entry, dict) else None
 
 
@@ -281,15 +239,13 @@ def _pr_number(value: Any) -> int | None:
 
 def _the_opinion(comment: dict[str, Any]) -> bool:
     """A design record the second-opinion job posted: the workflow token's identity, never
-    another App's (``given_on_head`` reads any bot, for a verdict it only skips on). A record
-    an older plugin posted says ``phase (b)`` (R45)."""
+    another App's (``given_on_head`` reads any bot, for a verdict it only skips on)."""
     body = comment.get("body") or ""
-    letter = conv.PHASE_LETTERS[conv.DESIGN]
     return (
         comment.get("type") == "Bot"
         and comment.get("author") == WORKFLOW_BOT
         and body.startswith(review_mod.MARKER)
-        and any(f"phase ({p})" in body for p in (conv.DESIGN, letter))
+        and f"phase ({conv.DESIGN})" in body
     )
 
 
@@ -299,7 +255,7 @@ def carry_design_opinion(args: argparse.Namespace, config: dict[str, Any]) -> di
     off,
     the change took no fast lane, or its design PR is not closed as superseded (the owner
     reads the opinion there). A reason without ``text`` when GitHub could not be read."""
-    phase = conv.phase_name(args.phase)
+    phase = args.phase
     if phase != conv.DEPLOY or not args.repo or not args.id or not turned_on(config, conv.DESIGN):
         return None
     root = Path(args.root).resolve()
@@ -407,8 +363,7 @@ def main(argv: list[str] | None = None) -> int:
     rv.add_argument("--root", default=".")
     rv.add_argument("--id", default="", help="the change id (else read from --head-ref)")
     rv.add_argument("--head-ref", default="", help="the work branch sdlc/<id>/<phase>")
-    # R45: a letter (``--phase b``) is read as its name for one release
-    rv.add_argument("--phase", required=True, type=conv.phase_name, choices=PHASES)
+    rv.add_argument("--phase", required=True, choices=PHASES)
     rv.add_argument("--repo", help="owner/name: review the head of the change's open PR")
     rv.add_argument("--ref", help="the default branch: sdlc.yaml and the deploy merge base")
     rv.add_argument("--head", help="the commit to review (default: the PR's head, else HEAD)")

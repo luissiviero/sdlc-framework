@@ -14,11 +14,10 @@ release that ran. Neither is a phase run: no ``claude`` starts and no hook fires
 (``release/approval.py``; article p.36-37). Every step prints one line
 ``release: <key>: <value>``:
 
-1. ``config``: ``sdlc.yaml: deploy`` (action, production, command);
+1. ``config``: ``sdlc.yaml: deploy`` (action, production_gate, command);
 2. ``change``: ``--change-id``, else the one ``changes/<id>-<slug>/`` the PR touches (zero or
    several -> ``skip``);
-3. ``pr``: the PR must be merged and be the change's build PR, head ``sdlc/<id>/build`` or
-   the letter's ``sdlc/<id>/c`` of a change in flight before R45 (else
+3. ``pr``: the PR must be merged and be the change's build PR, head ``sdlc/<id>/build`` (else
    ``skip``: an owner's PR that touches ``changes/<id>-*/`` after the merge never releases
    again);
 4. ``phase``: ``status.yaml`` read as on the default branch must be at phase deploy (else
@@ -252,9 +251,10 @@ def _remote_build_branch(
     root: Path, change_id: str, git: Callable[..., tuple[int, str]]
 ) -> tuple[str, bool]:
     """``(branch, on the remote)`` of the change's build branch: ``sdlc/<id>/build``, or the
-    ``sdlc/<id>/c`` an older plugin cut when only that one is on ``origin`` (R45: a change in
-    flight keeps its branch). ``RemoteUnreadable`` when ``origin`` cannot be asked."""
-    names = c.work_branches(change_id, c.BUILD)
+    ``sdlc/<id>/c`` an older plugin cut when only that one is on ``origin``: a reader of
+    history (choice 273), since a released change's record stays on its remote branch, which
+    is never renamed. ``RemoteUnreadable`` when ``origin`` cannot be asked."""
+    names = c.branch_names(change_id, c.BUILD)
     for name in names:
         if _remote_ref(root, name, git, heads=True):
             return name, True
@@ -272,7 +272,7 @@ def remote_record(
 ) -> tuple[Any, str]:
     """(the release record the remote carries, or None; where it came from or why there is
     none). The ref ``refs/sdlc/released/<id>`` first, then the work branch ``sdlc/<id>/build``
-    (or the letter's ``sdlc/<id>/c`` of a change in flight before R45).
+    (or the letter's ``sdlc/<id>/c`` of a change cut before R45, a reader of history).
     A remote that cannot be asked, fetched or read raises ``RemoteUnreadable``: the caller
     fails closed. No ``origin`` remote (a by-hand run on a bare checkout) is "no remote"."""
     code, remotes = git(root, "remote")
@@ -408,8 +408,8 @@ def store_release_record(
 ) -> tuple[bool, str]:
     """Commit the release record into ``status.yaml`` and push it: (stored, what happened).
 
-    The commit sits on the work branch's tip when ``sdlc/<id>/build`` (or a change in flight's
-    ``sdlc/<id>/c``) is still on the remote
+    The commit sits on the work branch's tip when ``sdlc/<id>/build`` (or a change's
+    ``sdlc/<id>/c`` cut before R45) is still on the remote
     (a later pull request from it then carries the record), else on the ref's tip when the
     ref is there, else on the merge commit the release checked out; it is pushed to the
     branch (when there) and always to the ref
@@ -773,8 +773,7 @@ def _release(args, env, github, git, record_git, say) -> int:
         say("skip", f"pull request #{args.pr} is not merged")
         return 0
     build_head = c.work_branch(change_id, c.BUILD)
-    # R45: the build PR of a change in flight before 1.0.43 has the letter head sdlc/<id>/c
-    if pr.get("head_ref") not in c.work_branches(change_id, c.BUILD):
+    if pr.get("head_ref") != build_head:
         say(
             "skip",
             f"pull request #{args.pr} (head {pr.get('head_ref') or '?'}) is not the build PR "
@@ -819,8 +818,8 @@ def _release(args, env, github, git, record_git, say) -> int:
             "request that run opens carries the result and releases on its merge",
         )
         return 0
-    # R45: the letter's gate-e.json of a change merged by an older plugin is read too
-    gate_file = c.phase_file(change_dir / art.EVIDENCE_DIR, art.GATE_RESULT, c.DEPLOY)
+    # a reader of history (choice 273): a change merged by an older plugin keeps gate-e.json
+    gate_file = c.merged_phase_file(change_dir / art.EVIDENCE_DIR, art.GATE_RESULT, c.DEPLOY)
     try:
         gate_record = json.loads(gate_file.read_text(encoding="utf-8"))
     except (OSError, ValueError):

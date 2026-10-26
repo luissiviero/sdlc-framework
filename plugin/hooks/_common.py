@@ -208,29 +208,24 @@ def config_flag(config: dict[str, Any], *path: str, file: str = SDLC_FILE) -> bo
 
 # R45 (decision 39, row 55; plugin 1.0.45): the key that turns on the production gate is
 # ``deploy.production_gate``; until plugin 1.0.44 it was ``deploy.production``, which read as
-# "this project is production". The old key is read for one release.
+# "this project is production" (read by plugins 1.0.45 to 1.0.47 too, not since 1.0.48).
+# The old key is not read, but refused: a project whose pin moves past 1.0.47 with it would
+# otherwise run with the production gate silently off (the review of R45's sixth PR).
 PRODUCTION_GATE_KEY = "production_gate"
-LEGACY_PRODUCTION_GATE_KEY = "production"
+RETIRED_PRODUCTION_KEY = "production"
 
 
 def production_gate(config: dict[str, Any], file: str = SDLC_FILE) -> bool:
-    """``sdlc.yaml: deploy.production_gate``, else the old ``deploy.production`` (read for one
-    release), by ``config_flag``'s rule: False when absent or null, a ``ConfigError`` for a
-    value that is not a boolean. When both keys are set and disagree, a ``ConfigError`` that
-    names both: the reader fails closed rather than guess which one the owner meant."""
-    new = config_flag(config, "deploy", PRODUCTION_GATE_KEY, file=file)
+    """``sdlc.yaml: deploy.production_gate`` by ``config_flag``'s rule: False when absent or
+    null, a ``ConfigError`` for a value that is not a boolean, and a ``ConfigError`` when the
+    retired ``deploy.production`` is still there (fail closed: the owner renames it)."""
     deploy = config.get("deploy")
-    if not isinstance(deploy, dict) or deploy.get(LEGACY_PRODUCTION_GATE_KEY) is None:
-        return new
-    old = config_flag(config, "deploy", LEGACY_PRODUCTION_GATE_KEY, file=file)
-    if deploy.get(PRODUCTION_GATE_KEY) is None:
-        return old
-    if new != old:
+    if isinstance(deploy, dict) and RETIRED_PRODUCTION_KEY in deploy:
         raise ConfigError(
-            f"{file}: deploy.production_gate is {str(new).lower()} and the old "
-            f"deploy.production is {str(old).lower()}; keep deploy.production_gate only"
+            f"{file}: deploy.{RETIRED_PRODUCTION_KEY} is not read since plugin 1.0.48 (R45): "
+            f"rename it deploy.{PRODUCTION_GATE_KEY}, and keep only that key"
         )
-    return new
+    return config_flag(config, "deploy", PRODUCTION_GATE_KEY, file=file)
 
 
 # --- glob matching, gitignore-style (case-insensitive, like norm()) -------------------------

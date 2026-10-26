@@ -7,8 +7,7 @@ allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(
 
 # /sdlc-intent — the intent phase
 
-Until plugin 1.0.42 this command was `/sdlc-plan`; that name stays one release and points
-here (decision 39, row 8).
+Until plugin 1.0.42 this command was `/sdlc-plan` (decision 39, row 8).
 
 Source: build guide step 11 (article p.10–11, steps 1–5; governance p.11: the accept/reject
 decision "is recorded as the merge"). This is the only interactive phase. Re-runnable: if a
