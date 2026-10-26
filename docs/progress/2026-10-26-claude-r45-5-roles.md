@@ -19,7 +19,12 @@ This PR changes comments only in `plugin/detect/cli.py` and `plugin/detect/runbo
 
 ## Proposed edits for the owner
 - **This repository's review ruleset**, if it still carries `(decision 36, choice 251)` in its name: rename it `review and no direct writes on main` (desktop-only, Settings, Rules). Nothing reads the name.
-- The guardrail templates' new comments (`template/sdlc.yaml`, `template/bands.yaml`) reach a project's copies only by the owner's edit; this repository's own `sdlc.yaml` and `bands.yaml` have no line that names the release label's or Go's actor.
+- The guardrail templates' new comments (`template/sdlc.yaml`, `template/bands.yaml`) reach a project's copies only by the owner's edit. In this repository, two comment lines name the owner's Go; with PR 3's rows for the same lines (`docs/progress/2026-10-25-claude-r45-3-config-values.md`) they become, at the pin move:
+
+| Link | Row | What is there | What it must become |
+|---|---|---|---|
+| `bands.yaml` | 21-22 | `    # go = touches a running system, parks with "what I need from you" until the owner`<br>`    # says Go. A route not listed here is never taken.` | `    # ask = touches a running system, parks with "what I need from you" until the service`<br>`    # owner says Go. A route not listed here is never taken.` |
+| `sdlc.yaml` | 64 | `  # or go (touches a running system; waits for the owner's "Go" as a parked item)` | `  # or ask (touches a running system; waits for the service owner's "Go" as a parked item)` |
 
 ## What the owner does
 | When | Act |
