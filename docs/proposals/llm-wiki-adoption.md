@@ -30,7 +30,7 @@ generated: { by: sdlc-framework-session/claude-llm-wiki-sdlc-framework-g10zr0, a
 ---
 
 # The LLM wiki pattern in the framework and in the projects it drives
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(a)` -> intent; `(b)` -> design; `(c)` -> build; `(e)` -> deploy; `/sdlc-plan` -> `/sdlc-intent`. \
 **Status: accepted by the owner on 2026-10-19 (choice 236), every recommendation as written below.** It adds ROADMAP R55, R56 and R57, annotates R2, R42 and R45, and moves no existing rank.
 
 ## The pattern, and where the framework stands

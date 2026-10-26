@@ -18,7 +18,7 @@ generated: { by: sdlc-framework-session/pr-audit, at: 2026-10-08T16:30:00Z }
 ---
 
 # The accept verb
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(e)` -> deploy. \
 **Status: accepted by the owner on 2026-10-08 (roadmap R6), to be built after change 0002 and R5.** Nothing is built. It needs a decision recorded before its intent, because it adds an un-park verb to decision 24. *[2026-10-20: its decision is recorded: decision 28, accepted 2026-10-13 (PR #168), which amends 24 (`docs/decisions/28.md`)]*
 
 ## The problem

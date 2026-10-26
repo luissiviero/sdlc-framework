@@ -27,7 +27,7 @@ generated: { by: sdlc-framework-session/ccr-9171b99a-q6u17y, at: 2026-10-23T12:0
 ---
 
 # Changes in flight, ordered and warned, and a project coordinator that is stateless beyond the repository
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(b)` -> design; `(e)` -> deploy; `/sdlc-plan` -> `/sdlc-intent`; `escalate` -> `park`. \
 **Status: accepted on 2026-10-23 (the owner, choice 264; ROADMAP R66), built after the real-project trial.** Nothing is built. The study behind it is `docs/reviews/2026-10-23-parallelism-inventory.md`; this file carries only what is to be built and the one design rule the owner fixed.
 
 ## The problem

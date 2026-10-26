@@ -30,7 +30,7 @@ generated: { by: sdlc-framework-session/ccr-20b39ad0-kcymdd, at: 2026-10-14T15:3
 ---
 
 # The owner is shown what to do at every step
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(a)` -> intent; `(b)` -> design; `(c)` -> build; `(d)` -> test; `(e)` -> deploy; `(f)` -> maintain; `a` -> `intent`; `sdlc:e-ready` -> `sdlc:deploy-ready`; `sdlc:c-approved` -> none, decision 37 removed it (decision 39, point 2); `sdlc:d-approved` -> none, decision 37 removed it (decision 39, point 2); `/sdlc-plan` -> `/sdlc-intent`; `sdlc-plan.md` -> `sdlc-intent.md`; `schedule` -> `sdlc:schedule` (the label); `deploy.production` -> `deploy.production_gate`. \
 **Status: proposed (roadmap R19), from study entry T27, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-14 (PR #208); rank 29; the rank is read from ROADMAP's Order column]* Nothing is built. Not a crosswalk row of its own: recorded from the owner's request of 2026-10-07, option c of three (deterministic guidance on the surfaces the owner already reads). It follows R14, whose per-item Proof line is this proposal's to render; its "Next for you" line is placed in the digest by R20. The `@claude` act is R17's, which comes before this proposal in the order: part 1 renders the `@claude` row once R17 has shipped, and whichever of the two is built second adds the row.
 
 ## The problem

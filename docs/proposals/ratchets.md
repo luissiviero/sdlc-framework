@@ -33,7 +33,7 @@ generated: { by: sdlc-framework-session/ccr-c6d8a9c3-3s7q61, at: 2026-10-13T21:3
 ---
 
 # The bar is lowered only by the owner: dropped tests and eval cases are findings, and the counts are ratchets
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(a)` -> intent; `(b)` -> design; `(c)` -> build; `(d)` -> test; `(e)` -> deploy; `(f)` -> maintain; `sdlc:a-ready` -> `sdlc:intent-ready`; `incident` -> `sdlc:triage` (the label). \
 **Status: proposed from the ArtCraft-versus-framework study of 2026-10-13 (row A3), checked against the code before it was written, and accepted the same day.** Nothing is built. *[2026-10-20: change 1 built as change 0005, PR #211, `v1.0.2` (2026-10-17); change 2 waits at rank 32; the rank is read from ROADMAP's Order column]* *[2026-10-13: accepted by the owner as ROADMAP **R15**, with the revision's twelve corrections (`docs/reviews/2026-10-13-artcraft-vs-framework/a3-revision.md`, section 9, D1 to D12) accepted as recommended. No proposal existed before the revision, so the corrections are the text below rather than notes on an earlier text; each paragraph a correction shapes carries its number, so the record of what changed is kept (choice 126). The first change's intent waits for PR #173 (R14's intent, change 0004), whose id the allocator would otherwise give again.]* *[2026-10-13, later: the allocator's `new-change` also counts remote `sdlc/<id>/*` branches (`plugin/state/cli.py:52`, `gitops.remote_change_ids`), so it gave 0005, not 0004; on the owner's word change 1's intent was drafted as change **0005** on `sdlc/0005/a`, PR #180 (draft, `sdlc:a-ready`).]*
 
 ## The problem

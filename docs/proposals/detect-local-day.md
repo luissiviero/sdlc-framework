@@ -21,7 +21,7 @@ generated: { by: sdlc-framework-session/item-11, at: 2026-10-14T10:00:00Z }
 ---
 
 # Detection counts days in the owner's offset
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26): none of the renamed names appear here.
 ## Why
 `plugin/detect/source.py` puts a run on the UTC day of its `created_at`, and `plugin/detect/cli.py` judges only days before the UTC today. The owner lives at UTC-03:00. A run the owner starts at 22:00 on Monday counts on Tuesday; the sample's scheduled `CI` run (cron `29 1 * * *`, 01:29 UTC) is 22:29 the evening before on the owner's clock. The detection record mixes clocks too: its breach-window commits keep the committer's `-03:00`, every other time is UTC (NOTES §42, item 11's G2). The owner chose, on 2026-10-14, to have the days counted in their own offset, after 1.0.0.
 

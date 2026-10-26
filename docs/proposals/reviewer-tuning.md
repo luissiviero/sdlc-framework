@@ -36,7 +36,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # The reviewer is tuned twice a month from signals already on record, through a standing REVIEW.md PR
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(e)` -> deploy; `sdlc-evals.yml` -> `sdlc-agent-evals.yml`. \
 **Status: proposed (roadmap R38), from study entry T16, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 45; the rank is read from ROADMAP's Order column]* Nothing is built. It amends no decision: decision 6 keeps `REVIEW.md` the owner's, who still makes every change by merging, and decision 16's scheduled read-only run is reused as a pattern. It is the second standing PR after R37 (T15, "CLAUDE.md: Things Claude gets wrong") and shares its mechanism; the brief it starts is T1's, R28.
 
 ## The problem

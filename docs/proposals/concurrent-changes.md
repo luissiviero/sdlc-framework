@@ -24,7 +24,7 @@ generated: { by: sdlc-framework-session/ccr-70fb3ae3-39fz5m, at: 2026-10-19T12:0
 ---
 
 # Concurrent changes, safe by construction
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(c)` -> build; `(d)` -> test; `(e)` -> deploy; `sdlc/<id>/a` -> `sdlc/<id>/intent`; `/sdlc-plan` -> `/sdlc-intent`. \
 **Status: proposed on 2026-10-19 at the owner's request (ROADMAP R51).** Nothing is built. *[2026-10-19, the owner (choice 234): accepted as recommended, Order 10, with R25 parts 1-2 at 11.]*
 
 ## Does running changes concurrently save time?

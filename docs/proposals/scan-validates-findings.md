@@ -42,7 +42,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # The weekly scan validates its findings, applies its patch and reaches the digest
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(f)` -> maintain; `sdlc:f-ready` -> `sdlc:maintain-ready`; `incident` -> `sdlc:triage` (the label). \
 **Status: proposed (roadmap R43), from study entry T26, confirmed by the owner on 2026-10-09, option B of the crosswalk row maintain-scan (the letters are the row's own).** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 34; the rank is read from ROADMAP's Order column]* Nothing is built. It amends no decision: decision 16 is kept (the pattern without Claude Security) and decision 20 is kept (the lines go to the digest), so no decision file is written and no number is reserved. It feeds two lines other proposals place: the "Scan" line, which R20 (T28) puts under "State", and the scan's red runs in R18's (T19) "Failed runs" line; its validation rides into the Security & policy brief of R28 (T1 with T2), and its patch step follows R34's (T11) order, the failing test before the fix.
 
 ## The problem

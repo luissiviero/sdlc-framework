@@ -24,7 +24,7 @@ generated: { by: sdlc-framework-session/ccr-cd596b46-vq58fk, at: 2026-10-09T16:3
 ---
 
 # The release label stays a second act, given in the same visit
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(e)` -> deploy; `sdlc:e-ready` -> `sdlc:deploy-ready`; `triage` -> `explain` (R18's step and its explanation); `deploy.production` -> `deploy.production_gate`. \
 **Status: proposed (roadmap R13), from study entry T21, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-13 (roadmap R13, PR #162), built with R12 as one change after R11]* Nothing is built. Its approver line goes into R11's approvals list, so it follows R11 or is built with it.
 
 ## The problem

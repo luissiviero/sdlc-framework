@@ -33,7 +33,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # Starting a project: the whole loop from the first change, with an optional start by hand
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(e)` -> deploy. \
 **Status: proposed (roadmap R30), from study entry T5, confirmed by the owner on 2026-10-09; the blend of the crosswalk row setup-adopt, the two additions the owner's note numbers #2 and #3 (the row has no option letters).** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 28; the rank is read from ROADMAP's Order column]* Nothing is built. It amends no decision: decision 1 (hosted CI) stays the default, and decision 17 (evals start empty) is stated in one more place. It is documentation, a change to the code that generates one file (the change-0000 intent, a plugin version) and, if the first row of "What to settle" is taken, the scan's skip; it sits among the study's "rest in any order" group; the guide command of R19 (T27) points the owner of a new project at the by-hand start this proposal documents.
 
 ## The problem

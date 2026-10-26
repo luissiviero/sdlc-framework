@@ -36,7 +36,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # The weekly window is guarded: every limit parks, a weekly ceiling and a budget per change, the spend visible, overspends learned from without raising budgets by themselves
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(b)` -> design; `(c)` -> build; `(d)` -> test; `(e)` -> deploy; `triage` -> `explain` (R18's step and its explanation). \
 **Status: proposed (roadmap R25), from study entry T30, confirmed by the owner on 2026-10-09, option B of the crosswalk row x-limits (the letters are the row's own).** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 11 for parts 1-2, parts 3-5 after the trial; the rank is read from ROADMAP's Order column]* Nothing is built. It amends decision 11 (a limit hit parks, extended to the outer bounds) and decision 24 (the un-park verbs are a person's labels, with one exception: the manager's one reset at the iteration cap); the decision file comes before the intent, in a documentation PR of its own; this proposal writes no decision file and reserves no number. Decision 29 already shares one iteration counter with this reset, and decision 11's text already names it. This proposal is the fourth of the gate changes, after R22 (T18), R23 (T23) and R24 (T9) and before R26 (T31), which reads the reset's mark and leaves the spend here; R20 places its two digest lines, and R19 lists its acts. *[2026-10-20: parts 1-2 at rank 11: after R24 (8) and R22 (9), before R23 (31); parts 3-5 after the trial; the rank is read from ROADMAP's Order column]*
 
 ## The problem

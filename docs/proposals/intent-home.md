@@ -36,7 +36,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # The intent home: in the repository, written from anywhere, with examples
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(a)` -> intent; `(b)` -> design; `(d)` -> test; `--phase a` -> `--phase intent`; `sdlc/<id>/a` -> `sdlc/<id>/intent`; `sdlc:a-ready` -> `sdlc:intent-ready`; `/sdlc-plan` -> `/sdlc-intent`; `sdlc-plan.md` -> `sdlc-intent.md`. \
 **Status: proposed (roadmap R29), from study entry T3, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (roadmap R29, PR #215)]* Nothing is built. It amends no settled decision: the home stays where decisions 8, 9 and 10 put it, and the route it adds opens the intent PR on `sdlc/<id>/a` and never commits to `main`, which keeps decisions 4 and 10 whole. It owns the intent's home, the template's Examples/References section and its override, the `Mock:` line and the claude.ai route; the Product brief at gate (a) and the interview are R28's (T1, with T2 inside), the label-started ticket route is R31 (T6), the plan's `state` Proof kind is R14's, and the rename of `/sdlc-plan` is R45's (T4).
 
 ## The problem

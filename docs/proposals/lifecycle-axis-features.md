@@ -24,7 +24,7 @@ generated: { by: claude-chat-session, at: 2026-10-20T06:00:00Z }
 ---
 
 # Which lifecycle-axis- features to port
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26): none of the renamed names appear here. \
 **Status: proposed at the owner's request (ROADMAP R60), placed last, no decision.** The entry was first registered on 2026-10-19 as "analyze the value of porting lifecycle-axis- features". On 2026-10-20 the owner substituted it with the process below. Nothing is built, accepted or ranked, and the Order cell stays blank until the owner decides.
 
 ## Why

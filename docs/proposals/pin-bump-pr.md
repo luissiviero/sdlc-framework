@@ -18,7 +18,7 @@ generated: { by: sdlc-framework-session/pr-audit, at: 2026-10-08T15:00:00Z }
 ---
 
 # The pin-bump pull request
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26): none of the renamed names appear here. \
 **Status: proposed (roadmap R5).** *[2026-10-20: accepted by the owner on 2026-10-08 (roadmap R5)]* Nothing is built. The owner asked for it on 2026-10-08; this file carries the argument and the row in `docs/ROADMAP.md` carries the status.
 
 ## The problem

@@ -30,7 +30,7 @@ generated: { by: sdlc-framework-session/session_01EkLAGQBH3JG2kGHgqQe9xv, at: 20
 ---
 
 # A drive target proves the product, and the plan's Proof names what to look at
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(b)` -> design; `(c)` -> build; `(d)` -> test; `(e)` -> deploy; `gate-b.json` -> `gate-design.json`; `gate-c.json` -> `gate-build.json`; `ux-conventions` -> `ux-and-brand`. \
 **Status: proposed, from the ArtCraft-versus-framework study of 2026-10-13 (row A1), not yet placed.** Nothing is built. It extends four confirmed entries of the playbook study (T3, T10, T27, T32) and amends no settled decision. *[2026-10-13, later the same day: accepted by the owner as ROADMAP **R14**, after R10 (decision 29, itself after the 1.0.0 read). Every claim below was checked against `main` 714f523 and the ArtCraft repositories in `docs/reviews/2026-10-13-artcraft-vs-framework/a1-revision.md` (PR #171), and the owner accepted its twelve corrections, D1 to D12 of that file's section 9; each is annotated beside the sentence it corrects, nothing is rewritten (choice 126). "Amends no settled decision" holds for the proposal itself; its red-drive round rides on decision 29, which amended 11 and choice 154.]*
 
 ## The problem

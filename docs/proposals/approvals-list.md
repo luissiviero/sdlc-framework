@@ -27,7 +27,7 @@ generated: { by: sdlc-framework-session/ccr-cd596b46-vq58fk, at: 2026-10-09T16:3
 ---
 
 # The record answers who, when and why
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(a)` -> intent; `(b)` -> design; `(c)` -> build; `(d)` -> test; `(e)` -> deploy; `sdlc:c-approved` -> none, decision 37 removed it (decision 39, point 2); `sdlc:d-approved` -> none, decision 37 removed it (decision 39, point 2); `schedule` -> `sdlc:schedule` (the label). \
 **Status: proposed (roadmap R11), from study entry T32, confirmed by the owner on 2026-10-09.** Nothing is built. The first of the study's proposals in the owner's order: every later entry writes a line into the list this one creates. *[2026-10-20: accepted 2026-10-13 (PR #162); rank 24 today, after the pipeline sprint and the speed items; the rank is read from ROADMAP's Order column]*
 
 ## The problem

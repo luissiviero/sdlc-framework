@@ -24,7 +24,7 @@ generated: { by: sdlc-framework-session/ccr-cd596b46-vq58fk, at: 2026-10-09T16:3
 ---
 
 # The build and test approvals: the label alone, recorded by the runner
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(b)` -> design; `(c)` -> build; `(d)` -> test; `(e)` -> deploy; `sdlc:c-ready` -> `sdlc:build-ready`; `sdlc:d-ready` -> `sdlc:test-ready`; `sdlc:c-approved` -> none, decision 37 removed it (decision 39, point 2); `sdlc:d-approved` -> none, decision 37 removed it (decision 39, point 2). \
 **Status: proposed (roadmap R12), from study entry T12, confirmed by the owner on 2026-10-09.** Nothing is built. Its line goes into the approvals list of R11, so it follows R11 or is built with it. *[2026-10-20: accepted 2026-10-13 (PR #162); built with R13 after R11 (ranks 25 and 24); point 3 is T9's; the rank is read from ROADMAP's Order column]*
 
 ## The problem

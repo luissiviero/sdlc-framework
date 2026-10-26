@@ -21,7 +21,7 @@ generated: { by: sdlc-framework-session/ccr-7ef35daa-7adzh8, at: 2026-10-20T07:1
 ---
 
 # A citation reader for this repository's docs pull requests, on Gemini
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(b)` -> design. \
 **Status: proposed on 2026-10-20 at the owner's request; the owner has not decided.** Nothing is built. It changes this repository's own CI and scripts, not `plugin/` or `template/`, so it takes no plugin version.
 
 ## The problem
