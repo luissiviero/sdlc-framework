@@ -1,6 +1,6 @@
 # SDLC framework repo
 
-This repository builds a Claude Code plugin + project template that drives any project through plan → design → build → test → deploy → maintain with human gates at (a), (b) and (e), and the owner's triage at (f). Read `docs/OPERATING_MODEL.md` first; it is the contract. `docs/BUILD_GUIDE.md` (47 steps, article-cited) is the build plan; `docs/decisions/index.md` records the settled choices — do not reopen them without asking. `docs/ROADMAP.md` is what comes after Milestone 1: candidates with a proposal each, never a decision.
+This repository builds a Claude Code plugin + project template that drives any project through plan → design → build → test → deploy → maintain with human gates at intent, design and deploy, and the owner's triage at maintain. Read `docs/OPERATING_MODEL.md` first; it is the contract. `docs/BUILD_GUIDE.md` (47 steps, article-cited) is the build plan; `docs/decisions/index.md` records the settled choices — do not reopen them without asking. `docs/ROADMAP.md` is what comes after Milestone 1: candidates with a proposal each, never a decision.
 Indexes first: `docs/notes/index.md` lists every verified platform fact, `docs/decisions/index.md` every settled decision; read the index, then only the files you need.
 Every session starts and ends by `HANDOFF.md`: read the newest file in `docs/handoffs/sessions/` and the parallel ones first, write your own at the end, and follow its "Rules for every session".
 
@@ -16,7 +16,7 @@ Run tests and lint before reporting any task complete, and paste the output. If 
 - Keep CLAUDE.md under a page; consistently-applied rules go into a skill, not here.
 
 ## Architecture
-- `plugin/commands/`: /sdlc-init, /sdlc-plan, /sdlc-design, /sdlc-build, /sdlc-test, /sdlc-deploy, /sdlc-maintain, /sdlc-fix
+- `plugin/commands/`: /sdlc-init, /sdlc-intent, /sdlc-design, /sdlc-build, /sdlc-test, /sdlc-deploy, /sdlc-maintain, /sdlc-fix
 - `plugin/skills/`: intent-template, policy skills (coding standards, security baseline, UX, data conventions, definition of done)
 - `plugin/agents/`: verifier, code-simplifier, researcher, adversarial-reviewer (all "report only, do not fix")
 - `plugin/hooks/`: protected paths (incl. self-protection), formatter/lint on edit, secrets check, test-file lock for fix tasks, production gate

@@ -13,7 +13,7 @@ panel_advocate_model: claude-fable-5-1
 adversarial_model: claude-opus-5-5
 session_model:
    default: claude-opus-5-5
-   b: claude-fable-5-1
+   design: claude-fable-5-1
 
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
 # Each must exit non-zero on failure. /sdlc-init detects them for Python projects.
@@ -38,9 +38,9 @@ deploy:
   # promote to paper trading | deploy service | none
   action: none
   # true turns on the release label at gate (e) and the production-gate hook (B4)
-  production: false
+  production_gate: false
   # the one command the release workflow (.github/workflows/sdlc-release.yml) runs after the
-  # build PR's merge (and, when production is true, after the release label): e.g.
+  # build PR's merge (and, when production_gate is true, after the release label): e.g.
   # `python -m build && twine upload dist/*`, `python scripts/regenerate_report.py`.
   # Empty = the release is prepared in the PR and nothing runs. Runs on the GitHub runner
   # with the repository's secrets only.
@@ -52,7 +52,7 @@ deploy:
   # (plugin/hooks/production_gate.py DEFAULT_GUARDED) and to the article's own trigger, a
   # command containing both `deploy` and `production` (p.36). `promote to paper trading` has
   # no default: a paper-trading project lists its own promotion command here (e.g.
-  # "python scripts/promote.py"). Only read when production is true.
+  # "python scripts/promote.py"). Only read when production_gate is true.
   guarded_commands: []
 maintain:
   # the watched metric and where the detection script reads it (default: CI test failure
@@ -60,8 +60,8 @@ maintain:
   # beside this file (written by /sdlc-init since B2; read by the detection since B5, 0.2.19).
   metric: ci_test_failure_rate
   source: github-actions
-  # runbooks the 3-sigma tier may call; authorization: preapproved (CI-scoped, reversible)
-  # or go (touches a running system; waits for the owner's "Go" as a parked item)
+  # runbooks the 3-sigma tier may call; authorization: allow (CI-scoped, reversible)
+  # or ask (touches a running system; waits for the owner's "Go" as a parked item)
   runbooks: []
 
 # --- risk list (build guide step 5; decision 35: a hit is a line of the close-look banner) --
@@ -140,7 +140,7 @@ hooks:
 plugin:
   name: sdlc
   marketplace: sdlc-framework
-  version: 1.0.38
+  version: 1.0.46
   # Claude Code CLI version the SDLC workflows install (`npm install -g
   # @anthropic-ai/claude-code@<this>`). `--permission-prompts none` needs 2.1.259 or later;
   # 2.1.304 is the CLI the jobs install and the framework's minimum (NOTES §54).

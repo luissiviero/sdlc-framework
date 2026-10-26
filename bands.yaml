@@ -17,16 +17,16 @@ tiers:
   3sigma:
     action: propose
     # Every route is one of the two authorization models of decision 14 (split by blast
-    # radius): preapproved = CI-scoped and reversible, runs with no human in the path;
-    # go = touches a running system, parks with "what I need from you" until the owner
+    # radius): allow = CI-scoped and reversible, runs with no human in the path;
+    # ask = touches a running system, parks with "what I need from you" until the owner
     # says Go. A route not listed here is never taken.
     routes:
       - name: pull_request          # open an intent PR into the review queue (p.44 step 5)
-        authorization: preapproved
+        authorization: allow
       - name: runbook:quarantine-flaky-test
-        authorization: preapproved
+        authorization: allow
       - name: runbook:revert-pr
-        authorization: preapproved
+        authorization: allow
       - name: runbook:rollback-deploy
-        authorization: go
+        authorization: ask
 # Dismissals of findings tune these bands (p.44 step 6): widen a band before muting a metric.
