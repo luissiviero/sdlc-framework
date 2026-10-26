@@ -602,7 +602,12 @@ def test_each_phase_workflow_explains_after_a_fresh_framework_checkout(name):
         assert "steps.review.outcome" not in park  # a cancelled review pass does not park
         assert "ANTHROPIC_API_KEY" not in park and "CLAUDE_CODE_OAUTH_TOKEN" not in park
         assert "continue-on-error: true" in park and "# sdlc:commands.env" not in park
-        assert "SDLC_JOB_TIMEOUT_MINUTES" in text  # the park tells GitHub's cancel from a hand's
+        # the park tells GitHub's cancel from a hand's by the job's own timeout-minutes
+        job_minutes = re.search(r"(?m)^    timeout-minutes: (\d+)$", text).group(1)
+        said = re.search(r"SDLC_JOB_TIMEOUT_MINUTES: (\d+)", park) or re.search(
+            r"(?m)^      SDLC_JOB_TIMEOUT_MINUTES: (\d+)$", text
+        )
+        assert said and said.group(1) == job_minutes
         steps = steps[: explain_at - 1] + steps[explain_at:]
         explain_at -= 1
     names = [re.match(r"(?:name: )?(.*)", s).group(1) for s in steps]

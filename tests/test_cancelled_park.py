@@ -23,7 +23,7 @@ from tests import test_auto_round as auto_tests
 from tests import test_ci as ci_tests
 from tests import test_explain as explain_tests
 from tests import test_fix_round_gaps as gaps
-from tests.test_ci import Args, fake_cli, git, pr_route, set_state
+from tests.test_ci import Args, fake_cli, git, pr_route, set_state, write
 
 project = ci_tests.project
 fake_claude = ci_tests.fake_claude
@@ -32,8 +32,9 @@ JOB_ENV = {"SDLC_JOB_TIMEOUT_MINUTES": "260"}
 AT_TIMEOUT = "the job was cancelled at its timeout-minutes (260) while the session ran"
 
 
-class Cancelled(BaseException):
-    """GitHub's cancel: the runner's step ends here, whatever it was doing."""
+# GitHub's cancel interrupts the step's process (SIGINT, then SIGTERM): the runner's step ends
+# wherever it was, and its ``finally`` parks nothing (``run_phase``)
+Cancelled = KeyboardInterrupt
 
 
 def _cancel_in_session(monkeypatch) -> None:
@@ -164,17 +165,136 @@ def test_no_saved_state_parks_nothing(project, monkeypatch, tmp_path, capsys):
     assert run_phase.cancel_state_path(None) is None
 
 
-def test_a_run_that_parked_before_the_cancel_is_not_parked_twice(
+def _set_stage(args, stage: str) -> None:
+    path = run_phase.cancel_state_path(args.out)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**data, "stage": stage}), encoding="utf-8")
+
+
+def test_a_park_the_run_wrote_before_the_cancel_is_published_again_not_replaced(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    """The review of this PR, finding 1: a park written to status.yaml (the commands step's
+    red target) before the cancel stopped its publication is published again with the
+    review request; its reason stands."""
+    root, change, args, env, calls = _cancelled_round(project, fake_claude, monkeypatch, tmp_path)
+    _set_stage(args, "after")
+    st = status_mod.read_status(change)
+    st.park("commands: not green: test (exit 1)")
+    status_mod.write_status(change, st)
+    _elapsed(monkeypatch, 261.0)
+    out = _park(args, env, capsys)
+    assert out["republished"] == "commands: not green: test (exit 1)"
+    assert status_mod.read_status(change).parked_reason == "commands: not green: test (exit 1)"
+    assert any(argv[:1] == ["upsert"] and "--request-review" in argv for _s, argv in calls)
+    # the session's uncommitted work is not the park's to keep at "after"
+    assert " M src/x.py" in git(root, "status", "--porcelain", "--", "src/x.py")
+
+
+def test_at_session_a_park_the_session_wrote_is_replaced_by_the_cancel_s(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    """parked_reason is not an owner field: a session's park never skips the replay."""
+    _root, change, args, env, _calls = _cancelled_round(project, fake_claude, monkeypatch, tmp_path)
+    st = status_mod.read_status(change)
+    st.park("limits: the session says so")
+    status_mod.write_status(change, st)
+    _elapsed(monkeypatch, 261.0)
+    _park(args, env, capsys)
+    assert AT_TIMEOUT in status_mod.read_status(change).parked_reason
+
+
+def test_a_fix_round_cancelled_after_its_checks_keeps_nothing_uncommitted(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    """Finding 4: at "after" the commands step had run in the tree, so its output is not
+    committed as the session's work."""
+    root, change, args, env, _calls = _cancelled_round(project, fake_claude, monkeypatch, tmp_path)
+    _set_stage(args, "after")
+    _elapsed(monkeypatch, 261.0)
+    head = git(root, "rev-parse", "HEAD").strip()
+    out = _park(args, env, capsys)
+    what = "the job was cancelled at its timeout-minutes (260) after the session ended"
+    assert out["parked"] == f"cancelled: {what}; no gate judged the run" and "work" not in out
+    assert "src/x.py" not in git(root, "diff", "--name-only", head, "HEAD")
+    check = next(ch for ch in gaps._gate_c(change)["checks"] if not ch["ok"])
+    assert check["name"] == "cancelled" and check["need"] == run_phase.CANCEL_FIX_NEED
+
+
+def test_a_run_that_updated_its_pr_parks_nothing(
     project, fake_claude, monkeypatch, tmp_path, capsys
 ):
     _root, change, args, env, _calls = _cancelled_round(project, fake_claude, monkeypatch, tmp_path)
-    st = status_mod.read_status(change)
-    st.park("limits: the runner parked it")  # the round had begun parking when cancelled
-    status_mod.write_status(change, st)
+    _set_stage(args, "done")
     out = _park(args, env, capsys)
-    assert out["skipped"] == run_phase.CANCEL_ALREADY_PARKED.format(
-        reason="limits: the runner parked it"
+    assert out["skipped"] == run_phase.CANCEL_DONE
+    assert status_mod.read_status(change).parked_reason == "commands: not green"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "why"),
+    [
+        ("change_dir", "../elsewhere", "its change folder '../elsewhere' is not change '0001'"),
+        ("change_dir", "changes/0002-other", "is not change '0001'"),
+        ("fix_branch", "main", "its fix round's head 'main' is not the workflow's"),
+        ("phase", "explain", "its phase 'explain' is not a phase run"),
+    ],
+)
+def test_a_state_that_is_not_this_run_s_parks_nothing(
+    project, fake_claude, monkeypatch, tmp_path, capsys, field, value, why
+):
+    """Finding 5: the project's commands run outside the sandbox in the same job and could
+    rewrite the file; a state that is not this run's change, phase or head parks nothing."""
+    _root, change, args, env, _calls = _cancelled_round(project, fake_claude, monkeypatch, tmp_path)
+    path = run_phase.cancel_state_path(args.out)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**data, field: value}), encoding="utf-8")
+    env["HEAD_REF"] = "sdlc/0001/build"
+    out = _park(args, env, capsys)
+    assert out["skipped"].startswith("nothing to park: the saved state is not this run's (")
+    assert why in out["skipped"]
+    assert status_mod.read_status(change).parked_reason == "commands: not green"
+    written = json.loads(Path(args.out).read_text(encoding="utf-8"))
+    assert written["explain"] is None  # no model call in the minutes left
+
+
+def test_a_kill_after_the_result_was_stored_does_not_flag_the_runner_s_own_file(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    """Finding 8: the session's result, stored by the runner, is not "created by the session"."""
+    root, change, args, env, _calls = gaps._owner_round(
+        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS, gaps.FAILED_RUN
     )
+    args.out = str(tmp_path / "temp" / "sdlc-run.json")
+    env.update(JOB_ENV)
+
+    def stopped(*a, **k):
+        raise Cancelled
+
+    monkeypatch.setattr(run_phase, "store_stderr", stopped)
+    with pytest.raises(Cancelled):
+        run_phase.run_phase(args, env)
+    assert (change / "evidence" / "claude-fix.json").is_file()
+    _elapsed(monkeypatch, 261.0)
+    _park(args, env, capsys)
+    reason = status_mod.read_status(change).parked_reason
+    assert reason.startswith(f"fix: the round ended before its gate ({AT_TIMEOUT})"), reason
+
+
+def test_an_interrupted_runner_parks_and_writes_nothing_on_its_way_out(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    """Finding 2: on the interrupt the runner's ``finally`` makes no half park (decision 29's
+    release) and writes no result file the explain step would spend a model call on."""
+    root, change, args, env, _seen = auto_tests.fix_run(project, fake_claude, monkeypatch, tmp_path)
+    args.out = str(tmp_path / "temp" / "sdlc-run.json")
+    _cancel_in_session(monkeypatch)
+    released: list = []
+    monkeypatch.setattr(run_phase, "release_unfinished_round", lambda *a: released.append(a))
+    with pytest.raises(Cancelled):
+        run_phase.run_phase(args, env)
+    assert released == [] and not Path(args.out).exists()
+    assert run_phase.cancel_state_path(args.out).is_file()
 
 
 def test_a_build_cancelled_before_its_session_parks_with_the_cancel_reason(
@@ -236,10 +356,9 @@ def test_an_automatic_round_cancelled_with_nothing_to_keep_parks_as_decision_29_
         raise Cancelled
 
     monkeypatch.setattr(run_phase, "invoke", invoke)
-    # the runner killed before its ``finally`` parks the round: only the cancel step does
-    monkeypatch.setattr(run_phase, "release_unfinished_round", _release_after_the_kill)
     with pytest.raises(Cancelled):
         run_phase.run_phase(args, env)
+    assert gaps._gate_c(change)["label"] == c.FIXING_LABEL  # the runner parked nothing
     _elapsed(monkeypatch, 261.0)
     _park(args, env, capsys)
     record = gaps._gate_c(change)
@@ -250,17 +369,6 @@ def test_an_automatic_round_cancelled_with_nothing_to_keep_parks_as_decision_29_
     data = json.loads((change / "evidence" / c.AUTO_ROUND_FILE).read_text(encoding="utf-8"))
     assert data["status"] == "unfinished"
     assert git(root, "status", "--porcelain", "--", "src") == ""
-
-
-_REAL_RELEASE = run_phase.release_unfinished_round
-
-
-def _release_after_the_kill(args, env, track, code):
-    """The runner's own release, skipped while the runner is being killed; the cancel step
-    calls the real one."""
-    if getattr(args, "cancelled", False):
-        return _REAL_RELEASE(args, env, track, code)
-    return None
 
 
 def test_the_cancelled_entry_refuses_the_review_pass(capsys):
@@ -291,7 +399,7 @@ def test_the_review_pass_saves_no_state_and_a_run_starts_without_a_stale_one(tmp
     assert run_phase._unb64(run_phase._b64(b"\x00x")) == b"\x00x"
 
 
-def test_the_record_is_marked_parked_and_the_digest_leaves_the_cancelled_run_out(
+def test_the_record_is_marked_parked_and_the_digest_says_the_cancelled_run_parked(
     project, monkeypatch, tmp_path
 ):
     root, _change = project
@@ -301,9 +409,11 @@ def test_the_record_is_marked_parked_and_the_digest_leaves_the_cancelled_run_out
     )
     state = {"phase": "fix", "change_id": "0001"}
     env = {"GITHUB_RUN_ID": "9", "GITHUB_RUN_ATTEMPT": "1", "GITHUB_REPOSITORY": "o/r"}
-    run_phase.write_cancelled_record(Args(root=str(root)), env, root, state, AT_TIMEOUT)
+    run_phase.write_cancelled_record(env, root, state, AT_TIMEOUT)
     assert seen[0]["parked"] is True and seen[0]["reason"] == AT_TIMEOUT
     assert seen[0]["explanation"] == []
+    run_phase.write_cancelled_record(env, root, state, AT_TIMEOUT, parked=False)
+    assert seen[1]["parked"] is False
     runs = [
         explain_tests._run(1, "cancelled", at="2026-10-21T08:00:00Z"),
         explain_tests._run(2, "failure", at="2026-10-22T08:00:00Z"),
@@ -315,17 +425,44 @@ def test_the_record_is_marked_parked_and_the_digest_leaves_the_cancelled_run_out
     records = {"a": {"reason": "cancelled", "parked": True}, "b": {"reason": "x", "parked": True}}
     now = datetime(2026, 10, 23, tzinfo=timezone.utc)
     got = failed_runs.collect("o/r", now, explain_tests._api(runs, refs, records), "https://api")
-    # the cancelled run decision 41 parked is in the queue; a red park keeps its bare line
-    assert [e["run"]["id"] for e in got["runs"]] == [2]
+    # the cancelled run decision 41 parked says so (a forged record hides no run); a red
+    # park keeps its bare line
+    assert [e["run"]["id"] for e in got["runs"]] == [1, 2]
+    lines = failed_runs.render(got).splitlines()
+    assert lines[2].endswith(failed_runs.PARKED_ON_CANCEL) and "no failed-run record" in lines[3]
 
 
-def test_a_stale_index_lock_is_removed(tmp_path, capsys):
-    (tmp_path / ".git").mkdir()
-    (tmp_path / ".git" / "index.lock").write_text("", encoding="utf-8")
-    assert run_phase.remove_index_lock(tmp_path) is True
-    assert not (tmp_path / ".git" / "index.lock").exists()
-    assert run_phase.remove_index_lock(tmp_path) is False
-    assert run_phase.INDEX_LOCK_REMOVED in capsys.readouterr().err
+def test_a_stale_lock_and_a_stopped_merge_are_cleared_when_no_git_runs(
+    tmp_path, monkeypatch, capsys
+):
+    repo = tmp_path / "r"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@t")
+    git(repo, "config", "user.name", "t")
+    write(repo / "a.txt", "one\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "one")
+    git(repo, "checkout", "-q", "-b", "side")
+    write(repo / "a.txt", "side\n")
+    git(repo, "commit", "-qam", "side")
+    git(repo, "checkout", "-q", "main")
+    write(repo / "a.txt", "main\n")
+    git(repo, "commit", "-qam", "main")
+    import subprocess
+
+    subprocess.run(["git", "merge", "side"], cwd=repo, capture_output=True, check=False)
+    assert (repo / ".git" / "MERGE_HEAD").is_file()
+    (repo / ".git" / "index.lock").write_text("", encoding="utf-8")
+    monkeypatch.setattr(run_phase, "git_process_running", lambda: True)
+    assert run_phase.clear_stopped_git(repo) == []  # a live git may hold them
+    monkeypatch.setattr(run_phase, "git_process_running", lambda: False)
+    done = run_phase.clear_stopped_git(repo)
+    assert done == [run_phase.INDEX_LOCK_REMOVED, run_phase.MERGE_ABORTED]
+    assert not (repo / ".git" / "MERGE_HEAD").exists()
+    assert git(repo, "status", "--porcelain") == ""
+    assert run_phase.clear_stopped_git(repo) == []
+    capsys.readouterr()
 
 
 def test_the_job_s_elapsed_minutes_come_from_its_runner(monkeypatch):
