@@ -138,6 +138,7 @@ pushed (0.3.0, issue #91; the change is parked first where the record was deferr
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import math
@@ -2778,6 +2779,419 @@ def park_unfinished_round(
     return {**parked, "work": {"commit": sha, "kept": kept, "left_out": left_out}}
 
 
+# --- a job GitHub cancels (decision 41, point 2; ROADMAP R67) ---------------------------------
+# A job cancelled at its timeout-minutes, or by hand, stops the runner's step with it, and the
+# runner parks from inside that process. So the runner saves what a park needs to a file beside
+# ``--out`` as the run goes (``save_cancel_state``), and the workflow's step on ``always()``
+# that reads ``cancelled`` runs the fresh framework's runner with ``--cancelled``: no model, no
+# session. GitHub stops the job about five minutes past its timeout (docs/notes/62.md), so the
+# park writes no model's explanation; it writes the failed-run record itself, marked parked.
+CANCEL_STATE_SUFFIX = ".state.json"
+CANCEL_STATE_SCHEMA = 1
+CANCEL_CHECK = "cancelled"
+CANCEL_STAGES = {
+    "prepared": "before the session started",
+    "session": "while the session ran",
+    "after": "after the session ended",
+    "done": "after the run updated its pull request",
+}
+CANCELLED_AT_TIMEOUT = "the job was cancelled at its timeout-minutes ({minutes}) {stage}"
+CANCELLED_BY_HAND = "the job was cancelled by hand after {elapsed} of its {minutes} minutes {stage}"
+CANCELLED_UNKNOWN = "the job was cancelled {stage} (at its timeout-minutes or by hand: {why})"
+CANCEL_PARK = CANCEL_CHECK + ": {what}; no gate judged the run"
+CANCEL_NEED = (
+    "The job stopped before the run finished, so nothing was handed over; the partial evidence "
+    "is committed with this park. If GitHub cancelled it at its timeout-minutes, the run needed "
+    "more minutes than the job has: the job's log says which step ran long. Then start the "
+    "phase again (Actions → SDLC {phase} → Run workflow, change id {id}), or remove "
+    "sdlc:needs-human when the change needs no new run."
+)
+CANCEL_NO_STATE = (
+    "nothing to park: the runner saved no state, so the job was cancelled before it started "
+    "this change's run (the digest's \"Failed runs\" line lists the run)"
+)
+CANCEL_DONE = (
+    "nothing to park: the run had updated its pull request before the cancel (its hand-over "
+    "may not have been sent)"
+)
+CANCEL_NOT_THIS_RUN = "nothing to park: the saved state is not this run's ({why})"
+CANCEL_FIX_NEED = (
+    "The round's session ended and the runner's checks passed; then the job stopped before "
+    "the round finished, so no gate judged it and nothing uncommitted was kept (the commands "
+    "step had run in the tree). Review the branch, then start the next round (a review, an "
+    "@claude comment or sdlc:reset-iterations); that round's gate judges the whole branch."
+)
+INDEX_LOCK_REMOVED = "removed .git/index.lock, left by a git process the cancel stopped"
+MERGE_ABORTED = "aborted the merge a git process the cancel stopped left in progress"
+
+
+def cancel_state_path(out: str | None) -> Path | None:
+    """The state file beside ``--out`` (``sdlc-run.json`` → ``sdlc-run.state.json``), in the
+    job's ``$RUNNER_TEMP``, outside the checkout the session writes; None without ``--out``."""
+    if not out:
+        return None
+    path = Path(out)
+    return path.with_name(path.stem + CANCEL_STATE_SUFFIX)
+
+
+def _b64(data: bytes | None) -> str | None:
+    return None if data is None else base64.b64encode(data).decode("ascii")
+
+
+def _unb64(text: Any) -> bytes | None:
+    if not isinstance(text, str):
+        return None
+    try:
+        return base64.b64decode(text.encode("ascii"), validate=True)
+    except (ValueError, UnicodeEncodeError):
+        return None
+
+
+def save_cancel_state(args, stage: str, **fields: Any) -> None:
+    """Write (or update) the state ``--cancelled`` parks from: ``stage`` and ``fields`` over
+    what an earlier stage saved. Never raises: a run without it parks nothing when cancelled,
+    as before decision 41."""
+    path = cancel_state_path(getattr(args, "out", None))
+    if path is None or getattr(args, "dry_run", False):
+        return
+    try:
+        data = read_cancel_state(path) or {}
+        data.update(fields, schema_version=CANCEL_STATE_SCHEMA, stage=stage, saved_at=_utc_now())
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(data, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8"
+        )
+    except (OSError, ValueError, TypeError) as exc:
+        print(f"the state a cancelled job parks from was not saved: {exc}", file=sys.stderr)
+
+
+def read_cancel_state(path: Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    data = explain_mod.read_json(path)
+    if not data or data.get("schema_version") != CANCEL_STATE_SCHEMA:
+        return None
+    return data if data.get("stage") in CANCEL_STAGES and data.get("change_dir") else None
+
+
+def _utc_now() -> str:
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def job_elapsed_minutes(env: dict[str, str]) -> tuple[float | None, str]:
+    """(minutes since this job started, why None): the Actions API's job of this run attempt
+    that runs on this runner (``RUNNER_NAME``), its ``started_at``."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    repo, run_id = env.get("GITHUB_REPOSITORY"), env.get("GITHUB_RUN_ID")
+    runner = env.get("RUNNER_NAME")
+    if not (repo and run_id and runner):
+        return None, "not a workflow run"
+    github = _github()
+    tok = github.token() if github is not None else None
+    if not tok:
+        return None, "no token to read the job"
+    attempt = env.get("GITHUB_RUN_ATTEMPT") or "1"
+    url = f"{github.API_ROOT}/repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/jobs"
+    result = github._request("GET", url, tok)
+    data = result.get("data") if not result.get("error") else None
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    for job in jobs if isinstance(jobs, list) else []:
+        if isinstance(job, dict) and job.get("runner_name") == runner and job.get("started_at"):
+            try:
+                start = datetime.fromisoformat(str(job["started_at"]).replace("Z", "+00:00"))
+            except ValueError:
+                break
+            return (datetime.now(timezone.utc) - start).total_seconds() / 60.0, ""
+    return None, str(result.get("error") or "the job was not found")
+
+
+def cancel_what(env: dict[str, str], stage: str) -> str:
+    """What happened, for the park's reason: GitHub's cancel at the job's ``timeout-minutes``
+    (``SDLC_JOB_TIMEOUT_MINUTES``) when the job ran that long, the owner's otherwise."""
+    when = CANCEL_STAGES.get(stage, CANCEL_STAGES["prepared"])
+    minutes = _int_or(env.get(JOB_TIMEOUT_ENV), 0)
+    if not minutes:
+        return CANCELLED_UNKNOWN.format(stage=when, why=f"no {JOB_TIMEOUT_ENV}")
+    elapsed, why = job_elapsed_minutes(env)
+    if elapsed is None:
+        return CANCELLED_UNKNOWN.format(stage=when, why=why)
+    if elapsed >= minutes - 1:  # GitHub's cancel comes at the timeout or shortly after it
+        return CANCELLED_AT_TIMEOUT.format(minutes=minutes, stage=when)
+    return CANCELLED_BY_HAND.format(elapsed=int(elapsed), minutes=minutes, stage=when)
+
+
+def git_process_running() -> bool | None:
+    """Whether a ``git`` process runs on this machine (Linux ``/proc``); None where it cannot
+    be told. A process of the cancelled step may outlive it (its children are reparented, and
+    GitHub cleans orphans only at the job's end), so nothing it may still hold is removed."""
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return None
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            if (entry / "comm").read_text(encoding="utf-8").strip() == "git":
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def clear_stopped_git(root: Path) -> list[str]:
+    """What a git process the cancel stopped left behind, when no git process still runs:
+    ``.git/index.lock`` (it would refuse the park's commit) and a merge in progress (R51's or
+    the restart's merge stopped half way, which ``commit --only`` refuses); what was done."""
+    git_dir = Path(root) / ".git"
+    lock, merging = git_dir / "index.lock", (git_dir / "MERGE_HEAD").is_file()
+    if not (lock.exists() or merging) or git_process_running() is not False:
+        return []
+    done = []
+    try:
+        lock.unlink()
+        done.append(INDEX_LOCK_REMOVED)
+    except OSError:
+        pass
+    if merging:
+        proc = subprocess.run(
+            ["git", "merge", "--abort"], cwd=root, capture_output=True, text=True, check=False
+        )
+        done.append(MERGE_ABORTED if proc.returncode == 0 else f"git merge --abort: {proc.stderr}")
+    for line in done:
+        print(line, file=sys.stderr)
+    return done
+
+
+def replay_session_checks(
+    root: Path,
+    change_dir: Path,
+    state: dict[str, Any],
+    config: dict[str, Any],
+    approved_st,
+) -> tuple[str, str, str] | None:
+    """The checks the runner makes right after the session (the owner-only fields, its own
+    files, the stored results, the requests file's marks, the session's branch and pushes),
+    from the snapshots saved before the session and the default branch's copy read now; what
+    they restore is restored here too. (reason, check, need) of the park, or None."""
+    before_st = status_mod.Status.from_dict(state.get("before_status") or {})
+    branch, pre_head = state.get("branch"), state.get("pre_head")
+    left = session_branch_mismatches(root, branch)
+    if left and not (return_to_branch(root, branch, pre_head) or {}).get("ok"):
+        left.append(CHECKOUT_NOT_RETURNED.format(branch=branch))
+    owner = verify_owner_fields(change_dir, before_st, approved_st, root, pre_head, config)
+    files = {k: _unb64(v) for k, v in (state.get("runner_files") or {}).items()}
+    owner["mismatches"] += auto_round.runner_file_mismatches(change_dir, files)
+    records = {k: _unb64(v) or b"" for k, v in (state.get("records_before") or {}).items()}
+    # the runner stores the session's result right after it; a kill there leaves it, its own
+    own = {str(state["result_name"])} if state.get("result_name") else set()
+    owner["mismatches"] += limits.run_record_mismatches(change_dir / art.EVIDENCE_DIR, records, own)
+    note = fix_requests.keep_marks_only(change_dir, state.get("requests_before"))
+    if note:
+        print(note, file=sys.stderr)
+    pushed = session_push_mismatches(
+        root, branch, state.get("refs_before") or {}, change_refs(root, state["change_id"])
+    )
+    if left or pushed:
+        reasons = "; ".join(left + pushed + owner["mismatches"])
+        return (
+            SESSION_BRANCH_PARK.format(branch=branch, reasons=reasons),
+            SESSION_BRANCH_CHECK,
+            SESSION_BRANCH_NEED.format(branch=branch),
+        )
+    if owner["mismatches"]:
+        reasons = "; ".join(owner["mismatches"])
+        return OWNER_FIELDS_PARK.format(reasons=reasons), OWNER_FIELDS_CHECK, OWNER_FIELDS_NEED
+    return None
+
+
+def cancel_state_refusal(root: Path, state: dict[str, Any], env: dict[str, str]) -> str | None:
+    """Why the saved state is not this run's, or None. The project's own commands run outside
+    the session's sandbox in the same job and could rewrite the file: its change folder must
+    be the change's own under ``changes/``, its branch the one the phase works on, a fix
+    round's head the one the workflow checked out (``HEAD_REF``)."""
+    change_id, phase = str(state.get("change_id") or ""), str(state.get("phase") or "")
+    changes = (root / c.CHANGES_DIR).resolve()
+    change_dir = (root / str(state["change_dir"])).resolve()
+    if change_dir.parent != changes or not change_dir.name.startswith(f"{change_id}-"):
+        return f"its change folder {state['change_dir']!r} is not change {change_id!r}'s"
+    if phase not in (*c.PHASES, "fix"):
+        return f"its phase {phase!r} is not a phase run"
+    branch, fix_branch = state.get("branch"), state.get("fix_branch")
+    if phase == "fix":
+        head = env.get("HEAD_REF")
+        if not fix_branch or fix_branch != branch or (head and fix_branch != head):
+            return f"its fix round's head {fix_branch!r} is not the workflow's {head!r}"
+    elif fix_branch or branch != work_branch_for(change_id, phase):
+        return f"its branch {branch!r} is not the {phase} run's"
+    return None
+
+
+def run_cancelled(args, env: dict[str, str]) -> int:
+    """``--cancelled``: the step after a runner step GitHub cancelled (decision 41, point 2).
+    It parks the change from the state the runner saved, with the reason, "what I need from
+    you" and the review request, and with no re-run (a cancel is not decision 29's
+    infrastructure failure):
+
+    - ``session``: the checks after the session are replayed first and park on what they
+      find; a fix round then keeps the session's uncommitted work in one commit on the PR's
+      head, not gated, as an unfinished round does (``park_unfinished_round``), and drops
+      ``sdlc:fixing`` (an automatic round with nothing to keep: decision 29's own park);
+    - ``prepared``: no session ran: a fix round parks as above with nothing to keep;
+    - ``after``: the runner's checks passed, then its commands step or a re-check ran in the
+      tree, so nothing uncommitted is kept: the change folder is committed and parked;
+    - the other phases park as the runner's timeout park does, check ``cancelled``;
+    - a park this run wrote but may not have published (outside ``session``) is published
+      again with the review request, not replaced; ``done`` (the run's PR was updated before
+      its hand-over), no state, or a state that is not this run's: nothing to park."""
+    root = Path(args.root).resolve()
+    state = read_cancel_state(cancel_state_path(getattr(args, "out", None)))
+    refusal = CANCEL_NO_STATE if state is None else cancel_state_refusal(root, state, env)
+    if refusal is None and state["stage"] == "done":
+        refusal = CANCEL_DONE
+    elif state is not None and refusal not in (None, CANCEL_NO_STATE):
+        refusal = CANCEL_NOT_THIS_RUN.format(why=refusal)
+    write_cancelled_out(args, state or {})
+    if refusal is not None:
+        return _skip(refusal)
+    what = cancel_what(env, str(state["stage"]))
+    try:
+        report = park_cancelled(args, env, root, state, what)
+    except Exception as exc:  # noqa: BLE001 - the record says the park did not happen
+        print(f"the cancelled run was not parked: {exc}", file=sys.stderr)
+        report = {"cancelled": what, "stage": state["stage"], "error": str(exc)}
+    parked = "error" not in report and "skipped" not in report
+    report["record"] = write_cancelled_record(env, root, state, what, parked)
+    _emit(report)
+    return EXIT_OK
+
+
+def park_cancelled(
+    args, env: dict[str, str], root: Path, state: dict[str, Any], what: str
+) -> dict[str, Any]:
+    """The park ``run_cancelled`` makes (its docstring), from a state that is this run's."""
+    plugin_dir = Path(args.plugin_dir).resolve()
+    change_dir = root / str(state["change_dir"])
+    phase, gate_phase, stage = str(state["phase"]), str(state["gate_phase"]), str(state["stage"])
+    fix_branch = state.get("fix_branch")
+    st = status_mod.read_status(change_dir)
+    ensure_git_identity(root)
+    clear_stopped_git(root)
+    out: dict[str, Any] = {"cancelled": what, "stage": stage}
+    if stage != "session" and st.parked_reason and st.parked_reason != state.get("parked_before"):
+        # the run had parked: its park stands, published again with the review request
+        report_failed_run(root, change_dir, phase, None, "", "", f"park: {st.parked_reason}")
+        pr = ensure_pr(plugin_dir, root, st.id, phase, args.repo, env, gate_phase, fix_branch)
+        return {**out, "republished": st.parked_reason, "pr": pr}
+    try:
+        config: dict[str, Any] | None = _approved_config(root)
+        approved_st = _approved_status(root, change_dir)
+    except (ConfigError, ApprovedCopyUnreadable) as exc:
+        # the protected paths and the approved fields cannot be read: keep nothing, check
+        # nothing against them, and say so in the park
+        print(f"the approved copies are unreadable ({exc}): no work is kept", file=sys.stderr)
+        config, approved_st = None, None
+    if stage == "session" and config is not None:
+        checked = replay_session_checks(root, change_dir, state, config, approved_st)
+        if checked is not None:
+            reason, check, need = checked
+            return {
+                **out,
+                **park_and_publish(
+                    plugin_dir,
+                    root,
+                    change_dir,
+                    status_mod.read_status(change_dir),
+                    phase,
+                    f"{reason} ({what})",
+                    branch=fix_branch,
+                    check=check,
+                    need=need,
+                ),  # fmt: skip
+            }
+    if phase == "fix" and stage in ("prepared", "session") and config is not None:
+        before = state.get("before_status")
+        before_st = status_mod.Status.from_dict(before) if isinstance(before, dict) else st
+        parked = park_unfinished_round(
+            plugin_dir, root, change_dir, gate_phase, fix_branch, config,
+            state.get("pre_head"), before_st, None, "", "", what,
+        )  # fmt: skip
+        if parked is None:
+            # an automatic round with nothing to keep: decision 29's own park, which the
+            # stopped runner would have made on its way out
+            track = {"change_id": st.id, "change_dir": change_dir, "gate_phase": gate_phase,
+                     "fix_branch": fix_branch, "why": what}  # fmt: skip
+            parked = release_unfinished_round(args, env, track, EXIT_FAILED) or {}
+        return {**out, **parked}
+    reason = CANCEL_PARK.format(what=what)
+    if phase == "fix":
+        record = read_gate(change_dir, gate_phase)
+        if record and record.get("label") == c.FIXING_LABEL:
+            auto_round.set_round_status(change_dir, "unfinished", reason=reason)
+        need = CANCEL_FIX_NEED
+    else:
+        need = CANCEL_NEED.format(phase=gate_phase, id=st.id)
+    report_failed_run(root, change_dir, phase, None, "", "", reason)
+    return {
+        **out,
+        **park_and_publish(
+            plugin_dir,
+            root,
+            change_dir,
+            status_mod.read_status(change_dir),
+            phase,
+            reason,
+            branch=fix_branch,
+            check=CANCEL_CHECK,
+            need=need,
+            keep_failed=True,
+        ),  # fmt: skip
+    }
+
+
+def write_cancelled_out(args, state: dict[str, Any]) -> None:
+    """``--out`` with no case for the explain steps that follow (``explain.case_of``): their
+    red-run record would replace the parked one this step writes."""
+    out = getattr(args, "out", None)
+    if not out:
+        return
+    data = {
+        "schema_version": explain_mod.OUT_SCHEMA,
+        "phase": state.get("phase") or args.phase,
+        "change_id": state.get("change_id"),
+        "exit_code": EXIT_FAILED,
+        "cancelled": True,
+        "explain": None,
+    }
+    try:
+        Path(out).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except OSError as exc:
+        print(f"the cancelled run's result file was not written: {exc}", file=sys.stderr)
+
+
+def write_cancelled_record(
+    env: dict[str, str], root: Path, state: dict[str, Any], what: str, parked: bool = True
+) -> dict[str, Any]:
+    """The failed-run record of the cancelled run, marked parked when it parked, so the
+    digest's "Failed runs" line says it is in the queue (R18); written here, with no
+    explanation, since the explain session may not fit the minutes GitHub leaves after the
+    cancel."""
+    out = {
+        "phase": state.get("phase"),
+        "change_id": state.get("change_id"),
+        "exit_code": EXIT_FAILED,
+        "why": what,
+    }
+    record = explain_mod.failed_run_record("park" if parked else "red", out, None, [], env)
+    live_token()
+    try:
+        return explain_mod.write_record_ref(root, record, env)
+    except Exception as exc:  # noqa: BLE001 - the park stands without its record
+        return {"ok": False, "reason": str(exc)}
+
+
 def record_spend(
     plugin_dir: Path,
     root: Path,
@@ -3131,29 +3545,41 @@ def run_phase(args, env: dict[str, str]) -> int:
     out = getattr(args, "out", None)
     if out:  # R18: a stale file from an earlier step of the job never reads as this run's
         Path(out).unlink(missing_ok=True)
+        cancel_state_path(out).unlink(missing_ok=True)  # decision 41: nor a stale state
     try:
         code = _run_phase(args, env, track)
         return code
+    except KeyboardInterrupt:
+        # decision 41: GitHub's cancel interrupts the step; a park started here could be cut
+        # half way (its status written, its PR not), so the step after it parks instead
+        track["interrupted"] = True
+        raise
     finally:
-        write_phase_ran(env, bool(track.get("ran")))
-        if args.phase == "fix" and not args.dry_run and track.get("change_id"):
-            try:
-                release_unfinished_round(args, env, track, code)
-            except Exception as exc:  # noqa: BLE001 - never mask the run's own outcome
-                print(f"the unfinished automatic round could not be parked: {exc}", file=sys.stderr)
-        if not args.dry_run and track.get("change_dir"):
-            # decision 30: the PR this run's PR carries forward is closed as superseded
-            try:
-                superseded = supersede_earlier_pr(args, env, track)
-                if superseded is not None:
-                    print(json.dumps({"superseded": superseded}, sort_keys=True), file=sys.stderr)
-            except Exception as exc:  # noqa: BLE001 - a supersede never fails the run
-                print(f"the earlier pull request was not superseded: {exc}", file=sys.stderr)
-        # R18: last, after the unfinished round's park above, so the explain step reads it
+        if not track.get("interrupted"):
+            _after_run(args, env, track, code)
+
+
+def _after_run(args, env: dict[str, str], track: dict[str, Any], code: int) -> None:
+    """What every run does on its way out (``run_phase``)."""
+    write_phase_ran(env, bool(track.get("ran")))
+    if args.phase == "fix" and not args.dry_run and track.get("change_id"):
         try:
-            write_run_out(args, env, track, code)
+            release_unfinished_round(args, env, track, code)
         except Exception as exc:  # noqa: BLE001 - never mask the run's own outcome
-            print(f"the run's result file was not written: {exc}", file=sys.stderr)
+            print(f"the unfinished automatic round could not be parked: {exc}", file=sys.stderr)
+    if not args.dry_run and track.get("change_dir"):
+        # decision 30: the PR this run's PR carries forward is closed as superseded
+        try:
+            superseded = supersede_earlier_pr(args, env, track)
+            if superseded is not None:
+                print(json.dumps({"superseded": superseded}, sort_keys=True), file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001 - a supersede never fails the run
+            print(f"the earlier pull request was not superseded: {exc}", file=sys.stderr)
+    # R18: last, after the unfinished round's park above, so the explain step reads it
+    try:
+        write_run_out(args, env, track, code)
+    except Exception as exc:  # noqa: BLE001 - never mask the run's own outcome
+        print(f"the run's result file was not written: {exc}", file=sys.stderr)
 
 
 def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
@@ -3212,6 +3638,12 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     track.update(change_dir=change_dir, gate_phase=gate_phase)
     # R18: the gate record as the guard left it, so only a park this run wrote is explained
     track["gate_at_guard"] = gate_record_bytes(change_dir, BRANCH_PHASE.get(gate_phase, gate_phase))
+    if phase != "review":  # decision 41: a cancelled review pass parks nothing
+        save_cancel_state(
+            args, "prepared", phase=phase, change_id=change_id, gate_phase=gate_phase,
+            change_dir=change_dir.relative_to(root).as_posix(), branch=branch.get("branch"),
+            fix_branch=fix_branch, parked_before=st.parked_reason, config=config,
+        )  # fmt: skip
     # decision 24: the owner's un-park labels on the PR are performed before anything runs
     # and committed on the work branch, so the change request they answer (the iteration
     # cap, a locked test) is settled when the session reads status.yaml
@@ -3456,6 +3888,16 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     track.update(
         result_file=result_path, stderr_file=stderr_path
     )  # R18: the explain step reads them
+    if phase != "review":
+        # decision 41: what the checks after the session read, for a park if GitHub cancels
+        save_cancel_state(
+            args, "session", pre_head=pre_head, before_status=before_st.to_dict(),
+            approved_status=approved_st.to_dict() if approved_st is not None else None,
+            runner_files={k: _b64(v) for k, v in runner_files.items()},
+            records_before={k: _b64(v) for k, v in records_before.items()},
+            requests_before=requests_before, refs_before=refs_before,
+            parked_before=before_st.parked_reason, result_name=result_path.name,
+        )  # fmt: skip
     session_started = time.monotonic()
     data, raw, err, code = invoke(
         argv,
@@ -3532,6 +3974,8 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         _emit({**parked, "owner_fields": owner, "session_branch": session_branch,
                "claude_exit": code, "cost_usd": cost, "branch": branch})  # fmt: skip
         return EXIT_OK
+    if phase != "review":  # decision 41: the checks after the session passed
+        save_cancel_state(args, "after")
     failed = code != 0 or not isinstance(data, dict) or bool(data.get("is_error"))
     fresh = gate_record_fresh(change_dir, gate_phase, gate_before)
     if phase == "fix" and (failed or not fresh):
@@ -3797,6 +4241,8 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         else None
     )
     pr = ensure_pr(plugin_dir, root, change_id, phase, args.repo, env, gate_phase, fix_branch)
+    if phase != "review":  # decision 41: the outcome is on the PR; a cancel now parks nothing
+        save_cancel_state(args, "done")
     if (fast_lane or {}).get("recorded") and not not_pushed:
         if pr.get("ok"):
             # the design PR's number, for the build PR's body; the PR may have opened just now
@@ -6062,6 +6508,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="--phase explain: run the writing half only, from the file --lines wrote (R18)",
     )
+    p.add_argument(
+        "--cancelled",
+        action="store_true",
+        help="the step after a runner step GitHub cancelled: park the change from the state "
+        "the runner saved beside --out (decision 41); no model, no session",
+    )
     p.add_argument("--claude", default="claude", help="the CLI executable (default: on PATH)")
     p.add_argument("--dry-run", action="store_true", help="print the argv and stop")
     p.add_argument("--no-dispatch", action="store_true", help="print the hand-over, send nothing")
@@ -6074,6 +6526,11 @@ def main(argv: list[str] | None = None) -> int:
     env = _RUN_ENV = dict(os.environ)
     if args.phase == EXPLAIN:
         return run_explain(args, env)
+    if args.cancelled:
+        if args.phase == "review":  # decision 11's note: a cancelled review pass stays red
+            print(f"--cancelled does not apply to --phase {args.phase}", file=sys.stderr)
+            return EXIT_USAGE
+        return run_cancelled(args, env)
     if args.find_change:
         if args.phase not in PREVIOUS_PHASE:
             print(f"--find-change does not apply to --phase {args.phase}", file=sys.stderr)

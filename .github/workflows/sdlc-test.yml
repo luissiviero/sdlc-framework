@@ -152,11 +152,11 @@ jobs:
       # refs/sdlc/failed-runs/, which the digest's "Failed runs" line reads. Neither step
       # fails the job (plugin/ci/explain.py).
       - name: Remove the framework checkout before the explain step
-        if: always() && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park')
+        if: always() && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park' || steps.setup.outcome == 'cancelled' || steps.phase.outcome == 'cancelled')
         run: python -c "import shutil; shutil.rmtree('framework', ignore_errors=True)"
 
       - name: Check out the pinned framework afresh for the explain step (public repository, no token)
-        if: always() && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park')
+        if: always() && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park' || steps.setup.outcome == 'cancelled' || steps.phase.outcome == 'cancelled')
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
@@ -166,7 +166,7 @@ jobs:
 
       - name: Verify the project checkout before the explain step
         id: explain_checkout
-        if: always() && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park')
+        if: always() && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park' || steps.setup.outcome == 'cancelled' || steps.phase.outcome == 'cancelled')
         env:
           PIN_REF: ${{ steps.pin.outputs.ref }}
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
@@ -175,6 +175,25 @@ jobs:
           FRAMEWORK_URL: ${{ github.server_url }}/luissiviero/sdlc-framework
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
         run: python framework/plugin/ci/checkout_check.py --root . --framework framework --pin-ref "$PIN_REF" --origin "$ORIGIN_URL" --framework-origin "$FRAMEWORK_URL"
+
+      # Decision 41 (R67): a runner step GitHub cancelled, at the job's timeout-minutes or by
+      # hand, parks the change from the state the runner saved beside its --out file, with
+      # the reason, "what I need from you" and the review request, and no re-run; a fix
+      # round first keeps the session's uncommitted work in one commit, not gated. No model
+      # runs, and it comes before the explain steps: GitHub stops the job about five minutes
+      # past its timeout (docs/notes/62.md).
+      - name: Park the change after a cancelled run, before the explain steps (decision 41)
+        if: always() && steps.explain_checkout.outcome == 'success' && (steps.setup.outcome == 'cancelled' || steps.phase.outcome == 'cancelled')
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # the job's timeout-minutes, so the park can tell GitHub's cancel from the owner's
+          SDLC_JOB_TIMEOUT_MINUTES: 200
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase test --cancelled --repo "$REPO" --out "$RUNNER_TEMP/sdlc-run.json"
 
       # The read-only half: the model credential and no GitHub token in its environment, so
       # nothing the session reads, /proc included, holds one; its lines go to a file.

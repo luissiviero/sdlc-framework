@@ -582,11 +582,34 @@ def test_the_digest_places_the_failed_runs_after_the_queue():
 
 
 # --- the workflow templates ----------------------------------------------------------------------
+PARKED_ON_CANCEL = ("design", "build", "test", "deploy", "fix")  # decision 41, point 2
+
+
 @pytest.mark.parametrize("name", EXPLAINED)
 def test_each_phase_workflow_explains_after_a_fresh_framework_checkout(name):
     text = (WORKFLOWS / f"sdlc-{name}.yml").read_text(encoding="utf-8")
     steps = text.split("\n      - ")
     explain_at = next(i for i, s in enumerate(steps) if "--phase explain" in s)
+    if name in PARKED_ON_CANCEL:
+        # decision 41 (R67): the park after a cancelled run sits between the checkout's check
+        # and the explain steps, so it runs first in the minutes GitHub leaves after the cancel
+        park = steps[explain_at - 1]
+        assert park.startswith("name: Park the change after a cancelled run")
+        assert f"--phase {name} --cancelled " in park
+        assert '--out "$RUNNER_TEMP/sdlc-run.json"' in park
+        assert "steps.explain_checkout.outcome == 'success'" in park
+        assert "(steps.setup.outcome == 'cancelled' || steps.phase.outcome == 'cancelled')" in park
+        assert "steps.review.outcome" not in park  # a cancelled review pass does not park
+        assert "ANTHROPIC_API_KEY" not in park and "CLAUDE_CODE_OAUTH_TOKEN" not in park
+        assert "continue-on-error: true" in park and "# sdlc:commands.env" not in park
+        # the park tells GitHub's cancel from a hand's by the job's own timeout-minutes
+        job_minutes = re.search(r"(?m)^    timeout-minutes: (\d+)$", text).group(1)
+        said = re.search(r"SDLC_JOB_TIMEOUT_MINUTES: (\d+)", park) or re.search(
+            r"(?m)^      SDLC_JOB_TIMEOUT_MINUTES: (\d+)$", text
+        )
+        assert said and said.group(1) == job_minutes
+        steps = steps[: explain_at - 1] + steps[explain_at:]
+        explain_at -= 1
     names = [re.match(r"(?:name: )?(.*)", s).group(1) for s in steps]
     assert names[explain_at - 3].startswith("Remove the framework checkout before the explain")
     assert (
@@ -609,6 +632,9 @@ def test_each_phase_workflow_explains_after_a_fresh_framework_checkout(name):
     for before in steps[explain_at - 3 : explain_at]:
         assert "steps.phase.outputs.explain == 'park'" in before
         assert "steps.setup.outcome == 'failure'" in before
+        if name in PARKED_ON_CANCEL:
+            cancelled = "steps.setup.outcome == 'cancelled' || steps.phase.outcome == 'cancelled'"
+            assert cancelled in before
         for step_id in failed:
             assert f"steps.{step_id}.outcome == 'failure'" in before
     # every phase run and the setup write the files the explain step reads
