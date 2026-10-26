@@ -36,7 +36,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # Measures that change a decision: true definitions, first-pass split by the plan's class, repeats per CLAUDE.md line, and DORA
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(a)` -> intent; `(e)` -> deploy; `sdlc/<id>/c` -> `sdlc/<id>/build`; `deploy.production` -> `deploy.production_gate`. \
 **Status: proposed (roadmap R26), from study entry T31, confirmed by the owner on 2026-10-09, option B of the crosswalk row x-measure, with DORA added (the letters are the row's own).** *[2026-10-20: accepted 2026-10-16 (roadmap R26, PR #215)]* Nothing is built. It amends no decision: decision 20 is kept, and build guide step 42's "scheduled report later" is dropped, a plan and not a decision. It is the last of the gate changes in the confirmed order; its note settles R20's (T28's) waited-time item, and DORA is built in a change of its own after the study.
 
 ## The problem

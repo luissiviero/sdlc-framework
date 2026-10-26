@@ -33,7 +33,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # Triage: a dismissal is one act, the band change has its number, a scheduled incident says what it mutes
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(a)` -> intent; `(e)` -> deploy; `(f)` -> maintain; `a` -> `intent`; `b` -> `design`; `f` -> `maintain`; `incident` -> `sdlc:triage` (the label); `schedule` -> `sdlc:schedule` (the label). \
 **Status: proposed (roadmap R23), from study entry T23, confirmed by the owner on 2026-10-09, option B of the crosswalk row maintain-triage (the letters are that row's own).** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 31; the rank is read from ROADMAP's Order column]* Nothing is built. It amends decision 4 in the direction R22 (T18) amends it: a second actor, R22's GitHub App, may merge a dismissal PR, only on the owner's own close. The decision file comes before the intent, in a documentation PR of its own; this proposal writes no decision file and reserves no number. One recommendation of its own departs from the owner's confirmed notes and waits for the owner's answer: that the dismissal reason skip an `@claude` comment, where T7's note and this entry's correction keep today's rule (What to settle before building). Second of the gate changes in the confirmed order (T18, T23, T9, T30, T31), after R22, whose App, merge workflow and `sdlc/review` check it uses.
 
 ## The problem

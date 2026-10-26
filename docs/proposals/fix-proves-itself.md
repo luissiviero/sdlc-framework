@@ -45,7 +45,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # A fix proves itself — the gate requires the lock, and the runner shows the test red at the lock commit and green at HEAD
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(c)` -> build; `(d)` -> test; `(e)` -> deploy; `c` -> `build`; `phase b` -> `phase design`; `gate-c.json` -> `gate-build.json`; `/sdlc-plan` -> `/sdlc-intent`. \
 **Status: proposed (roadmap R34), from study entry T11, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (PR #215)]* Nothing is built. It amends no decision. It adds a proof the gate checks to what a fix-type change already does, and replaces nothing. R15 (ArtCraft row A3) protects the tests that already exist, in every change type; this proposal proves that the new reproducing test of a fix failed before the fix. The two do not overlap (`templates-revision.md` row 8.5).
 
 ## The problem

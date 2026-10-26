@@ -18,7 +18,7 @@ generated: { by: sdlc-framework-session/ccr-70fb3ae3-39fz5m, at: 2026-10-19T12:0
 ---
 
 # Revisit decision 17's parallel worktrees
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(e)` -> deploy. \
 **Status: proposed on 2026-10-19 at the owner's request (ROADMAP R50).** Nothing is built and nothing is reopened now: this row only says when decision 17's second half is put back to the owner.
 
 ## What decision 17 says today

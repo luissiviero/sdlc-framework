@@ -36,7 +36,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # Acting at 3σ: the Go is the owner's own, a rollback needs a release in the window, a route changed by comment is dispatched by the runner
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(c)` -> build; `(d)` -> test; `(f)` -> maintain; `sdlc/<id>/a` -> `sdlc/<id>/intent`; `sdlc:c-approved` -> none, decision 37 removed it (decision 39, point 2); `sdlc:d-approved` -> none, decision 37 removed it (decision 39, point 2); `incident` -> `sdlc:triage` (the label); `preapproved` -> `allow` (the authorization value); `go` -> `ask` (the authorization value). \
 **Status: proposed (roadmap R41), from study entry T24, confirmed by the owner on 2026-10-09, option B of the crosswalk row maintain-act (the letters are the row's own).** *[2026-10-20: accepted 2026-10-16 (the owner, as recommended, PR #215)]* Nothing is built. It amends decision 26: a rehearsed rollback is pre-approved only when the breach window holds a release, a second condition beside the fresh rehearsal R39 (T20) adds; the decision file comes before the intent, in a documentation PR of its own, and this proposal writes no decision file and reserves no number. Decision 14 is kept, its Go narrowed to the owner's account through the check R17 settled. In the confirmed order it sits in the group "the rest in any order"; the Go's line is placed by R11 and "no ping" by R20; the accepted R19 and R20 leave to this entry the act's row in R19's table and the digest's refresh after the runbook workflow (Order); the review pass on the runbook PRs is R36's (T14).
 
 ## The problem

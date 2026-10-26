@@ -42,7 +42,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # The detection's state reaches the digest and a ref, and the next metric is a project setting
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `triage` -> `explain` (R18's step and its explanation). \
 **Status: proposed (roadmap R40), from study entry T22, confirmed by the owner on 2026-10-09, option B of the crosswalk row maintain-detect (the letters are the row's own).** *[2026-10-20: accepted 2026-10-16 (PR #215)]* Nothing is built. It amends no decision: decisions 15 and 19 are kept and given a code path, 20 and 4 are kept. It defines the "Detection" line that R20 (T28, accepted) places under "State"; R23 (T23) and R42 (T25) each add a sentence to that line, and the detect workflow's red runs reach R18's (T19, accepted) "Failed runs" line. T1's Operations role (R28) reads the detection; nothing here changes it.
 
 ## The problem

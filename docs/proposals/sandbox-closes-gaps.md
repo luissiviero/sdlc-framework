@@ -42,7 +42,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # The sandbox closes what is open — shell writes to the hooks and the protected paths denied, the model credential hidden from shell commands, the workflow token kept
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(c)` -> build; `(d)` -> test; `(e)` -> deploy; `sdlc-evals.yml` -> `sdlc-agent-evals.yml`. \
 **Status: proposed (roadmap R44), from study entry T29, confirmed by the owner on 2026-10-09, option B of the crosswalk row x-sandbox (the letters are the row's own), extended by the owner on 2026-10-14 to the head's own setup command.** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 12, before the real-project trial, after R51 and R25 parts 1-2 (choice 238); the rank is read from ROADMAP's Order column]* Nothing is built. Part of what the entry asked for shipped before this file, in plugin 0.3.7 (change 0002: the `denyWrite` list), and is described under "today". The same release added the shell-guard hook, which is T8's (build-hooks) and which the entry records beside it. It amends no decision: decisions 1, 5 and 6 are kept, and layer iii of decision 6 gains entries. It is in the study's "rest in any order" group. *[2026-10-20: rank 12, before the real-project trial, after R51 and R25 parts 1-2 (choice 238); the rank is read from ROADMAP's Order column]* The forged release ref it found is open: the entry's annotation hands it to T32, but R11's proposal builds no check on it (see "What to settle"). R27 (T1 part 1) adds the policy-sources entry.
 
 ## The problem

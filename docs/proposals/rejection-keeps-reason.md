@@ -33,7 +33,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # A rejection keeps its reason: the owner's closing comment is saved with the change
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(a)` -> intent; `(b)` -> design; `(e)` -> deploy; `(f)` -> maintain. \
 **Status: proposed (roadmap R32), from study entry T7, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (roadmap R32, PR #215)]* Nothing is built. It amends no decision: decision 25 (closing a pull request at gates (a) to (e) abandons the change) is kept, and only what the change's record says changes. It fills the reason that R11's close line and R19's close row point to; the briefs before gate (a) that the owner's note also names belong to R28 (T1), not here.
 
 ## The problem

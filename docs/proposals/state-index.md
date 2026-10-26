@@ -21,7 +21,7 @@ generated: { by: sdlc-framework-session/ccr-1578d710-8r04sw, at: 2026-10-09T16:0
 ---
 
 # The state of the work in the repository
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26): none of the renamed names appear here. \
 **Status: accepted by the owner on 2026-10-09 (roadmap R9).** Nothing is built. *[2026-10-13: part 2 applied in its amended shape, one file per session ("Amendment of 2026-10-13" below); part 1 is still not built.]* Part 1 is a change through the front door; part 2 is a documentation PR, which a session opens at a session boundary.
 
 ## The problem

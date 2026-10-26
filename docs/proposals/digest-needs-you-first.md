@@ -33,7 +33,7 @@ generated: { by: sdlc-framework-session/ccr-20b39ad0-kcymdd, at: 2026-10-14T15:3
 ---
 
 # The digest: ordered by what needs the owner, current at every park, never failing silently
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(a)` -> intent; `(c)` -> build; `(d)` -> test; `(f)` -> maintain; `Phase (f): runbook and dismissal PRs` -> `Maintain: runbook and dismissal PRs`; `--phase f` -> `--phase maintain`; `sdlc:f-ready` -> `sdlc:maintain-ready`; `/sdlc-plan` -> `/sdlc-intent`; `incident` -> `sdlc:triage` (the label); `schedule` -> `sdlc:schedule` (the label); `triage` -> `explain` (R18's step and its explanation). \
 **Status: proposed (roadmap R20), from study entry T28, confirmed by the owner on 2026-10-09: option B of the crosswalk row x-queue, with additions (the letters are the row's own).** *[2026-10-20: accepted 2026-10-14 (PR #208)]* Nothing is built. This proposal owns the digest's order, its refresh and its exit code. The lines it places are defined elsewhere: "Failed runs" in R18 (T19), "Next for you" in R19 (T27), the release line in R13, and the rest in entries not yet proposed (T15, T20, T22, T23, T25, T26, T30, T31). *[2026-10-20: those entries are now proposed and accepted as R37, R39, R40, R23, R42, R43, R25 and R26]* Each line arrives with its entry; the order and the refresh can be built first.
 
 ## The problem

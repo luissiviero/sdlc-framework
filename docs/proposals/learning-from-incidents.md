@@ -36,7 +36,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # Learning from an incident, the rest of it: the metric's return to baseline on the record, and a scan incident's lesson
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(e)` -> deploy. \
 **Status: proposed (roadmap R42), from study entry T25, confirmed by the owner on 2026-10-09, option B of the crosswalk row maintain-learn (the letters are the row's own).** *[2026-10-20: accepted 2026-10-16 (roadmap R42, PR #215)]* Part of the entry is built: its first addition, gate (e) requiring the lesson beside the eval case, shipped before the close in plugin 0.3.6 as change 0003 (ROADMAP R1 on `lessons/`) and is not proposed again; this proposal covers the two parts that remain, the baseline line and the scan incident's lesson. One recommendation in "What to settle" (row 1) would extend the built check to the four body sections; it is this session's, beyond the close row's "remain", and the owner accepts or declines it. It amends no decision. Its baseline line is a sentence inside R40's (T22) Detection line, which R20 (T28) places under "State"; the scan lesson shares an open item with R43 (T26).
 
 ## The problem

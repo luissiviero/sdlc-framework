@@ -18,7 +18,7 @@ generated: { by: sdlc-framework-session/ccr-70fb3ae3-39fz5m, at: 2026-10-19T18:0
 ---
 
 # Speed beyond the pipeline sprint
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(a)` -> intent; `(b)` -> design; `(e)` -> deploy; `/sdlc-plan` -> `/sdlc-intent`; `deploy.production` -> `deploy.production_gate`; `production: true` -> `production_gate: true`. \
 **Status: accepted by the owner on 2026-10-19 (choice 234), as recommended.** Nothing is built.
 
 ## Where the time goes now

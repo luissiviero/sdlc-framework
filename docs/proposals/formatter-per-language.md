@@ -36,7 +36,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # The formatter follows the project's languages: per file type, the project's own commands on the changed file
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(c)` -> build; `(d)` -> test; `(e)` -> deploy. \
 **Status: proposed (roadmap R33), from study entry T8, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (roadmap R33, PR #215)]* Nothing is built. *[2026-10-23: the hook, the mapping and the proposed commands built in plugin 1.0.29 with R61, one PR. The switch `hooks.format_on_edit` goes, as the owner's revised answer in `docs/reviews/2026-10-20-lifecycle-axis-ports/options.md` (row "Formatter on edit") says, so this proposal's recommendation to keep it is overtaken. The list is named `hooks.formatters`; its entries are `{glob, fix, check}`. Full Rust support and the quarantine runbook stay open; see `docs/progress/2026-10-23-claude-r61-r33-trial-shape-formatter.md`.]* It amends no decision: decisions 6 and 7 stay, as the owner's note says, and this proposal writes no decision file. It is one of the study's "rest in any order" proposals (the record, section 8 part 2), added to the formatter hook and to the commands `/sdlc-init` proposes for it, with no other hook changed; full Rust support, the test-file lock for tests inside source files and the quarantine runbook for Node and Rust stay open here, beside R34 (T11) and R41 (T24).
 
 ## The problem

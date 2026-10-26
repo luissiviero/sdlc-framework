@@ -24,7 +24,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T12:0
 ---
 
 # Desktop-only acts
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26): none of the renamed names appear here. \
 **Status: proposed (roadmap R21).** *[2026-10-20: accepted 2026-10-16 (PR #215)]* Nothing is built. The owner asked for it on 2026-10-15[^owner-request]; this file carries the argument and the row in `docs/ROADMAP.md` carries the status. Not urgent.
 
 ## The problem

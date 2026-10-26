@@ -39,7 +39,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # The runbook PRs get the review pass: every automated code change the owner merges has been reviewed
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(b)` -> design; `(d)` -> test; `(e)` -> deploy; `(f)` -> maintain; `incident` -> `sdlc:triage` (the label); `preapproved` -> `allow` (the authorization value); `go` -> `ask` (the authorization value); `ruleset 2` -> the review ruleset. \
 **Status: proposed (roadmap R36), from study entry T14, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 26; the rank is read from ROADMAP's Order column]* Nothing is built. It amends no decision: decision 12 (the review pass is a CI job) is applied to one more kind of pull request, and decisions 14 and 26 (which runbooks run without a person) are unchanged. It is one of the entries the confirmed order places in "the rest in any order"; R41 (T24) lists it as its point 4, "already decided", and builds nothing for it, and R22 (T18) names the check this proposal posts as the one a runbook PR carries under its second ruleset.
 
 ## The problem

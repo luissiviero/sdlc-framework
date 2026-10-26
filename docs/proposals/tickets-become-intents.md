@@ -36,7 +36,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 ---
 
 # Tickets become intents: a GitHub issue the owner labels starts the intent PR
-
+**Names since R45** (decision 39; the renames built in plugin 1.0.43 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `(a)` -> intent; `(c)` -> build; `(e)` -> deploy; `(f)` -> maintain; `--phase a` -> `--phase intent`; `sdlc/<id>/a` -> `sdlc/<id>/intent`; `sdlc:a-ready` -> `sdlc:intent-ready`; `/sdlc-plan` -> `/sdlc-intent`; `sdlc-plan.md` -> `sdlc-intent.md`; `incident` -> `sdlc:triage` (the label); `sdlc-evals.yml` -> `sdlc-agent-evals.yml`; `sdlc:intent` -> `sdlc:ticket` (this proposal's label, decided by decision 39's section 11 row for R31, not built). \
 **Status: proposed (roadmap R31), from study entry T6, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 37; the rank is read from ROADMAP's Order column]* Nothing is built. It amends no decision: decision 9's linkage rule is followed and the new label sits beside the owner's other labels (decisions 3 and 24, as amended by 27 and 28), so no decision file is written and no number is reserved. It adds a fourth way into a project beside the three of today, all of which stay; the act it adds is recorded by R11 and listed by R19, and its pull requests are placed by R20.
 
 ## The problem
