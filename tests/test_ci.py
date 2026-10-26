@@ -842,7 +842,10 @@ def test_an_e_run_whose_drive_takes_the_cap_below_the_floor_parks_before_the_ses
         "gate.drive_timeout takes 60 min off the deploy session's 60 min, below the floor of 30 min"
     )
     source = (ROOT / "plugin" / "ci" / "run_phase.py").read_text(encoding="utf-8")
-    assert "limits.drive_floor_refusal(config, phase in BUILD_CAP_PHASES)" in source
+    # decision 41 added the re-check minutes as a third argument; ``build`` is unchanged
+    assert (
+        "limits.drive_floor_refusal(config, phase in BUILD_CAP_PHASES, recheck_minutes)" in source
+    )
 
 
 def test_a_framework_change_may_touch_the_guardrails(project, tmp_path):
@@ -3837,6 +3840,166 @@ def test_the_fix_session_runs_with_the_fix_mark_and_the_build_timeout(
     assert seen["timeout"] == (180 + 5) * 60
     assert int(seen["argv"][seen["argv"].index("--max-turns") + 1]) == 400
     capsys.readouterr()
+
+
+def test_the_recheck_minutes_come_off_a_fix_round_at_deploy_and_nothing_else():
+    """Decision 41, point 1 (R67): in a fix round at deploy the minutes R51's merge and re-check
+    took come off the session's wall clock, with the drive's, never below the 30-minute floor;
+    no other run gives them up, and the job's arithmetic does not count them."""
+    from gate import limits
+
+    timeout = run_phase.run_timeout_seconds
+    assert timeout({}, "fix", JOB_ENV, "deploy", 20) == (160 + 5) * 60
+    assert timeout({}, "fix", JOB_ENV, "deploy", 0) == (180 + 5) * 60
+    assert timeout(DRIVE, "fix", JOB_ENV, "deploy", 20) == (155 + 5) * 60
+    assert timeout({}, "fix", JOB_ENV, "deploy", 45) == (135 + 5) * 60
+    assert timeout({}, "fix", JOB_ENV, "build", 20) == (180 + 5) * 60  # not at deploy
+    assert timeout({}, "fix", JOB_ENV, "deploy", 170) == (30 + 5) * 60  # the floor
+    assert run_phase.run_caps({}, "fix", JOB_ENV, "deploy", 20) == (400, 160)
+    # the round's sum, r + (180 - r + 5) + 50 + 10, is 245 of 260 for any r up to 45
+    for r in (0, 1, 20, 45):
+        assert r + timeout({}, "fix", JOB_ENV, "deploy", r) // 60 + 50 + 10 == 245
+    # whole minutes, rounded up, and none when the default branch had not moved
+    spent = run_phase.recheck_minutes_spent
+    assert spent({"ok": True, "merged": "abc", "recheck": "green"}, 1199.0) == 20
+    assert spent({"ok": True, "merged": "abc"}, 2.0) == 1
+    assert spent({"ok": True, "merged": None}, 600.0) == 0
+    assert spent({"ok": False, "merged": "abc"}, 600.0) == 0
+    # the floor park counts them: the reason names the re-check, the need says what to do
+    assert limits.drive_floor_refusal({}, True, 160) == (
+        "R51's merge and re-check took 160 min, which come off the deploy session's 180 min, "
+        "below the floor of 30 min"
+    )
+    assert limits.drive_floor_refusal(DRIVE, True, 150) == (
+        "gate.drive_timeout (5 min) and R51's merge and re-check (150 min) take 155 min off the "
+        "deploy session's 180 min, below the floor of 30 min"
+    )
+    assert limits.drive_floor_refusal({}, True, 150) is None
+    assert limits.drive_floor_refusal({}, True, 0) is None
+    assert limits.floor_need(160) == limits.RECHECK_FLOOR_NEED
+    assert limits.floor_need(0) == limits.DRIVE_FLOOR_NEED
+
+
+def test_the_fix_session_s_environment_carries_the_recheck_minutes(tmp_path):
+    """Decision 41: the fix session's ``start-run`` learns the minutes from its environment, as
+    it learns ``SDLC_RUN=fix``; no other session carries them, nor one the workflow set."""
+    from gate import limits
+
+    env = {"PATH": "/bin", **KEY_ENV}
+    assert limits.RECHECK_MINUTES_ENV == "SDLC_RECHECK_MINUTES"
+    marked = run_phase.session_env(env, tmp_path, "fix", recheck_minutes=20)
+    assert marked[limits.RECHECK_MINUTES_ENV] == "20" and marked[limits.RUN_KIND_ENV] == "fix"
+    set_by_workflow = {**env, limits.RECHECK_MINUTES_ENV: "99"}
+    assert limits.RECHECK_MINUTES_ENV not in run_phase.session_env(set_by_workflow, tmp_path, "fix")
+    for phase in ("design", "build", "test", "deploy", "review", None):
+        marked = run_phase.session_env(set_by_workflow, tmp_path, phase, recheck_minutes=20)
+        assert limits.RECHECK_MINUTES_ENV not in marked, phase
+
+
+def _fix_round_at_deploy(root, change, tmp_path, monkeypatch, minutes: float, merged):
+    """A fix round of a change at deploy whose R51 merge reports ``merged`` and takes
+    ``minutes`` on the runner's clock; returns what the session was started with."""
+    from pr import github
+
+    with_remote(root, tmp_path)
+    set_state(change, "deploy")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "build(0001): the build")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/build")
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    monkeypatch.setattr(run_phase, "apply_owner_labels", lambda *a, **k: {"ok": True})
+    monkeypatch.setattr(run_phase, "ensure_labels", lambda repo, env: {"ok": True})
+    gh = with_a_request(FixGitHub())
+    monkeypatch.setattr(run_phase, "_github", lambda: gh)
+    real_clock = run_phase.time.monotonic
+    skew = [0.0]
+    monkeypatch.setattr(run_phase.time, "monotonic", lambda: real_clock() + skew[0])
+
+    def update(*a, **k):
+        skew[0] += minutes * 60
+        return {"ok": True, "merged": merged, "recheck": "green"}
+
+    monkeypatch.setattr(run_phase.base_update, "update_before_offer", update)
+    seen: dict = {}
+
+    def invoke(argv, root, env, timeout):
+        seen.update(env=env, timeout=timeout)
+        return None, "", "boom", 1
+
+    monkeypatch.setattr(run_phase, "invoke", invoke)
+    upsert_recorder(monkeypatch)
+    args = Args(
+        root=str(root), phase="fix", head_ref="sdlc/0001/build", pr_number="7", dry_run=False
+    )
+    env = dict(os.environ, **KEY_ENV, **JOB_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    for var in ("GITHUB_ACTIONS", "SDLC_RUN", "SDLC_RECHECK_MINUTES"):
+        env.pop(var, None)
+    seen["code"] = run_phase.run_phase(args, env)
+    return seen
+
+
+@pytest.mark.parametrize(
+    ("minutes", "merged", "session", "recorded"),
+    [(19.5, "abc1234", 160, "20"), (0.2, None, 180, None)],
+)
+def test_a_fix_round_at_deploy_gives_up_the_minutes_its_merge_took(
+    project, tmp_path, monkeypatch, capsys, minutes, merged, session, recorded
+):
+    """Decision 41, point 1: the runner measures R51's merge and re-check and takes the minutes
+    off the session's timeout, and hands them to the session for its ``start-run``; a round
+    whose default branch had not moved keeps its 180."""
+    root, change = project
+    seen = _fix_round_at_deploy(root, change, tmp_path, monkeypatch, minutes, merged)
+    assert seen["code"] == run_phase.EXIT_FAILED  # the fake session failed
+    assert seen["timeout"] == (session + 5) * 60
+    assert seen["env"]["SDLC_RUN"] == "fix"
+    assert seen["env"].get("SDLC_RECHECK_MINUTES") == recorded
+    capsys.readouterr()
+
+
+def test_the_deploy_run_keeps_its_whole_cap_after_a_merge_that_moved(project, monkeypatch, capsys):
+    """Decision 41 is a fix round's: the deploy run's job holds R51's re-check (355 minutes),
+    so a merge that took 20 minutes takes nothing off its session, and it carries no figure."""
+    root, change = project
+    set_state(change, "test", gate_phase="test", gate_result="passed")
+    real_clock = run_phase.time.monotonic
+    skew = [0.0]
+    monkeypatch.setattr(run_phase.time, "monotonic", lambda: real_clock() + skew[0])
+
+    def update(*a, **k):
+        skew[0] += 20 * 60
+        return {"ok": True, "merged": "abc1234", "recheck": "green"}
+
+    monkeypatch.setattr(run_phase.base_update, "update_before_offer", update)
+    seen: dict = {}
+
+    def invoke(argv, root, env, timeout):
+        seen.update(env=env, timeout=timeout)
+        return None, "", "boom", 1
+
+    monkeypatch.setattr(run_phase, "invoke", invoke)
+    upsert_recorder(monkeypatch)
+    env = dict(KEY_ENV)
+    run_phase.run_phase(Args(root=str(root), phase="deploy", dry_run=False), env)
+    assert seen["timeout"] == (120 + 5) * 60
+    assert "SDLC_RECHECK_MINUTES" not in seen["env"]
+    capsys.readouterr()
+
+
+def test_a_fix_round_whose_merge_took_the_session_below_the_floor_parks_before_it(
+    project, tmp_path, monkeypatch, capsys
+):
+    """Decision 41: the floor park counts the re-check's minutes, before any session starts."""
+    root, change = project
+    seen = _fix_round_at_deploy(root, change, tmp_path, monkeypatch, 159.5, "abc1234")
+    assert seen["code"] == run_phase.EXIT_OK and "timeout" not in seen
+    reason = (
+        "limits: R51's merge and re-check took 160 min, which come off the deploy session's "
+        "180 min, below the floor of 30 min"
+    )
+    assert json.loads(capsys.readouterr().out)["parked"] == reason
+    assert status_mod.read_status(change).parked_reason == reason
 
 
 def test_the_fix_run_parks_on_a_runner_when_the_requests_are_unavailable(
