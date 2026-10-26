@@ -7,16 +7,14 @@
 Run by ``template/.github/workflows/sdlc-merge.yml`` on a checkout of the default branch, so
 the owner's ``sdlc.yaml`` (never the pull request's) names the owner. No model runs here.
 
-**on-approval** (``pull_request_review`` ``submitted``; ``doorbell`` before plugin 1.0.46,
-still accepted for one release because an older workflow copy calls it, R45 row N5): an
-approving review by the owner's account (``state/unpark.py is_owner_actor``, decision 34)
-on an open build PR (head
-``sdlc/<id>/build``, or ``sdlc/<id>/c`` of a change in flight before R45, in this
-repository) dispatches ``sdlc-merge.yml`` on the default branch with the pull request's
-number. It holds no key and judges nothing else: the dispatched job
-re-checks everything from the API, so a review-triggered run, whose workflow file may come
-from the pull request, never reaches the merge App's key (the R22 proposal, "What to
-settle", the App row). Any other review is a green skip that says why.
+**on-approval** (``pull_request_review`` ``submitted``; ``doorbell`` before plugin 1.0.46, R45
+row N5): an approving review by the owner's account (``state/unpark.py is_owner_actor``,
+decision 34) on an open build PR (head ``sdlc/<id>/build`` in this repository) dispatches
+``sdlc-merge.yml`` on the default branch with the pull request's number. It holds no key and
+judges nothing else: the dispatched job re-checks everything from the API, so a
+review-triggered run, whose workflow file may come from the pull request, never reaches the
+merge App's key (the R22 proposal, "What to settle", the App row). Any other review
+is a green skip that says why.
 
 **not-build** (``pull_request``): every pull request that is not a framework build PR gets a
 passing ``sdlc/review`` check ("not a build PR") on its head, so the review ruleset, which
@@ -32,12 +30,11 @@ green "wait" line, since a merge that cannot happen leaves the PR open and shows
 digest (decisions 11 and 20):
 
 1. the pull request is open, not a draft, into the default branch, its head
-   ``sdlc/<id>/build`` in this repository, labelled ``sdlc:deploy-ready`` (or the
-   ``sdlc:e-ready`` an older plugin applied) and not
+   ``sdlc/<id>/build`` in this repository, labelled ``sdlc:deploy-ready`` and not
    ``sdlc:needs-human``;
 2. at its head, ``changes/<id>-<slug>/status.yaml`` says phase deploy, gate (deploy) passed, no
-   park, and names this pull request as ``build_pr``; ``evidence/gate-deploy.json`` (or the
-   letter's ``gate-e.json``) says ``wait`` and
+   park, and names this pull request as ``build_pr``; ``evidence/gate-deploy.json`` says
+   ``wait`` and
    carries no deferred commands check (issue #91);
 3. ``evidence/review-findings.json`` at the head has no Important finding, and every commit
    after the one it reviewed touches only the change's ``evidence/``, its ``status.yaml``
@@ -86,14 +83,10 @@ EXIT_OK, EXIT_FAILED = 0, 1
 MERGE_WORKFLOW = "sdlc-merge.yml"
 MERGE_TOKEN_ENV = "SDLC_MERGE_TOKEN"
 E_READY = c.ready_label(c.DEPLOY)
-# R45: a build PR an older plugin labelled carries ``sdlc:e-ready``; both offer it
-E_READY_LABELS = c.ready_labels(c.DEPLOY)
-# R45: the build head is ``sdlc/<id>/build``, or ``sdlc/<id>/c`` for a change in flight
-BUILD_HEAD_RE = re.compile(rf"^sdlc/(?P<id>\d{{4}})/(?:{c.BUILD}|{c.PHASE_LETTERS[c.BUILD]})$")
+BUILD_HEAD_RE = re.compile(rf"^sdlc/(?P<id>\d{{4}})/{c.BUILD}$")
 DECISIVE = ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
 # R45 row N5: the subcommand and its log prefix were ``doorbell`` and ``merge-doorbell``
 ON_APPROVAL = "on-approval"
-SUBCOMMAND_ALIASES = {"doorbell": ON_APPROVAL}  # an older sdlc-merge.yml copy calls it
 LINES = {ON_APPROVAL: "on-approval", "not-build": "review-check", "merge": "merge"}
 
 
@@ -145,8 +138,7 @@ def _config(root: Path) -> dict[str, Any]:
 
 
 def build_change_id(head_ref: Any) -> str | None:
-    """The change id of a build PR's head ``sdlc/<id>/build`` (or the letter branch
-    ``sdlc/<id>/c`` an older plugin cut, R45), else None."""
+    """The change id of a build PR's head ``sdlc/<id>/build``, else None."""
     found = BUILD_HEAD_RE.match(str(head_ref or ""))
     return found.group("id") if found else None
 
@@ -291,13 +283,9 @@ def _text_at(github: Any, repo: str, path: str, ref: str) -> str | None:
 APPROVAL_PREDATES_GATE_E = "the owner's approval predates gate (deploy): approve again on the head"
 
 
-def gate_e_paths(evidence: str) -> tuple[str, str]:
-    """``evidence/gate-deploy.json``, then the ``evidence/gate-e.json`` an older plugin wrote
-    (R45): a reader at a commit takes the first that is there."""
-    return tuple(
-        f"{evidence}/{art.GATE_RESULT.format(phase=p)}"
-        for p in (c.DEPLOY, c.PHASE_LETTERS[c.DEPLOY])
-    )
+def gate_e_paths(evidence: str) -> tuple[str]:
+    """``(evidence/gate-deploy.json,)``: the paths ``_first_text_at`` reads at a commit."""
+    return (f"{evidence}/{art.GATE_RESULT.format(phase=c.DEPLOY)}",)
 
 
 def _first_text_at(
@@ -353,7 +341,7 @@ def judge(
     labels = pr.get("labels") or []
     if c.NEEDS_HUMAN_LABEL in labels:
         return {"wait": f"#{number} is parked ({c.NEEDS_HUMAN_LABEL})"}
-    if not E_READY_LABELS & set(labels):
+    if E_READY not in labels:
         return {"wait": f"#{number} does not carry {E_READY}: gate (deploy) has not offered it"}
     head = str(pr.get("head_sha") or "")
     if not head:
@@ -492,8 +480,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="sdlc-merge-step", description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in (ON_APPROVAL, "not-build", "merge"):
-        aliases = [old for old, new in SUBCOMMAND_ALIASES.items() if new == name]
-        s = sub.add_parser(name, aliases=aliases)
+        s = sub.add_parser(name)
         s.add_argument("--root", default=".", help="the default branch's checkout")
         s.add_argument("--repo", required=True, help="owner/name")
         if name == "merge":
@@ -504,10 +491,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root, env = Path(args.root).resolve(), dict(os.environ)
-    cmd = SUBCOMMAND_ALIASES.get(args.cmd, args.cmd)
-    if cmd == ON_APPROVAL:
+    if args.cmd == ON_APPROVAL:
         return on_approval(root, args.repo, env)
-    if cmd == "not-build":
+    if args.cmd == "not-build":
         return not_build(root, args.repo, env)
     return merge(root, args.repo, args.pr, env)
 

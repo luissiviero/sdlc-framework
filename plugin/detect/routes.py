@@ -9,8 +9,7 @@ block", p.36): ``allow`` (CI-scoped and reversible: the intent PR, quarantining 
 a revert PR) runs with no human in the path; ``ask`` (anything that touches a running system:
 a rollback, a config change) parks the incident PR with "Go" requested, and the owner's
 ``sdlc:go`` label runs it (``sdlc-runbook.yml``). Until plugin 1.0.44 the values were
-``preapproved`` and ``go``; a file that still holds them is read as ``allow`` and ``ask`` for
-one release (R45, decision 39, row 56; ``LEGACY_AUTHORIZATIONS``). Decision 26
+``preapproved`` and ``go`` (R45, decision 39, row 56), not read since 1.0.48. Decision 26
 amends one case: on a project with ``deploy.production_gate: true``, a rollback runbook the owner
 has rehearsed (``sdlc.yaml: maintain.runbooks[].rehearsed_at`` set to a date) is
 pre-approved - the p.49 figure makes the rehearsal the precondition, and a "Go" that waits
@@ -34,7 +33,6 @@ PULL_REQUEST = "pull_request"
 RUNBOOK_PREFIX = "runbook:"
 ALLOW, ASK = "allow", "ask"
 AUTHORIZATIONS = (ALLOW, ASK)
-LEGACY_AUTHORIZATIONS = {"preapproved": ALLOW, "go": ASK}
 # The runbooks the plugin ships (CI-scoped, reversible, p.45 "the agent quarantines the flaky
 # test or opens a revert PR, and the review gate decides"); a project adds its own under
 # ``sdlc.yaml: maintain.runbooks`` with a ``command``.
@@ -103,11 +101,9 @@ class Proposal:
 
 
 def authorization_value(value: Any) -> Any:
-    """``value`` with an old authorization (``preapproved``, ``go``) read as its new name
-    (``allow``, ``ask``); anything else unchanged, for the caller to judge."""
-    if not isinstance(value, str):
-        return value
-    return LEGACY_AUTHORIZATIONS.get(value.strip(), value.strip())
+    """``value`` stripped when it is a string; anything else unchanged, for the caller to
+    judge."""
+    return value.strip() if isinstance(value, str) else value
 
 
 def runbook_name(route: str) -> str | None:

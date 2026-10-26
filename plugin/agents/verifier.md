@@ -25,8 +25,7 @@ assumptions that produced the code").
    `build.log` and `lint.log`; a red target parks the change there, and nothing you can do
    in this session changes that record. Read instead the record of **the phase before
    yours**, named by phase and never by recency: `evidence/gate-design.json` at the end of build
-   and `evidence/gate-build.json` at test (`gate-b.json` and `gate-c.json` when an older
-   plugin wrote them) — the runner's run on the tree this phase started from. Your own
+   and `evidence/gate-build.json` at test — the runner's run on the tree this phase started from. Your own
    phase's record, when one is present (`gate-build.json` at build, `gate-test.json` at
    test), is an earlier round's and is never judged here. Read the three logs too when
    they exist. Quote the record's `commands` entry (each command, its exit code, the tail

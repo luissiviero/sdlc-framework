@@ -192,5 +192,5 @@ def test_target_logs_and_required_evidence():
     assert art.required_evidence("test", True)[-1] == "drive.log"
     assert art.required_evidence("deploy", True)[-1] == "drive.log"
     assert art.required_evidence("build", True) == art.REQUIRED_EVIDENCE["build"]
-    # R45: a letter an older caller passes is read as its name
-    assert art.required_evidence("d", True) == art.required_evidence("test", True)
+    # R45: a letter an older caller passes is refused since 1.0.48 (R45's sixth PR): no evidence
+    assert art.required_evidence("d", True) == ()

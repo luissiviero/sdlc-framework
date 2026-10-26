@@ -126,45 +126,34 @@ the template of every release (`plugin/init/template_hashes.json`):
   `policies/README.md`) is replaced with this version's and reported
   `refreshed (was <version>)`, the first release that shipped the text it had; the report's
   `refreshed` map lists them;
-- a copy the template renamed (`sdlc-evals.yml`, now `sdlc-agent-evals.yml` after the
-  article's `agent-evals.yml`, p.30; R45 row 78, plugin 1.0.46) is removed when an older
-  release wrote it and nobody changed it since, reported `removed (was <version>): …`, and
-  the new file is installed in its place; an edited one is kept and reported `kept; renamed
-  (edited): …`, and the new file is reported `not installed: …` until the owner moves the
-  edits and deletes the old copy, so the suite never runs twice;
 - an edited copy is kept, and so is one rendered with values the project no longer has
   (another framework repository, a renamed default branch, changed `commands.env` names): a
   workflow is reported `outdated: …`, a README or `evals/check.py` `kept; outdated (edited):
   …`; the owner diffs it with the template copy
   (`${CLAUDE_PLUGIN_ROOT}/template/`) to take the newer text, or keeps their edits. A pin
-  that moves past 1.0.42 needs its workflow copies taken with it in the same PR: a copy from
-  before the phase names (R45) waits for a build PR on `sdlc/<id>/c` and an incident PR on
-  `sdlc/<id>/a`, and never fires for a change cut as `sdlc/<id>/build` or `/intent`;
+  moves with its workflow copies in the same PR: a copy from before the phase names (R45,
+  plugin 1.0.43) waits for a build PR on `sdlc/<id>/c` and an incident PR on `sdlc/<id>/a`,
+  and never fires for a change cut as `sdlc/<id>/build` or `/intent`;
 - `REVIEW.md` and `bands.yaml` are guardrail files and never rewritten (decision 6): a
   `REVIEW.md` an older release wrote and nobody edited is reported `kept; outdated (was
   <version>): …` for the owner's reviewed PR; an edited one and `bands.yaml` are the owner's
   content and say `kept`;
 - `sdlc.yaml` reports `unchanged` or `updated (added …)` with its comments kept as the first
-  install wrote them (only `updated (… comments dropped)` loses them). A key an older
-  release named otherwise (`deploy.production`, `external_review`; R45) is read under its old
-  name for one release and never gets its new name added beside it; the report's
-  `legacy_keys` names each one, and the rename is the owner's edit: show those lines to the
-  owner as they are. The rename waits for the pin at 1.0.45 or later: an older plugin reads
-  only the old key, so a `deploy.production_gate: true` under it is read as false and the
-  production gate is off;
-- a guardrail path that names the skill `ux-conventions`, now `ux-and-brand` (R45 row 80,
-  plugin 1.0.46), is never renamed by the script: the report's `legacy_paths` names each
-  one. The owner's source `policies/ux-conventions.md` is still read for one release while
-  `policies/ux-and-brand.md` is missing, and an override in `.claude/skills/ux-conventions/`
-  is still honoured as the `ux-and-brand` override; a `.claude/settings.json` rule that
-  names `sdlc:ux-conventions` is not honoured and must name `sdlc:ux-and-brand`. Show those
-  lines to the owner as they are: each rename is the owner's edit in a reviewed PR.
+  install wrote them (only `updated (… comments dropped)` loses them). The names R45 renamed
+  (decision 39) are read under their new names only since plugin 1.0.48: a project that
+  upgrades from a pin before 1.0.48 and still holds an old name renames, in the same
+  reviewed PR, `deploy.production` to `deploy.production_gate`, `external_review` to
+  `second_opinion`, the letters of `session_model` and `second_opinion.phases` to the phase
+  names, `bands.yaml`'s `preapproved` and `go` to `allow` and `ask`, `policies/ux-
+  conventions.md` to `policies/ux-and-brand.md` and `.claude/skills/ux-conventions/` to `ux-
+  and-brand`, and deletes an old `sdlc-evals.yml` copy that an upgrade kept as edited (now
+  `sdlc-agent-evals.yml`); an old `deploy.production` fails every reader closed until it is
+  renamed; it moves its open changes' `status.yaml` files to the phase names first. Each is
+  the owner's edit.
 
 Read its JSON report and show the owner the file-by-file result, the `outdated` ones first,
-then the `refreshed` ones, then any `removed (was <version>)` (a renamed copy nobody edited,
-replaced by its new name, as `sdlc-evals.yml` by `sdlc-agent-evals.yml`), `kept; renamed
-(edited)` and `not installed` lines; the refreshed and removed copies ride in the same PR as
-the pin, so the two move together, and the PR body lists them. Whenever a copy is `outdated`, say so to the owner
+then the `refreshed` ones; the refreshed copies ride in the same PR as the pin, so the two
+move together, and the PR body lists them. Whenever a copy is `outdated`, say so to the owner
 and name the template copy to diff by hand; the framework never rewrites an edited one. For an outdated `sdlc-build.yml` or `sdlc-fix.yml`, also say:
 replace sdlc-build.yml and sdlc-fix.yml to get the build caps (decision 32; an older copy
 keeps the build and every fix round on the general caps). The report's `maintain.observation` line

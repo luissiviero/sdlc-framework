@@ -16,14 +16,13 @@ PHASES = ("intent", "design", "build", "test", "deploy", "maintain")
 INTENT, DESIGN, BUILD, TEST, DEPLOY, MAINTAIN = PHASES
 # R45 (decision 39, row 1): the phases are named after what they produce, as the article's
 # stages are (p.4), with (a) as ``intent`` so "plan" means plan.md only. Until plugin 1.0.42
-# they were the letters (a) to (f). ``phase_name`` reads a letter as its name wherever a phase
-# is read (status.yaml, --phase, branches, labels, sdlc.yaml keys, evidence files) for one
-# release; the readers of history (a remote ``sdlc/<id>/<letter>`` branch, a merged change's
-# folder) keep reading letters for good (choice 273), so ``LEGACY_PHASES``, ``phase_name``'s
-# letter mapping and ``BRANCH_RE``'s letter branch stay when the sixth rename PR removes the
-# live readers' calls. A project moves its workflow copies with its pin (``/sdlc-init``'s
-# upgrade): a copy older than 1.0.43 filters the build PR on ``/c`` and the incident PR on
-# ``/a``, and never fires for a change cut with the names.
+# they were the letters (a) to (f). Plugins 1.0.43 to 1.0.47 also read a letter wherever a
+# live phase was read (status.yaml on the default branch, --phase, labels, sdlc.yaml keys, an
+# in-flight change's branch and evidence files); the sixth rename PR (1.0.48) removed those
+# readers, so a live phase is a name (``_check_phase``). The readers of history keep reading
+# letters for good (choice 273): a remote ``sdlc/<id>/<letter>`` branch is never renamed, and
+# neither are a merged change's records, so ``LEGACY_PHASES``, ``phase_name``'s letter mapping,
+# ``BRANCH_RE``'s letter branch, ``branch_names`` and ``merged_phase_file`` stay.
 LEGACY_PHASES = dict(zip(("a", "b", "c", "d", "e", "f"), PHASES, strict=True))
 PHASE_LETTERS = {name: letter for letter, name in LEGACY_PHASES.items()}
 # Not a phase: the end state of a change whose PR the owner closed without merging at a gate
@@ -44,7 +43,8 @@ PHASE_ARTIFACTS = {
 def phase_name(value: Any) -> Any:
     """The phase name for ``value``: a letter (a) to (f) becomes its name (R45), a name stays
     as it is, and anything else (``review``, ``fix``, ``abandoned``, None) comes back
-    unchanged, so every reader can pass what it read through this one function."""
+    unchanged. For the readers of history alone (choice 273): a ``status.yaml`` on a remote
+    letter branch, a merged change's records; a live phase is a name."""
     if isinstance(value, str):
         stripped = value.strip()
         return LEGACY_PHASES.get(stripped, stripped if stripped in PHASES else value)
@@ -106,15 +106,10 @@ UNPARK_LABELS = (RESET_ITERATIONS_LABEL, UNLOCK_TESTS_LABEL)
 # it?" - "Go."), read by ``sdlc-runbook.yml``, performed once, recorded with the actor and
 # removed, like the un-park labels. R45 (decision 39, rows 37 and 38): until plugin 1.0.43
 # the two labels were ``incident`` and ``schedule``, without the prefix that groups the
-# framework's labels, and a weekly scan finding is not an incident; an open PR an older plugin
-# labelled carries the old one, which is read for one release (``TRIAGE_LABELS``,
-# ``SCHEDULE_LABELS``).
+# framework's labels, and a weekly scan finding is not an incident; plugins 1.0.43 to 1.0.47
+# also read the old ones, and since 1.0.48 only these are read.
 TRIAGE_LABEL = "sdlc:triage"
 SCHEDULE_LABEL = "sdlc:schedule"
-LEGACY_TRIAGE_LABEL = "incident"
-LEGACY_SCHEDULE_LABEL = "schedule"
-TRIAGE_LABELS = frozenset({TRIAGE_LABEL, LEGACY_TRIAGE_LABEL})
-SCHEDULE_LABELS = frozenset({SCHEDULE_LABEL, LEGACY_SCHEDULE_LABEL})
 GO_LABEL = "sdlc:go"
 # Decision 29 (plugin 1.0.3, ROADMAP R10): a red target the CI runner finds after the session
 # starts the next fix round by itself. While that round runs the PR carries ``sdlc:fixing``
@@ -138,30 +133,17 @@ SUPERSEDED_LABEL = "sdlc:superseded"
 
 def ready_label(phase: str) -> str:
     """Set whenever a run stops at a human gate and waits for the owner: ``sdlc:<name>-ready``
-    (R45; a letter is read as its name)."""
+    (R45)."""
     return f"{LABEL_PREFIX}{_check_phase(phase)}-ready"
 
 
-def legacy_ready_label(phase: str) -> str:
-    """The label ``ready_label`` gave before R45 (``sdlc:c-ready``), read for one release on a
-    PR an older plugin labelled."""
-    return f"{LABEL_PREFIX}{PHASE_LETTERS[_check_phase(phase)]}-ready"
-
-
-def ready_labels(phase: str) -> frozenset[str]:
-    """The labels that say a PR waits at ``phase``'s gate: the name's and, for one release,
-    the letter's."""
-    return frozenset({ready_label(phase), legacy_ready_label(phase)})
-
-
-READY_LABEL_RE = re.compile(rf"^{LABEL_PREFIX}(?P<phase>[a-f]|{'|'.join(PHASES)})-ready$")
+READY_LABEL_RE = re.compile(rf"^{LABEL_PREFIX}(?P<phase>{'|'.join(PHASES)})-ready$")
 
 
 def ready_label_phase(label: str) -> str | None:
-    """The phase name a waiting label names (``sdlc:build-ready``, or ``sdlc:c-ready`` from an
-    older plugin), or None for any other label."""
+    """The phase a waiting label names (``sdlc:build-ready``), or None for any other label."""
     m = READY_LABEL_RE.match(str(label))
-    return phase_name(m.group("phase")) if m else None
+    return m.group("phase") if m else None
 
 
 def runner_labels() -> list[str]:
@@ -181,8 +163,9 @@ def all_labels() -> list[str]:
 
 
 # --- branches -----------------------------------------------------------------------------
-# R45: ``sdlc/<id>/<name>``; a letter branch (``sdlc/<id>/c``) is read as its phase for good,
-# since remote branches are never renamed (choice 273): a change in flight keeps its branch.
+# R45: ``sdlc/<id>/<name>``. A letter branch (``sdlc/<id>/c``) an older plugin cut is read as
+# its phase for good by the readers of history, since remote branches are never renamed
+# (choice 273): ``parse_branch`` and ``branch_names``. A new run only ever cuts the name's.
 BRANCH_RE = re.compile(rf"^sdlc/(?P<id>\d{{4}})/(?P<phase>[a-f]|{'|'.join(PHASES)})$")
 
 
@@ -192,15 +175,16 @@ def branch_name(change_id: str, phase: str) -> str:
 
 
 def legacy_branch_name(change_id: str, phase: str) -> str:
-    """The branch an older plugin cut for ``phase`` (``sdlc/<id>/c``): a change in flight
-    when its project moved past plugin 1.0.42 finishes on it."""
+    """The branch an older plugin cut for ``phase`` (``sdlc/<id>/c``), for the readers of
+    history alone: a run never cuts or checks it out."""
     _check_id(change_id)
     return f"sdlc/{change_id}/{PHASE_LETTERS[_check_phase(phase)]}"
 
 
 def branch_names(change_id: str, phase: str) -> tuple[str, str]:
-    """``(name, letter)`` branches of ``phase``: the one this plugin cuts, then the one an
-    older plugin cut; a reader looks for both, the name first."""
+    """``(name, letter)`` branches of ``phase`` for the readers of history (the remote
+    branches of every change, ``detect/cli.py``, the release record): the one this plugin
+    cuts, then the one an older plugin cut."""
     return branch_name(change_id, phase), legacy_branch_name(change_id, phase)
 
 
@@ -229,17 +213,19 @@ def work_branch(change_id: str, phase: str) -> str:
     return branch_name(change_id, WORK_PHASE[_check_phase(phase)])
 
 
-def work_branches(change_id: str, phase: str) -> tuple[str, str]:
-    """``(name, letter)`` of the branch a run of ``phase`` commits on (``branch_names``)."""
-    return branch_names(change_id, WORK_PHASE[_check_phase(phase)])
-
-
 def phase_file(directory: Path | str, pattern: str, phase: str, **fields: Any) -> Path:
     """The file ``pattern`` names for ``phase`` in ``directory`` (``gate-{phase}.json``,
-    ``{phase}-{n}-reviewer.md``): the name's (``gate-build.json``), unless only the letter's
-    exists (``gate-c.json``, written by a plugin before R45), which is then read. A writer
-    takes the name's always: ``Path(directory) / pattern.format(phase=name)``. A run that is
-    not a phase (``review``, ``fix``) has one name and its file is returned as it is."""
+    ``{phase}-{n}-reviewer.md``): ``gate-build.json``. A run that is not a phase (``review``,
+    ``fix``) has one name and its file is returned as it is. The letter's file an older plugin
+    wrote (``gate-c.json``) is read only by the readers of a merged change's history
+    (``merged_phase_file``)."""
+    return Path(directory) / pattern.format(phase=phase, **fields)
+
+
+def merged_phase_file(directory: Path | str, pattern: str, phase: str, **fields: Any) -> Path:
+    """``phase_file``, or the letter's file (``gate-e.json``) when only that one exists: a
+    merged change's evidence keeps the names its plugin wrote, and its readers read both for
+    good (choice 273)."""
     name = phase_name(phase)
     path = Path(directory) / pattern.format(phase=name, **fields)
     if path.exists() or name not in PHASES:
@@ -330,11 +316,10 @@ def find_change_dir(project_root: Path, change_id: str) -> Path | None:
 
 
 def _check_phase(phase: str) -> str:
-    """``phase``'s name (a letter is read as its name, R45), or ValueError."""
-    name = phase_name(phase)
-    if name not in PHASES:
+    """``phase`` when it is a phase name, else ValueError (a letter too, since 1.0.48)."""
+    if phase not in PHASES:
         raise ValueError(f"unknown phase {phase!r}; expected one of {PHASES}")
-    return name
+    return phase
 
 
 def _check_id(change_id: str) -> None:

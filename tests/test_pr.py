@@ -362,12 +362,13 @@ def test_upsert_on_an_open_pr_reads_its_live_draft_state(project, capsys, monkey
         assert ("the fast lane, decision 30" in bodies[-1]) is fast
 
 
-def test_upsert_keeps_the_triage_queue_s_labels_and_moves_an_older_incident_label(
+def test_upsert_keeps_the_triage_queue_s_labels_and_no_longer_reads_incident_since_1_0_48(
     project, capsys, monkeypatch
 ):
     """R45 (rows 37 and 38): `sdlc:triage` and `sdlc:schedule` carry the gate labels' prefix,
     so the gate-label sweep keeps them (`OWNER_LABELS`); an upsert at maintain labels the PR
-    `sdlc:triage` and takes off the `incident` an older plugin applied."""
+    `sdlc:triage`. The `incident` an older plugin applied is not read since 1.0.48 (R45's
+    sixth PR): the upsert leaves it alone, as any label without the prefix."""
     root, _change = project
     git(root, "remote", "add", "origin", "https://github.com/o/r.git")
     calls: list[tuple] = []
@@ -391,7 +392,7 @@ def test_upsert_keeps_the_triage_queue_s_labels_and_moves_an_older_incident_labe
     (add_a, remove_a), (add_f, remove_f) = calls
     assert "sdlc:needs-human" in remove_a
     assert "sdlc:schedule" not in remove_a and "sdlc:triage" not in remove_a
-    assert "sdlc:triage" in add_f and "incident" in remove_f
+    assert "sdlc:triage" in add_f and "incident" not in remove_f
     assert "sdlc:schedule" not in remove_f
 
 
@@ -761,10 +762,11 @@ def test_release_approval_line_only_when_production_is_declared(project):
     assert line not in desc.build_description(root, "0001", "test")
     _declare_production(root, "false")
     assert line not in desc.build_description(root, "0001", "deploy")
-    # R45 (decision 39, row 55): the old key `deploy.production` is read for one release
+    # R45 (decision 39, row 55): the old key `deploy.production` is not read since 1.0.48
+    # (R45's sixth PR): alone it leaves the production gate off
     _declare_production(root, "true", key="production")
     assert "  production: true" in (root / "sdlc.yaml").read_text(encoding="utf-8")
-    assert line in desc.build_description(root, "0001", "deploy").splitlines()
+    assert line not in desc.build_description(root, "0001", "deploy").splitlines()
     _declare_production(root, "false", key="production")
     assert line not in desc.build_description(root, "0001", "deploy")
 
@@ -874,25 +876,31 @@ def test_pr_title_and_label_and_branch(project):
     assert desc.label_for(None) is None
 
 
-def test_a_change_in_flight_keeps_its_letter_branch_gate_file_and_phase(project, capsys):
-    """R45, for one release: ``--phase c`` is read as build, the gate record an older plugin
-    wrote (``gate-c.json``) is read and linked, and the build PR's head is the letter branch
-    ``sdlc/0001/c`` while only that one exists."""
+def test_a_letter_phase_branch_and_gate_file_are_not_read_since_1_0_48(project, capsys):
+    """Since 1.0.48 (R45's sixth PR): ``--phase c`` exits 2, the gate record an older plugin
+    wrote (``gate-c.json``) is not read or linked, and the build PR's head is
+    ``sdlc/0001/build`` even when the letter branch ``sdlc/0001/c`` exists."""
     root, change = project
     gate_json(change, "build", "park", c.NEEDS_HUMAN_LABEL)
     evidence = change / art.EVIDENCE_DIR
     (evidence / "gate-build.json").rename(evidence / "gate-c.json")
-    assert desc.load_gate(change, "c")["result"] == "park"
-    assert desc.load_gate(change, "build")["result"] == "park"
-    assert desc.head_branch("0001", "deploy", root) == "sdlc/0001/build"
+    assert desc.load_gate(change, "c") is None
+    assert desc.load_gate(change, "build") is None
+    assert desc.head_branch("0001", "deploy") == "sdlc/0001/build"
     git(root, "branch", "sdlc/0001/c")
-    assert desc.head_branch("0001", "deploy", root) == "sdlc/0001/c"
-    body = desc.build_description(root, "0001", "c")
-    assert "evidence/gate-c.json" in body and "parked at gate (build)" in body
-    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "c",
+    assert desc.head_branch("0001", "deploy") == "sdlc/0001/build"
+    with pytest.raises(ValueError):
+        desc.build_description(root, "0001", "c")
+    body = desc.build_description(root, "0001", "build")
+    assert "evidence/gate-c.json" not in body and "parked at gate (build)" not in body
+    with pytest.raises(SystemExit) as exc:
+        pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "c", "--dry-run"])
+    assert exc.value.code == 2
+    capsys.readouterr()
+    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "build",
                         "--dry-run"]) == 0  # fmt: skip
     out = json.loads(capsys.readouterr().out)
-    assert out["head"] == "sdlc/0001/c" and out["title"] == "build(0001): Percent helper"
+    assert out["head"] == "sdlc/0001/build" and out["title"] == "build(0001): Percent helper"
 
 
 # --- the CLI ------------------------------------------------------------------------------
@@ -1330,17 +1338,18 @@ def test_render_digest_empty_queue():
 def test_digest_shows_the_owner_labels_beside_the_gate_label():
     """D11 (live run of 2026-09-25): the `schedule` label the owner applied at gate (maintain) was
     invisible, so a scheduled incident looked like a waiting one."""
-    labels = [{"name": "sdlc:maintain-ready"}, {"name": "incident"}, {"name": "schedule"}]
+    labels = [{"name": "sdlc:maintain-ready"}, {"name": "sdlc:triage"}, {"name": "sdlc:schedule"}]
     intent = {"number": 7, "title": "intent(0009): incident", "html_url": "https://x/7"}
     intent["labels"] = labels
     md = digest_mod.render_digest([intent], "2026-09-25T06:00:00Z")
     section = md[md.index("## Waiting at a human gate") :]
     line = next(ln for ln in section.splitlines() if "#7" in ln)
-    assert "— `sdlc:maintain-ready`, `incident`, `schedule` —" in line
+    assert "— `sdlc:maintain-ready`, `sdlc:triage`, `sdlc:schedule` —" in line
     assert "## Phase (f)" not in md  # it carries its gate label: a queue item
-    reordered = {**intent, "labels": [{"name": "schedule"}, {"name": "sdlc:maintain-ready"}]}
+    # a label without the prefix (the owner's own) follows the sdlc: labels
+    reordered = {**intent, "labels": [{"name": "bug"}, {"name": "sdlc:maintain-ready"}]}
     line = digest_mod._line(reordered)
-    assert "— `sdlc:maintain-ready`, `schedule` —" in line
+    assert "— `sdlc:maintain-ready`, `bug` —" in line
 
 
 def test_digest_main_dry_run_reads_the_input_file(tmp_path, capsys, no_gh):
@@ -1723,15 +1732,17 @@ def test_digest_lists_the_runbook_and_dismissal_prs_under_the_triage_label():
     md = digest_mod.render_digest([intent], "2026-09-25T06:00:00Z")
     assert "0 parked, 1 waiting at a gate" in md and md.count("#33") == 1
     assert "## Maintain:" not in md and digest_mod.incident_prs([intent]) == []
-    # a scheduled one stays a runbook PR, and an older plugin's `incident` is still read
+    # a scheduled one stays a runbook PR; an older plugin's `incident` is not read since
+    # 1.0.48 (R45's sixth PR)
     scheduled = {**revert, "labels": [{"name": "sdlc:triage"}, {"name": "sdlc:schedule"}]}
     older = {**revert, "number": 32, "labels": [{"name": "incident"}]}
-    assert digest_mod.incident_prs([scheduled, older]) == [scheduled, older]
+    assert digest_mod.incident_prs([scheduled, older]) == [scheduled]
 
 
-def test_the_queue_listing_keeps_an_older_plugin_s_incident_pr(monkeypatch):
-    """R45 (row 37): the pulls listing keeps every PR with an ``sdlc:`` label, and for one
-    release a PR an older plugin labelled ``incident`` with no ``sdlc:`` label at all."""
+def test_the_queue_listing_drops_an_incident_only_pr_since_1_0_48(monkeypatch):
+    """R45 (row 37): the pulls listing keeps every PR with an ``sdlc:`` label; a PR an older
+    plugin labelled ``incident`` with no ``sdlc:`` label is not in the queue since 1.0.48
+    (R45's sixth PR)."""
     pulls = [
         {"number": 1, "labels": [{"name": "sdlc:triage"}]},
         {"number": 2, "labels": [{"name": "incident"}]},
@@ -1740,13 +1751,13 @@ def test_the_queue_listing_keeps_an_older_plugin_s_incident_pr(monkeypatch):
     monkeypatch.setattr(github, "token", lambda: "t")
     monkeypatch.setattr(github, "_request", lambda *a, **k: {"error": None, "data": pulls})
     prs, error = digest_mod.list_queue_prs("o/r")
-    assert error == "" and [pr["number"] for pr in prs] == [1, 2]
+    assert error == "" and [pr["number"] for pr in prs] == [1]
 
 
-def test_digest_and_review_requests_read_the_letter_labels_of_an_older_plugin(monkeypatch):
-    """R45, for one release: a PR an older plugin labelled ``sdlc:c-ready`` waits at a gate in
-    the digest, sorted in phase order beside the names, and still requests the owner's
-    review; an approved build PR at ``sdlc:e-ready`` gets the approval line."""
+def test_digest_and_review_requests_no_longer_read_letter_labels_since_1_0_48(monkeypatch):
+    """Since 1.0.48 (R45's sixth PR) a letter label (``sdlc:c-ready``) names no phase: in the
+    digest it is an ``sdlc:`` label with no phase, sorted after the names; it no longer
+    requests the owner's review, and a build PR at ``sdlc:e-ready`` gets no approval line."""
     from pr import review_request
 
     def pr(number, label):
@@ -1755,14 +1766,14 @@ def test_digest_and_review_requests_read_the_letter_labels_of_an_older_plugin(mo
     queue = [pr(1, "sdlc:deploy-ready"), pr(2, "sdlc:c-ready"), pr(3, "sdlc:intent-ready")]
     md = digest_mod.render_digest(queue, "2026-09-25T06:00:00Z")
     assert "0 parked, 3 waiting at a gate" in md
-    assert md.index("#3 t3") < md.index("#2 t2") < md.index("#1 t1")  # intent, build, deploy
-    assert review_request.is_waiting_label("sdlc:c-ready")
+    assert md.index("#3 t3") < md.index("#1 t1") < md.index("#2 t2")  # no phase: last
+    assert not review_request.is_waiting_label("sdlc:c-ready")
     assert review_request.is_waiting_label("sdlc:build-ready")
     seen = []
     monkeypatch.setattr(github, "pr_reviews", lambda repo, n: seen.append(n) or {"ok": False})
     for label in ("sdlc:e-ready", "sdlc:deploy-ready", "sdlc:build-ready"):
         digest_mod.approval_of("o/r", pr(7, label))
-    assert seen == [7, 7]
+    assert seen == [7]
 
 
 # --- the default branch's protection (decision 4; plugin 0.2.25) ------------------------------

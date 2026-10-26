@@ -126,10 +126,7 @@ def _change(args):
 
 
 def _run_file(change_dir: Path, phase: str, write: bool = False) -> Path:
-    """``evidence/run-<phase>.json``: written under the phase's name; read under it unless
-    only the letter's (``run-c.json``, a plugin before R45) exists."""
-    if write:
-        return change_dir / "evidence" / limits.RUN_FILE.format(phase=c.phase_name(phase))
+    """``evidence/run-<phase>.json``, the same for a reader and a writer (``write``)."""
     return c.phase_file(change_dir / "evidence", limits.RUN_FILE, phase)
 
 
@@ -246,8 +243,7 @@ def plugin_version(root: Path, plugin_root: Path) -> str:
 
 
 def skill_overrides(root: Path) -> list[str]:
-    """Policy skills the project replaced with its own under .claude/skills/ (step 20); an
-    override under a skill's name before plugin 1.0.46 counts for one release (R45 row 80)."""
+    """Policy skills the project replaced with its own under .claude/skills/ (step 20)."""
     return [name for name in preflight.POLICY_SKILLS if policy.skill_override(root, name)]
 
 
@@ -263,7 +259,6 @@ def policy_sources(root: Path) -> list[tuple[str, str]]:
 
     found = []
     for name in preflight.POLICY_SKILLS:
-        # R45 row 80 (N35): policies/ux-conventions.md is read when ux-and-brand.md is missing
         rel = policy.policy_source(Path(root), name)
         if rel is None:
             continue
@@ -322,7 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
     ck = sub.add_parser("check")
     ck.add_argument("--root", default=".")
     ck.add_argument("--id", required=True)
-    ck.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
+    ck.add_argument("--phase", required=True, choices=c.PHASES)
     ck.add_argument("--base", default=None, help="base ref for the diff (default: origin HEAD)")
     ck.add_argument("--dry-run", action="store_true", help="evaluate only; write nothing")
     ck.set_defaults(fn=cmd_check)
@@ -332,14 +327,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rc.add_argument("--root", default=".")
     rc.add_argument("--id", required=True)
-    rc.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
+    rc.add_argument("--phase", required=True, choices=c.PHASES)
     rc.add_argument("--base", default=None, help="base ref for the diff (default: origin HEAD)")
     rc.set_defaults(fn=cmd_run_commands)
 
     sr = sub.add_parser("start-run")
     sr.add_argument("--root", default=".")
     sr.add_argument("--id", required=True)
-    sr.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
+    sr.add_argument("--phase", required=True, choices=c.PHASES)
     sr.add_argument(
         "--run",
         default=None,
@@ -351,7 +346,7 @@ def build_parser() -> argparse.ArgumentParser:
     rs = sub.add_parser("record-spend")
     rs.add_argument("--root", default=".")
     rs.add_argument("--id", required=True)
-    rs.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
+    rs.add_argument("--phase", required=True, choices=c.PHASES)
     rs.add_argument("--usd", required=True, type=float)
     rs.add_argument("--run", default=None, help="the run that spent it (default: --phase)")
     rs.add_argument("--source", default=None, help="the stored result the figure came from")
@@ -388,7 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rh.add_argument("--root", default=".")
     rh.add_argument("--id", required=True)
-    rh.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
+    rh.add_argument("--phase", required=True, choices=c.PHASES)
     rh.add_argument("--base", default=None, help="base ref for the diff (default: origin HEAD)")
     rh.set_defaults(fn=cmd_risk_hits)
     return p

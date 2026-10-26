@@ -8,7 +8,7 @@ and identical on Windows, in a cloud session and in CI.
         [--route idea|ticket|incident] [--type feature|fix] [--external-ref 42]
     python cli.py commit-phase --root . --id 0001 --phase intent --message "..."
         # phases test and deploy commit on the build branch: the build PR stays open through
-        # them (R45: a letter, --phase c, is read as its name for one release)
+        # them
     python cli.py set-phase --root . --id 0001 --phase design
     python cli.py park --root . --id 0001 --reason "..."
     python cli.py accept-risk --root . --id 0001 --item "auth"   # owner accepts a risk hit by
@@ -142,8 +142,7 @@ def cmd_commit_phase(args) -> int:
     phases test and deploy commit on ``sdlc/<id>/build``, the build PR that stays open through
     them (OPERATING_MODEL section 8). A test or deploy run therefore never creates a branch: a
     missing build branch means the build phase never ran, which is an error, not a fresh
-    start. R45: a change in flight keeps the letter branch an older plugin cut
-    (``sdlc/<id>/c``): ``gitops.existing_branch`` picks it when only that one exists.
+    start.
 
     ``--branch`` names the branch instead (decision 22): a fix round on an intent PR that a
     web session pushed from a branch of its own (``claude/...``) commits on that PR's head,
@@ -156,7 +155,7 @@ def cmd_commit_phase(args) -> int:
     if not gitops.is_repo(root):
         print(f"{root} is not a git repository", file=sys.stderr)
         return 2
-    branch = gitops.existing_branch(root, c.work_branches(args.id, args.phase))
+    branch = c.work_branch(args.id, args.phase)
     start = args.start_point or None
     explicit = (getattr(args, "branch", None) or "").strip()
     if explicit:
@@ -522,8 +521,7 @@ def build_parser() -> argparse.ArgumentParser:
     cp = sub.add_parser("commit-phase")
     cp.add_argument("--root", default=".")
     cp.add_argument("--id", required=True)
-    # R45: a letter (``--phase c``) is read as its name for one release
-    cp.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
+    cp.add_argument("--phase", required=True, choices=c.PHASES)
     cp.add_argument("--message", required=True)
     cp.add_argument("--paths", nargs="*", default=[], help="extra paths to commit")
     cp.add_argument("--start-point", default=None)
@@ -567,7 +565,7 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--root", default=".")
         s.add_argument("--id", required=True)
         if name == "set-phase":
-            s.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
+            s.add_argument("--phase", required=True, choices=c.PHASES)
         if name == "park":
             s.add_argument("--reason", required=True)
         if name == "accept-risk":

@@ -151,12 +151,9 @@ def check_policy_skills(root: Path, plugin_root: Path) -> CheckResult:
     found: dict[str, str] = {}
     missing: list[str] = []
     for name in POLICY_SKILLS:
-        project = policy.skill_override(root, name)
         shipped = plugin_root / "plugin" / "skills" / name / "SKILL.md"
-        if project == f".claude/skills/{name}/SKILL.md":
+        if policy.skill_override(root, name):
             found[name] = "project override"
-        elif project:  # R45 row 80: an override under the old name, honoured for one release
-            found[name] = f"project override ({project}, the name before plugin 1.0.46)"
         elif shipped.is_file():
             found[name] = "plugin"
         else:
@@ -341,7 +338,6 @@ def classification(root: Path, config: dict[str, Any], change_id: str | None) ->
         "classification": cls,
         "iteration_cap": limits.iteration_cap(ctx, cls),
         "iterations_so_far": st.iterations,
-        # the file read: the name's, or the letter's an older plugin wrote (R45)
         "verdict_file": c.phase_file(
             change_dir / art.EVIDENCE_DIR, art.ADVERSARIAL_VERDICT, c.DESIGN
         ).name,
@@ -356,7 +352,6 @@ PHASES_WITH_TEST_TARGET = (
 def run_preflight(
     root: Path, plugin_root: Path, change_id: str | None = None, phase: str = c.BUILD
 ) -> dict[str, Any]:
-    phase = c.phase_name(phase)  # R45: a letter from an older caller is read as its name
     root = Path(root).resolve()
     plugin_root = Path(plugin_root).resolve()
     try:
@@ -409,7 +404,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--phase",
         default=c.BUILD,
-        type=c.phase_name,
         choices=(c.BUILD, c.TEST, c.DEPLOY),
         help="the phase about to run; test and deploy skip the test target",
     )

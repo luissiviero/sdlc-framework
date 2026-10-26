@@ -95,12 +95,12 @@ def labels_of(pr: dict[str, Any]) -> list[str]:
 
 
 def incident_prs(prs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Open PRs carrying ``sdlc:triage`` (or an older plugin's ``incident``) and no gate label:
+    """Open PRs carrying ``sdlc:triage`` and no gate label:
     the runbook PRs a 3σ route opened (a revert, a quarantine) and the dismissal PRs of gate
     (maintain), which decision 20 lets the owner find only here (the incident intent PRs carry
     a gate label and are queue items). R45 (row 37): since the label carries the ``sdlc:``
     prefix, "no gate label" is no ``sdlc:`` label but the maintain queue's own two."""
-    return [pr for pr in prs if c.TRIAGE_LABELS & set(labels_of(pr)) and not gate_labels(pr)]
+    return [pr for pr in prs if c.TRIAGE_LABEL in labels_of(pr) and not gate_labels(pr)]
 
 
 # the maintain queue's labels, which say where a PR is, not which gate waits (R45, row 37)
@@ -126,8 +126,8 @@ def first_bullet(body: str | None) -> str:
 
 
 def _phase_of(labels: list[str]) -> int:
-    """The queue order of a PR: its waiting label's phase, in phase order (R45: the name's
-    label, or the letter's an older plugin applied); a PR with none sorts last."""
+    """The queue order of a PR: its waiting label's phase, in phase order; a PR with none
+    sorts last."""
     for label in labels:
         phase = c.ready_label_phase(label)
         if phase is not None:
@@ -274,13 +274,13 @@ def list_queue_prs(repo: str) -> tuple[list[dict[str, Any]], str]:
     if result["error"]:
         return [], result["error"]
     items = result["data"] if isinstance(result["data"], list) else []
-    return [pr for pr in items if sdlc_labels(pr) or c.LEGACY_TRIAGE_LABEL in labels_of(pr)], ""
+    return [pr for pr in items if sdlc_labels(pr)], ""
 
 
 def approval_of(
     repo: str, pr: dict[str, Any], config: dict[str, Any] | None = None
 ) -> dict[str, Any] | None:
-    """For a build PR at ``sdlc:deploy-ready`` (or an older plugin's ``sdlc:e-ready``):
+    """For a build PR at ``sdlc:deploy-ready``:
     {'at', 'reason'} when the owner's latest review that approves, requests changes or was
     dismissed approves (``unpark.is_owner_actor``, decision 34, with ``config`` the default
     branch's ``sdlc.yaml`` when the digest has the checkout), and the PR is still open; None
@@ -288,7 +288,7 @@ def approval_of(
     <reason>"), which R20 places."""
     from state.unpark import is_owner_actor  # noqa: PLC0415
 
-    if not c.ready_labels(c.DEPLOY) & set(labels_of(pr)) or not pr.get("number"):
+    if c.ready_label(c.DEPLOY) not in labels_of(pr) or not pr.get("number"):
         return None
     got = github.pr_reviews(repo, int(pr["number"]))
     if not got.get("ok"):

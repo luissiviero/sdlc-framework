@@ -9,7 +9,7 @@ pre-run park) gets no explanation and costs no model call. The setup step's ``--
 the third source: a failed setup is a red run with no runner result.
 
 ``run_phase.py --phase explain --out <file> [--setup <file>]`` (``--phase triage`` before
-R45's PR 2, read for one release) runs after a fresh framework checkout. The read-only
+R45's PR 2) runs after a fresh framework checkout. The read-only
 session (the Read tool only, ``.git`` denied, no GitHub token in its environment) reads the
 files ``logs_for`` names and answers in at most five lines; each line passes the secrets
 check (``hooks/secrets_check.py find_secrets``) or is dropped. Then, outside the session,
@@ -34,7 +34,6 @@ if str(PLUGIN_DIR) not in sys.path:
 
 from gate import artifacts as art  # noqa: E402
 from hooks.secrets_check import find_secrets  # noqa: E402
-from state import conventions as c  # noqa: E402
 
 OUT_SCHEMA = 1
 # the failed checks whose park has a log to read: the commands step (a red target, or a step
@@ -99,14 +98,13 @@ def setup_failed(setup: dict[str, Any] | None) -> bool:
 
 def case_of(out: dict[str, Any] | None, setup: dict[str, Any] | None) -> str | None:
     """The case the explain step handles: the setup's failure first (the runner never ran),
-    then the runner's own ``explain`` field (``triage`` in a file a runner before R45's
-    PR 2 wrote); a missing result file reads as a red run whose
+    then the runner's own ``explain`` field; a missing result file reads as a red run whose
     runner did not finish (the workflow runs the step only after a failure or a park)."""
     if setup_failed(setup):
         return "setup"
     if out is None:
         return "red"
-    case = out.get("explain", out.get("triage"))
+    case = out.get("explain")
     return case if case in CASES else None
 
 
@@ -248,7 +246,7 @@ def failed_run_record(
             "actor": env.get("GITHUB_ACTOR", ""),
         },
         "change_id": out.get("change_id"),
-        "phase": c.phase_name(out.get("phase")),  # R45: a letter is read as its name
+        "phase": out.get("phase"),
         "step": "setup" if case == "setup" else "runner",
         "exit_code": None if case == "setup" else out.get("exit_code"),
         "reason": reason_of(case, out or None, setup),

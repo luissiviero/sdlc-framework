@@ -53,7 +53,7 @@ jobs:
     # setup step's outside-changes/ check every time and has no incident to park. A Go a
     # [bot] applied never runs (R49: the App's own labels start workflows); detect/cli.py go
     # checks the actor again.
-    if: ${{ github.event.label.name == 'sdlc:go' && !endsWith(github.event.sender.login, '[bot]') && startsWith(github.event.pull_request.head.ref, 'sdlc/') && (endsWith(github.event.pull_request.head.ref, '/a') || endsWith(github.event.pull_request.head.ref, '/intent')) }}
+    if: ${{ github.event.label.name == 'sdlc:go' && !endsWith(github.event.sender.login, '[bot]') && startsWith(github.event.pull_request.head.ref, 'sdlc/') && endsWith(github.event.pull_request.head.ref, '/intent') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -81,7 +81,7 @@ jobs:
         if: steps.app.outcome == 'success'
         run: python -c "import os, time; f = open(os.environ['GITHUB_ENV'], 'a'); f.write('SDLC_APP_TOKEN_MINTED_AT=%d\n' % time.time()); f.close()"
 
-      # The incident PR's head: sdlc/<id>/intent (or /a), which carries the detection record,
+      # The incident PR's head: sdlc/<id>/intent, which carries the detection record,
       # the proposal and status.yaml.
       - name: Check out the pull request's head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0

@@ -173,9 +173,10 @@ def test_ux_check_ignores_non_ui_and_wants_screenshots(project):
     shutil.rmtree(page.parent)
 
 
-def test_the_ux_skill_reads_its_old_source_and_override_for_one_release(project):
-    """R45 row 80 (N35): ux-conventions is ux-and-brand; policies/ux-conventions.md is read
-    when policies/ux-and-brand.md is missing, and an override under the old name counts."""
+def test_the_ux_skill_no_longer_reads_its_old_source_or_override(project):
+    """R45 row 80 (N35): ux-conventions is ux-and-brand; policies/ux-conventions.md and an
+    override under .claude/skills/ux-conventions/ are refused since 1.0.48 (R45's sixth PR):
+    neither the skill's check, the gate's sources nor the preflight reads them."""
     from gate import cli as gate_cli  # noqa: PLC0415
     from gate import policy  # noqa: PLC0415
 
@@ -184,25 +185,27 @@ def test_the_ux_skill_reads_its_old_source_and_override_for_one_release(project)
     assert "no owner's source" in run_check("ux-and-brand", project).stdout
     old = project / "policies" / "ux-conventions.md"
     old.write_text("Our brand is blue.\n", encoding="utf-8")
-    assert policy.policy_source(project, "ux-and-brand") == "policies/ux-conventions.md"
+    assert policy.policy_source(project, "ux-and-brand") is None
     out = run_check("ux-and-brand", project).stdout
-    assert "owner's source: policies/ux-conventions.md, the name before plugin 1.0.46" in out
-    assert ("policies/ux-conventions.md", "uncommitted") in gate_cli.policy_sources(project)
+    assert "no owner's source" in out and "ux-conventions.md" not in out
+    assert "policies/ux-conventions.md" not in [p for p, _ in gate_cli.policy_sources(project)]
     new = project / "policies" / "ux-and-brand.md"
     new.write_text("Our brand is green.\n", encoding="utf-8")
     assert policy.policy_source(project, "ux-and-brand") == "policies/ux-and-brand.md"
     assert "owner's source: policies/ux-and-brand.md\n" in run_check("ux-and-brand", project).stdout
     sources = [path for path, _ in gate_cli.policy_sources(project)]
     assert "policies/ux-and-brand.md" in sources and "policies/ux-conventions.md" not in sources
-    # a project override under the old name is still honoured, by the preflight and the header
+    # a project override under the old name is not honoured, by the preflight or the header
     override = project / ".claude" / "skills" / "ux-conventions" / "SKILL.md"
     override.parent.mkdir(parents=True)
     override.write_text("---\nname: ux-conventions\n---\n", encoding="utf-8")
-    assert gate_cli.skill_overrides(project) == ["ux-and-brand"]
+    assert policy.skill_override(project, "ux-and-brand") is None
+    assert gate_cli.skill_overrides(project) == []
     found = preflight.check_policy_skills(project, ROOT).details["found"]
-    assert found["ux-and-brand"].startswith("project override (.claude/skills/ux-conventions/")
+    assert found["ux-and-brand"] == "plugin"
     flat = " ".join((SKILLS / "ux-and-brand" / "SKILL.md").read_text(encoding="utf-8").split())
-    assert "`policies/ux-conventions.md` in its place" in flat and "still honoured" in flat
+    assert "`policies/ux-conventions.md` in its place" not in flat and "still honoured" not in flat
+    assert "not read" in flat
 
 
 def test_data_check_flags_migrations_and_pii_in_logs(project):

@@ -164,21 +164,18 @@ def _change_id_of(root: Path, git: GitRunner) -> tuple[str | None, str]:
 def _recorded_pr(
     root: Path, change_id: str, repo: str, github: Any, git: GitRunner
 ) -> tuple[int | None, list[str] | None, str]:
-    """(PR number, its labels, "") of the change's build PR — the one ``status.yaml`` records
-    (``build_pr``, written by ``pr/cli.py upsert``), read from GitHub by that number and
-    accepted only while it is the change's own (head ``sdlc/<id>/build``, or the letter's
-    ``sdlc/<id>/c``) and the checked-out commit is the PR's own: its head commit (open or
-    merged — the by-hand deploy runs on ``sdlc/<id>/build`` after the owner's merge) or its
-    merge commit (merged) — or (None, None, why not).
-
-    Before 0.2.27 the PR was "the most recent one from the current branch's name": a session
-    that checked out any ``sdlc/<id>/c`` (a local branch rebuilt with any commits) inherited
-    that change's label, and a closed-unmerged PR counted too (the 1.0.0 readiness review,
-    group B). A branch name alone finds nothing now; a change whose ``status.yaml`` records
-    no pull request is not approved (the next ``upsert`` records it). What the commit check
-    binds is the committed content: the working tree (an untracked ``dist/``) is the
-    session's, as it always was.
-    """
+    """(PR number, its labels, "") of the change's build PR — the one ``status.yaml``
+    records (``build_pr``, written by ``pr/cli.py upsert``), read from GitHub by that number
+    and accepted only while it is the change's own (head ``sdlc/<id>/build``) and the
+    checked-out commit is the PR's own: its head commit (open or merged — the by-hand deploy
+    runs on ``sdlc/<id>/build`` after the owner's merge) or its merge commit (merged) — or
+    (None, None, why not). Before 0.2.27 the PR was "the most recent one from the current
+    branch's name": a session that checked out any ``sdlc/<id>/c`` (a local branch rebuilt
+    with any commits) inherited that change's label, and a closed-unmerged PR counted too
+    (the 1.0.0 readiness review, group B). A branch name alone finds nothing now; a change
+    whose ``status.yaml`` records no pull request is not approved (the next ``upsert``
+    records it). What the commit check binds is the committed content: the working tree (an
+    untracked ``dist/``) is the session's, as it always was."""
     change_dir = c.find_change_dir(root, change_id)
     if change_dir is None:
         return None, None, f"no changes/{change_id}-<slug>/ folder at {root}"
@@ -200,8 +197,7 @@ def _recorded_pr(
     if not found.get("ok"):
         return None, None, f"cannot read the PR #{number}: {found.get('reason') or 'failed'}"
     head = c.work_branch(change_id, c.BUILD)
-    # R45: the build PR of a change in flight before 1.0.43 has the letter head sdlc/<id>/c
-    if found.get("head_ref") not in c.work_branches(change_id, c.BUILD):
+    if found.get("head_ref") != head:
         return (
             None,
             None,

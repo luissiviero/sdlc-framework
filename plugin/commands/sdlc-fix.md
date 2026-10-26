@@ -50,8 +50,7 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
   session pushed the intent from (`claude/...`), read from the open PR that carries
   `changes/<id>-<slug>/intent.md`; phase `maintain` → `sdlc/<id>/intent` (the incident
   intent PR); phase `design` → `sdlc/<id>/design`; `build`, `test`, `deploy` →
-  `sdlc/<id>/build`. A change started before the names keeps its letter branch
-  (`sdlc/<id>/a`, `/b`, `/c`): the open PR's head is the branch.
+  `sdlc/<id>/build`.
   In CI the run is already on that branch. `git fetch origin`, `git switch <branch>`,
   `git pull --ff-only origin <branch>`.
 - Load the policy skills (a project override under `.claude/skills/<name>/` replaces the

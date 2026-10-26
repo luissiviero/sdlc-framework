@@ -270,7 +270,7 @@ def start_round(
         "schema_version": SCHEMA_VERSION,
         "round": int(iterations) + 1,
         "cap": int(cap),
-        "phase": c.phase_name(phase),
+        "phase": phase,
         "head": head,
         "targets": targets,
         "run": github_run(env),
@@ -294,14 +294,13 @@ def set_round_status(change_dir: Path, status: str, **extra: Any) -> dict[str, A
 
 # --- 3. the gate record and status.yaml while the round runs -------------------------------
 def gate_path(change_dir: Path, phase: str) -> Path:
-    """The gate record a reader takes: ``gate-<name>.json``, or the letter's an older plugin
-    wrote when only that one exists (R45, ``conventions.phase_file``)."""
+    """The gate record of ``phase`` (``gate-build.json``)."""
     return c.phase_file(Path(change_dir) / art.EVIDENCE_DIR, art.GATE_RESULT, phase)
 
 
 def gate_write_path(change_dir: Path, phase: str) -> Path:
-    """The gate record a writer writes: always the name's (``gate-build.json``, R45)."""
-    return Path(change_dir) / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=c.phase_name(phase))
+    """The gate record a writer writes: the reader's (``gate_path``)."""
+    return gate_path(change_dir, phase)
 
 
 def mark_fixing(change_dir: Path, phase: str, round_data: dict[str, Any]) -> dict[str, Any]:
@@ -338,9 +337,7 @@ def park_record(
     from gate.checks import CheckResult  # noqa: PLC0415
     from gate.gate import GateResult  # noqa: PLC0415
 
-    result = GateResult.from_dict(
-        read_json(gate_path(change_dir, phase)) or {"phase": c.phase_name(phase)}
-    )
+    result = GateResult.from_dict(read_json(gate_path(change_dir, phase)) or {"phase": phase})
     path = gate_write_path(change_dir, phase)
     result.checks = [ch for ch in result.checks if ch.name != FIX_ROUNDS_CHECK]
     result.checks.append(CheckResult(FIX_ROUNDS_CHECK, False, reason, need, dict(details or {})))
@@ -476,7 +473,7 @@ def judge_prompt(
         iterations=iterations,
         cap=cap,
         summary=targets_summary(targets),
-        gate=art.GATE_RESULT.format(phase=c.phase_name(phase)),
+        gate=art.GATE_RESULT.format(phase=phase),
         round_file=c.AUTO_ROUND_FILE,
     )
 
@@ -556,7 +553,7 @@ def write_reset(
         "actor": actor,
         "at": at,
         "reasons": verdict.get("reasons") or "",
-        "phase": c.phase_name(phase),
+        "phase": phase,
         "cap": int(cap),
         "iterations_before": st.iterations,
         "panel_calls_before": st.panel_calls,

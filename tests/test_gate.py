@@ -379,14 +379,17 @@ def test_findings_and_verdict_readers(tmp_path):
         json.dumps({"verdict": "continue", "classification": "routine", "head": "abc1234"})
     )
     assert checks.load_verdict(v)[0]["verdict"] == "continue"
-    # R45 row 62: the verdict is ``continue | park``; an older plugin's ``escalate`` is read
-    # as ``park`` for one release, and every reader gets the new word
-    for word, read in (("park", "park"), ("escalate", "park"), ("continue", "continue")):
+    # R45 row 62: the verdict is ``continue | park``; an older plugin's ``escalate`` is
+    # refused since 1.0.48 (R45's sixth PR): the verdict is malformed
+    for word, read in (("park", "park"), ("continue", "continue")):
         v.write_text(json.dumps({"verdict": word, "classification": "routine", "head": "abc1234"}))
         assert checks.load_verdict(v)[0]["verdict"] == read
-    for word in ("Park", "ESCALATE", "wait", None, 1):
+    v.write_text(
+        json.dumps({"verdict": "escalate", "classification": "routine", "head": "abc1234"})
+    )
+    assert checks.load_verdict(v) == (None, "malformed: 'verdict' must be 'continue' or 'park'")
+    for word in ("Park", "ESCALATE", "escalate", "wait", None, 1):
         assert art.verdict_word(word) is None
-    assert art.verdict_word("escalate") == art.VERDICT_PARK
     assert art.VERDICTS == ("continue", "park")
 
 
@@ -1347,7 +1350,7 @@ def test_a_risk_list_word_is_reported_never_parked_and_accepted_by_hand(project)
     assert r.details["hits"] == {"auth": ["sample_pkg/auth.py"]}
 
 
-def test_gate_parks_on_escalate_missing_or_stale_verdict(project):
+def test_gate_parks_on_a_park_missing_or_stale_verdict_and_refuses_escalate(project):
     root, change = project
     result = gate.run_gate(root, "0001", "build")
     assert result.result == "park"
@@ -1357,16 +1360,14 @@ def test_gate_parks_on_escalate_missing_or_stale_verdict(project):
     a = next(ch for ch in result.failed if ch.name == "adversarial_review")
     assert "says park" in a.reason and "blast radius" in a.reason
     assert a.details["verdict"] == "park"
-    # R45 row 62: an older plugin's ``escalate`` reads as ``park`` for one release
-    verdict(root, "build", "escalate", "non-routine")
-    result = gate.run_gate(root, "0001", "build")
-    a = next(ch for ch in result.failed if ch.name == "adversarial_review")
-    assert "says park" in a.reason and "escalate" not in a.reason
-    # any other word is a malformed verdict
-    verdict(root, "build", "Park", "non-routine")
-    result = gate.run_gate(root, "0001", "build")
-    a = next(ch for ch in result.failed if ch.name == "adversarial_review")
-    assert "malformed: 'verdict' must be 'continue' or 'park'" in a.reason
+    # R45 row 62: an older plugin's ``escalate`` is refused since 1.0.48 (R45's sixth PR):
+    # like any other word, it is a malformed verdict, not a park
+    for word in ("escalate", "Park"):
+        verdict(root, "build", word, "non-routine")
+        result = gate.run_gate(root, "0001", "build")
+        a = next(ch for ch in result.failed if ch.name == "adversarial_review")
+        assert "malformed: 'verdict' must be 'continue' or 'park'" in a.reason
+        assert "says park" not in a.reason
     verdict(root, "build", head="0000000000deadbeef")
     a = next(
         ch for ch in gate.run_gate(root, "0001", "build").failed if ch.name == "adversarial_review"
@@ -4310,68 +4311,88 @@ def test_the_drive_removed_after_gate_b_parks_and_is_never_deferred(project, mon
 
 
 # --- R45: the phase names, and the letters an older plugin wrote --------------------------------
-def test_the_gate_cli_reads_a_letter_and_writes_the_name(project, capsys):
-    """``--phase c`` is read as ``build`` (one release), the adversarial verdict an older
-    plugin's reviewer wrote under the letter (``adversarial-review-c.json``) is read, and
-    the record is written under the name: ``gate-build.json``, ``phase: build``."""
+def test_the_gate_cli_refuses_a_letter_and_writes_the_name(project, capsys):
+    """``--phase c`` is refused since 1.0.48 (R45's sixth PR): argparse exits 2, and a live
+    gate does not read the adversarial verdict an older plugin's reviewer wrote under the
+    letter (``adversarial-review-c.json``). The record is written under the name
+    (``gate-build.json``, ``phase: build``), and a merged change's record that names its
+    phase by the letter is still read as the name (choice 273)."""
     root, change = project
+    with pytest.raises(SystemExit) as exc:
+        gate_cli.main(["check", "--root", str(root), "--id", "0001", "--phase", "c"])
+    assert exc.value.code == 2
+    capsys.readouterr()
+    with pytest.raises(gate.GateError):
+        gate.run_gate(root, "0001", "c")
     verdict(root, "c")  # the letter's file, as a plugin before R45 wrote it
-    rc = gate_cli.main(["check", "--root", str(root), "--id", "0001", "--phase", "c"])
+    result = gate.run_gate(root, "0001", "build")
+    a = next(ch for ch in result.failed if ch.name == "adversarial_review")
+    assert "adversarial-review-build.json missing" in a.reason
+    verdict(root, "build")
+    rc = gate_cli.main(["check", "--root", str(root), "--id", "0001", "--phase", "build"])
     out = json.loads(capsys.readouterr().out)
     assert rc == 0 and out["phase"] == "build", out
     evidence = change / "evidence"
     assert (evidence / "gate-build.json").is_file() and not (evidence / "gate-c.json").exists()
     record = json.loads((evidence / "gate-build.json").read_text(encoding="utf-8"))
     assert record["phase"] == "build" and status_mod.read_status(change).gate.phase == "build"
-    assert "Gate (build)" in gate.GateResult.from_dict({**record, "result": "park"}).what_i_need()
+    merged = {**record, "phase": "c", "result": "park"}
+    assert "Gate (build)" in gate.GateResult.from_dict(merged).what_i_need()
 
 
-def test_start_run_and_record_spend_write_names_and_read_a_letter_s_run_file(tmp_path, capsys):
+def test_record_spend_refuses_a_letter_and_does_not_read_a_letter_s_run_file(tmp_path, capsys):
+    """``record-spend --phase c`` is refused since 1.0.48 (R45's sixth PR), and the run file
+    an older plugin wrote under the letter (``run-c.json``) is not carried over into the
+    name's (``run-build.json``)."""
     change_dir, _st = status_mod.new_change(tmp_path, "x")
     evidence = change_dir / "evidence"
     write(evidence / "run-c.json", json.dumps({"phase": "c", "started_at": "2026-10-25T10:00:00Z"}))
     argv = ["record-spend", "--root", str(tmp_path), "--id", "0001", "--phase", "c", "--usd", "1"]
+    with pytest.raises(SystemExit) as exc:
+        gate_cli.main(argv)
+    assert exc.value.code == 2
+    argv[argv.index("c")] = "build"
     assert gate_cli.main(argv) == 0
     capsys.readouterr()
     data = json.loads((evidence / "run-build.json").read_text(encoding="utf-8"))
-    assert data["started_at"] == "2026-10-25T10:00:00Z"  # carried over from the letter's file
+    assert data.get("started_at") != "2026-10-25T10:00:00Z"  # the letter's file is not read
     assert data["phase"] == "build" and data["spend_usd"] == 1.0
     assert limits.read_spend_ledger(evidence)["entries"][0]["run"] == "build"
 
 
-def test_older_records_are_read_under_their_phase_name(tmp_path):
-    """Readers of history: a stored session result ``claude-c.json``, a spend entry
-    ``run: c``, a verdict ``adversarial-review-b.json`` and a run record ``run-d.json``."""
-    ctx = _ctx(tmp_path, phase="d")
-    assert ctx.phase == "test"  # GateContext normalises a letter on construction
+def test_older_live_records_are_not_read_but_a_merged_verdict_is(tmp_path):
+    """Since 1.0.48 (R45's sixth PR) a stored session result ``claude-c.json``, a spend entry
+    ``run: c`` and a run record ``run-d.json`` are not read under their phase name; a merged
+    change's verdict ``adversarial-review-b.json`` is still read for its class (choice 273)."""
+    ctx = _ctx(tmp_path, phase="test")
     evidence = ctx.evidence_dir
     _stored(evidence, "claude-c.json", 0.5)
     _stored(evidence, "claude-fix.json", 0.25)
-    assert [ln["run"] for ln in limits.run_lines(evidence)] == ["build", "fix"]
+    assert [ln["run"] for ln in limits.run_lines(evidence)] == ["c", "fix"]
     write(evidence / "spend.json", json.dumps({"entries": [{"run": "c", "usd": 1.0}]}))
-    assert limits.read_spend_ledger(evidence)["entries"] == [{"run": "build", "usd": 1.0}]
+    assert limits.read_spend_ledger(evidence)["entries"] == [{"run": "c", "usd": 1.0}]
     write(
         evidence / "adversarial-review-b.json",
         json.dumps({"verdict": "continue", "classification": "non-routine", "head": "abc1234"}),
     )
     assert limits.classification_in(evidence, "test") == "non-routine"
+    assert limits.classification_for(ctx) is None  # the live cap reads the name's file only
     write(evidence / "run-d.json", json.dumps({"started_at": "2026-10-25T10:00:00Z"}))
-    assert limits.read_run(ctx)["started_at"] == "2026-10-25T10:00:00Z"
-    assert limits.drive_timeout_seconds({}, "e") is None  # no drive set; a letter is accepted
+    assert limits.read_run(ctx) == {}
+    assert limits.drive_timeout_seconds({}, "test") is None  # no drive set
 
 
 def test_phase_tables_are_keyed_by_name():
     assert set(checks.CHECKS_BY_PHASE) == set(art.REQUIRED_ARTIFACTS) == set(conventions.PHASES)
     assert checks.DRIVE_PHASES == ("build", "test", "deploy")
     assert gate.FAST_LANE_PHASE == "design"
-    assert gate.fast_lane_applies("b", True, [], True) == gate.fast_lane_applies(
-        "design", True, [], True
-    )
+    assert not gate.fast_lane_applies("b", True, [], True)  # a letter is not a phase (1.0.48)
 
 
-def test_the_spend_ledger_reads_an_older_plugin_s_run_names(tmp_path):
+def test_the_spend_ledger_no_longer_maps_an_older_plugin_s_run_names(tmp_path):
     """R45: a ``spend.json`` entry an older plugin wrote names its run by letter (``c``) or as
-    ``triage`` (the explain step's name until 1.0.43); both are read under today's names."""
+    ``triage`` (the explain step's name until 1.0.43); since 1.0.48 (R45's sixth PR) neither
+    is mapped to today's name, and the total still counts both."""
     evidence = tmp_path / "evidence"
     entries = [
         {"run": "c", "source": "claude-c.json", "usd": 1.0, "at": "2026-10-25T10:00:00Z"},
@@ -4379,5 +4400,5 @@ def test_the_spend_ledger_reads_an_older_plugin_s_run_names(tmp_path):
     ]
     write(evidence / limits.SPEND_FILE, json.dumps({"total_usd": 1.5, "entries": entries}))
     ledger = limits.read_spend_ledger(evidence)
-    assert [e["run"] for e in ledger["entries"]] == ["build", "explain"]
+    assert [e["run"] for e in ledger["entries"]] == ["c", "triage"]
     assert ledger["total_usd"] == 1.5

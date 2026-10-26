@@ -56,8 +56,7 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
   gate passed on a routine plan without a merge (`status.yaml: fast_lane.design`): the spec and plan
   on the branch are the approved ones, and the build PR will carry the intent, spec and plan
   with the code. Never write `fast_lane`: it is the runner's record. Re-run: `git switch sdlc/<id>/build`
-  (`sdlc/<id>/c` for a change started before the names) and `git pull --ff-only origin
-  <that branch>`; the existing diff and the PR's unresolved review
+  and `git pull --ff-only origin sdlc/<id>/build`; the existing diff and the PR's unresolved review
   comments are the starting point, gathered as `/sdlc-fix` step 1 gathers them (the reviews
   and comments, and the inline threads from `gh api repos/<repo>/pulls/<n>/comments`) and
   read with the membership filter of `/sdlc-fix` step 1
@@ -129,7 +128,7 @@ mismatch you cannot resolve is a panel item of step 7: run
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
 per round; the gate parks at the cap), then re-run the verifier. Commit the evidence:
 `commit-phase ... --phase build --message "build(<id>): verifier evidence"`.
-Push: `git push -u origin sdlc/<id>/build` (or the change's `sdlc/<id>/c`).
+Push: `git push -u origin sdlc/<id>/build`.
 
 ## 7. Adversarial verdict and the build gate (build guide steps 16–17, 27)
 The reviewer has no shell, so write the diff it reads first, in one call (`<base>` is the

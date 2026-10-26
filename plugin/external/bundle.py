@@ -23,7 +23,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 from gate.artifacts import planned_files  # noqa: E402
 from hooks.secrets_check import find_secrets  # noqa: E402
-from state.conventions import DESIGN, phase_name  # noqa: E402
+from state.conventions import DESIGN  # noqa: E402
 
 DEFAULT_MAX_CHARS = 400_000  # about 100K tokens: the whole design, or a large build diff
 GIT_TIMEOUT = 60
@@ -159,7 +159,7 @@ def build(
             return out
     for name in PROJECT_FILES:
         add(name, name, read_at(root, head, name))
-    if phase_name(phase) == DESIGN:
+    if phase == DESIGN:
         for path in planned_files(plan_text or ""):
             if path.startswith(f"{change_rel}/") or path in PROJECT_FILES:
                 continue

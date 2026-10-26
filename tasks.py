@@ -1757,17 +1757,14 @@ def template_hashes(root: Path) -> dict[str, dict[str, dict[str, str]]]:
     ``files_marked``, each ``{rel: {hash: version}}`` for every refreshed copy and every
     reported one: the canonical text of ``template/<rel>`` at each ``v*`` tag, oldest first,
     then in the working tree at the version ``plugin.json`` holds; each hash keeps the first
-    version that shipped it. An old name of ``sdlc_init.RENAMED_COPIES`` (R45 row 78) has
-    its tags' texts only, so an upgrade still recognises a pristine old copy and removes it.
-    Raises ``NoTagsError`` in a clone without tags."""
+    version that shipped it. Raises ``NoTagsError`` in a clone without tags."""
     sdlc_init, refresh = _init_modules()
     tags = _git(root, "tag", "--list", "v*", "--sort=v:refname").decode("utf-8").split()
     if not tags:
         raise NoTagsError("no v* tag in this clone: run `git fetch --tags origin` first")
     current = json.loads((root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     maps: dict[str, dict[str, dict[str, str]]] = {"files": {}, "files_marked": {}}
-    renamed = tuple(sdlc_init.RENAMED_COPIES)
-    for rel in (*sdlc_init.REFRESHED_COPIES, *sdlc_init.REPORTED_COPIES, *renamed):
+    for rel in (*sdlc_init.REFRESHED_COPIES, *sdlc_init.REPORTED_COPIES):
         texts = []
         for tag in tags:
             proc = subprocess.run(
@@ -1779,10 +1776,7 @@ def template_hashes(root: Path) -> dict[str, dict[str, dict[str, str]]]:
             )
             if proc.returncode == 0:
                 texts.append((proc.stdout, tag[1:]))
-        if rel not in renamed:  # R45 row 78: an old name has its released texts only
-            texts.append(
-                ((root / "template" / rel).read_text(encoding="utf-8"), current["version"])
-            )
+        texts.append(((root / "template" / rel).read_text(encoding="utf-8"), current["version"]))
         for key, marked in (("files", False), ("files_marked", True)):
             known: dict[str, str] = {}
             for text, version in texts:

@@ -584,30 +584,28 @@ def test_cli_fails_closed_on_a_production_flag_that_is_not_a_boolean(tmp_path):
     assert any("fails closed" in line for line in lines)
 
 
-def test_cli_waits_for_the_release_label_under_the_old_key(tmp_path):
-    """R45 (decision 39, row 55): a project whose sdlc.yaml still says ``deploy.production:
-    true`` keeps the release approval for one release: the release waits for the label."""
-    sdlc_yaml = _yaml(production=True, command="x", key="production")
-    assert "  production: true\n" in sdlc_yaml
+def test_cli_refuses_the_old_production_key(tmp_path):
+    """R45 (decision 39, row 55): ``deploy.production`` alone is refused since 1.0.48 (R45's
+    sixth PR): the release fails closed with the rename to make, and runs nothing."""
+    sdlc_yaml = _yaml(production=True, command=RELEASED, key="production")
+    assert "  production: true\n" in sdlc_yaml and "production_gate" not in sdlc_yaml
     root, _ = _repo_with_change(tmp_path, sdlc_yaml=sdlc_yaml)
     code, lines = _run(root, FakeGitHub(actor=None, labels=()))
-    assert code == 0
-    assert "release: config: action=publish package production=true command=set" in " ".join(lines)
-    assert any(line.startswith("release: waiting: ") for line in lines)
-    assert "release: route: apply sdlc:release-approved on #7" in lines
+    assert code == 2, lines
+    assert any("deploy.production is not read since plugin 1.0.48" in line for line in lines)
     assert not any(line.startswith("release: run:") for line in lines)
 
 
-def test_cli_fails_closed_when_the_old_and_new_production_keys_disagree(tmp_path):
-    sdlc_yaml = _yaml(production=False, command="x") + "  production: true\n"
-    root, _ = _repo_with_change(tmp_path, sdlc_yaml=sdlc_yaml)
-    code, lines = _run(root, FakeGitHub())
-    assert code == 2
-    assert any(
-        "deploy.production_gate is false and the old deploy.production is true" in line
-        for line in lines
-    )
-    assert not any(line.startswith("release: run:") for line in lines)
+def test_cli_refuses_the_old_production_key_beside_the_new_one(tmp_path):
+    """Both keys set: since 1.0.48 (R45's sixth PR) the old key is refused whatever the new
+    one says (fail closed), so nothing is released until the owner keeps the new key only."""
+    for name, gate_on, old in (("off", False, "true"), ("on", True, "false")):
+        sdlc_yaml = _yaml(production=gate_on, command=RELEASED) + f"  production: {old}\n"
+        root, _ = _repo_with_change(tmp_path / name, sdlc_yaml=sdlc_yaml)
+        code, lines = _run(root, FakeGitHub(actor=None, labels=()))
+        assert code == 2, lines
+        assert any("keep only that key" in line for line in lines)
+        assert not any(line.startswith("release: run:") for line in lines)
 
 
 # --- issue #66: one release per change, and only once gate (deploy) has a result (0.3.1) ---------
@@ -757,10 +755,11 @@ def test_run_hands_the_record_to_the_record_job_and_never_releases_twice(tmp_pat
     assert "released" not in capfd.readouterr().out
 
 
-def test_a_change_in_flight_before_r45_releases_from_its_letter_branch(tmp_path, capfd):
-    """R45, for one release: the build PR an older plugin opened has the head ``sdlc/0001/c``
-    and its merged copy says ``phase: e`` with ``evidence/gate-e.json``; the release reads
-    every one as deploy, and the record job stores the record on that letter branch."""
+def test_a_letter_build_head_is_refused_and_a_merged_letter_record_is_still_read(tmp_path, capfd):
+    """A build PR whose head is the letter branch ``sdlc/0001/c`` is not the build PR since
+    1.0.48 (R45's sixth PR): the release skips it. The readers of history stay (choice 273):
+    a merged copy that says ``phase: e`` with ``evidence/gate-e.json`` reads as deploy, and
+    the release record goes on the letter branch when only that one is on ``origin``."""
     root, change_dir = _repo_with_change(tmp_path, sdlc_yaml=_yaml(command=RELEASED))
     _git(root, "branch", "-m", "sdlc/0001/build", "sdlc/0001/c")
     _git(root, "checkout", "-q", "main")
@@ -777,12 +776,22 @@ def test_a_change_in_flight_before_r45_releases_from_its_letter_branch(tmp_path,
     _git(root, "push", "-q", "origin", "main", "sdlc/0001/c")
     code, lines = _run(root, FakeGitHub(head_ref="sdlc/0001/c"))
     assert code == 0, lines
+    assert lines[-1] == (
+        "release: skip: pull request #7 (head sdlc/0001/c) is not the build PR sdlc/0001/build"
+        " of change 0001"
+    )
+    assert not any(line.startswith("release: run:") for line in lines)
+    assert "released" not in capfd.readouterr().out
+    # the build PR's head is the name; the merged copy and the remote branch are history
+    code, lines = _run(root, FakeGitHub())
+    assert code == 0, lines
     assert "release: phase: deploy" in lines and "release: gate: deploy/passed" in lines
     assert lines[-1] == (
-        "release: record: pending: the record job stores it on sdlc/0001/c and "
+        "release: record: pending: the record job stores it on sdlc/0001/build and "
         "refs/sdlc/released/0001"
     )
     assert "released" in capfd.readouterr().out
+    # the record job finds the letter branch, the only one on origin
     code, lines = _record(root, "--merge-sha", "abc1234def")
     assert code == 0 and lines[0].startswith(
         "release: record: stored on refs/sdlc/released/0001 and sdlc/0001/c ("

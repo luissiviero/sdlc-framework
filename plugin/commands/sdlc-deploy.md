@@ -40,8 +40,7 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy`:
   if `allow` is false, stop and report its `reasons` (a `parked: ...` reason is the
   owner's item). Never judge `status.yaml` yourself.
-- `git fetch origin`, `git switch sdlc/<id>/build`, `git pull --ff-only origin sdlc/<id>/build`
-  (`sdlc/<id>/c` for a change started before the names).
+- `git fetch origin`, `git switch sdlc/<id>/build`, `git pull --ff-only origin sdlc/<id>/build`.
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy`
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" set-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy`
 
@@ -253,13 +252,13 @@ approval = gate (deploy) passed (decision 36); the merge App then merges it (`sd
 and the release workflow runs `deploy.command`. An approval given before this run committed
 the deploy gate's record does not count: the code owner approves again on the head (choice 250). No merge
 App: the code owner merges it after approving. When `sdlc.yaml` says
-`deploy.production_gate: true` (or the old `deploy.production: true`), the body also says the release manager's line: the release label `sdlc:release-approved` is
+`deploy.production_gate: true`, the body also says the release manager's line: the release label `sdlc:release-approved` is
 the second act: apply it on this PR in the same visit; the release workflow waits for it.
 
 ## 6. Hand over
 Report the PR URL and "gate (deploy): as the code owner, an approving review = approve, and the merge App merges on
 it; a review comment is the change request (`/sdlc-fix <id>`)". When `sdlc.yaml` says
-`deploy.production_gate: true` (or the old `deploy.production: true`), add the release manager's line, "the release label `sdlc:release-approved` is the second
+`deploy.production_gate: true`, add the release manager's line, "the release label `sdlc:release-approved` is the second
 act: apply it on this PR in the same visit; the release workflow waits for it". Nothing
 else runs; the merge that follows the code owner's approval is the trigger for the project's
 deploy adapter.

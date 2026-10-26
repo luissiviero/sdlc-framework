@@ -6,7 +6,7 @@ family alias (``opus``):
 
 - ``session_model``: the CI session's model, which the runner passes as ``--model``. Either
   one model, or a mapping of ``default`` and per-phase entries (``intent`` to ``maintain``;
-  the letters ``a`` to ``f`` an older ``sdlc.yaml`` names are read as those, R45)::
+  until plugin 1.0.43 the letters ``a`` to ``f``, R45)::
 
       session_model:
         default: claude-opus-5-5
@@ -72,11 +72,8 @@ def session_model(config: dict[str, Any] | None, phase: str | None) -> str | Non
     """The model ``sdlc.yaml: session_model`` names for a run of ``phase``, or None."""
     value = (config or {}).get(SESSION_KEY)
     if isinstance(value, dict):
-        key = SESSION_PHASE.get(str(phase), c.phase_name(str(phase)))
-        # R45: the name's entry, else the letter's an older sdlc.yaml names (``c:``)
-        letter = c.PHASE_LETTERS.get(key)
-        named = _text(value.get(key)) or (_text(value.get(letter)) if letter else None)
-        return named or _text(value.get(DEFAULT_ENTRY))
+        key = SESSION_PHASE.get(str(phase), str(phase))
+        return _text(value.get(key)) or _text(value.get(DEFAULT_ENTRY))
     return _text(value)
 
 

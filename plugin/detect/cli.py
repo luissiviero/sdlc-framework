@@ -797,16 +797,12 @@ def cmd_routes(args) -> int:
 def _incident_pr_url(root: Path, change_id: str, repo: str | None) -> str | None:
     if not repo:
         return None
-    # R45: the intent PR of a change in flight has the letter head ``sdlc/<id>/a``
-    for head in c.branch_names(change_id, c.INTENT):
-        try:
-            found = _github().find_open_pr(repo, head, cwd=root)
-        except Exception:  # noqa: BLE001
-            return None
-        url = found.get("url") if isinstance(found, dict) else None
-        if url:
-            return url
-    return None
+    try:
+        found = _github().find_open_pr(repo, c.branch_name(change_id, c.INTENT), cwd=root)
+    except Exception:  # noqa: BLE001
+        return None
+    url = found.get("url") if isinstance(found, dict) else None
+    return url or None
 
 
 def _commit_change(root: Path, change_id: str, message: str, push: bool) -> dict[str, Any]:

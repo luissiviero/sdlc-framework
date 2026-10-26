@@ -35,7 +35,7 @@ class Gate:
     at: str | None = None
 
     def __post_init__(self) -> None:
-        self.phase = c.phase_name(self.phase)  # R45: a letter an older plugin wrote
+        self.phase = c.phase_name(self.phase)  # R45: a letter an older plugin wrote, for good
 
 
 @dataclass
@@ -49,7 +49,8 @@ class Status:
     # on_default_branch=True)`` derives gate deploy/passed from it (``merged_at_gate_e``)
     # without rewriting the file, because the automation identity never writes to the default
     # branch. R45: a letter (``e``), as every file an older plugin wrote has it, is read as its
-    # name; the file is rewritten with the name the next time the plugin writes it.
+    # name for good (choice 273): the default branch's files are migrated, but a remote
+    # ``sdlc/<id>/<letter>`` branch and its ``status.yaml`` are history, never rewritten.
     phase: str = c.INTENT
     entry_route: str = "idea"
     change_type: str = "feature"
@@ -88,15 +89,15 @@ class Status:
     runbook_authorized_by: str | None = None
     # Decision 25: the PR of gate (a)-(e) was closed without a merge; why, and when.
     abandoned_reason: str | None = None
-    # The build pull request (head ``sdlc/<id>/c``, the one gate (e) merges), as
+    # The build pull request (head ``sdlc/<id>/build``, the one gate (deploy) merges), as
     # ``pr/cli.py upsert`` recorded it (0.2.27). The release approval is read from this PR
     # and no other: before, ``release/approval.py`` found "the most recent PR from the
-    # current branch's name", so a checkout of any ``sdlc/<id>/c`` — a local branch with any
+    # current branch's name", so a checkout of any ``sdlc/<id>/build`` — a local branch with any
     # content — inherited that change's label (the 1.0.0 readiness review, group B).
     build_pr: int | None = None
     # The release record (0.3.1, issue #66): when, which merge commit and which build PR the
     # release workflow released for this change. Written by ``release/cli.py`` on the
-    # change's work branch ``sdlc/<id>/c`` after ``deploy.command`` exited 0 (the default
+    # change's work branch ``sdlc/<id>/build`` after ``deploy.command`` exited 0 (the default
     # branch is never written), so a later pull request from that branch carries it and the
     # release workflow, which reads the merged copy and the branch's copy, releases nothing
     # a second time; the ``labeled`` event and a dispatch read the branch's copy too.
@@ -127,7 +128,8 @@ class Status:
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        # R45: the letters an older plugin wrote are read as the names (``phase_name``)
+        # R45: the letters an older plugin wrote are read as the names (``phase_name``), for
+        # the readers of history (choice 273)
         self.phase = c.phase_name(self.phase)
         if isinstance(self.fast_lane, dict):
             self.fast_lane = {c.phase_name(k): v for k, v in self.fast_lane.items()}
@@ -233,7 +235,6 @@ class Status:
         self.updated_at = _now()
 
     def set_phase(self, phase: str) -> None:
-        phase = c.phase_name(phase)
         if phase not in c.PHASES:
             raise ValueError(f"phase must be one of {c.PHASES}, got {phase!r}")
         if self.phase == c.ABANDONED:
@@ -286,7 +287,7 @@ class Status:
         a park lifts it (the first fix round of change 0001 on the sample repository,
         2026-09-22, left the old reason behind a ``passed`` result, and the next phase's CI
         guard would have skipped the change as parked)."""
-        self.gate = Gate(phase=c.phase_name(phase), result=result, reason=reason, at=_now())
+        self.gate = Gate(phase=phase, result=result, reason=reason, at=_now())
         self.parked_reason = reason if result == "parked" else None
         self.touch()
         self.validate()

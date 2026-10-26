@@ -36,9 +36,8 @@ Kinds — the fixed list of what may go to the panel (nothing else ever does):
   ledger line, which is what the gate matches — the wording after it may be tidied);
 - ``policy``: a concern that names contradicting policy skills (closed the same way);
 - ``park``: a ``park`` verdict of the adversarial reviewer (keyed by its reasons; the gate's
-  ``adversarial_review`` check reads the entry). An older plugin named the kind and the key
-  ``escalate``, after its verdict word; such a line reads as ``park`` for one release (R45
-  row 62, ``normalize``);
+  ``adversarial_review`` check reads the entry; until plugin 1.0.43 the kind and the key
+  were ``escalate``, after its verdict word, R45 row 62);
 - ``finding``: an Important review finding whose fix the run cannot determine (keyed by
   the finding's signature; the gate's ``findings`` check reads the entry);
 - ``verifier``: the verifier's "does not match the plan" (a record; the run acts on it).
@@ -78,8 +77,6 @@ MEMBER_FILE = "{phase}-{n}-{member}.{ext}"
 MEMBERS = ("reviewer", "advocate", "conciliator")
 
 PANEL_KINDS = ("concern", "policy", "park", "finding", "verifier")
-# R45 row 62: the kind an older plugin wrote for a ``park`` verdict, read for one release
-LEGACY_KINDS = {"escalate": "park"}
 # the gate checks whose failure is never the panel's to settle (OPERATING_MODEL section 6)
 NEVER_TO_PANEL = (
     "risk_list",
@@ -127,22 +124,6 @@ def park_key(reasons: list[str]) -> str:
     """A park verdict's key: its reasons, order-independent. A later verdict with new
     reasons is a new item; the same reasons again are the item already decided."""
     return "park:" + _key(*sorted(" ".join(str(r).split()).lower() for r in reasons))
-
-
-def normalize(entry: dict[str, Any]) -> dict[str, Any]:
-    """A ledger line or a panel item as this plugin names it: the kind ``escalate`` an older
-    plugin wrote reads as ``park``, and its key ``escalate:<hash>`` as ``park:<hash>`` (the
-    hash is of the reasons alone, so the same verdict finds the same line; R45 row 62, for
-    one release). Any other entry is returned unchanged; a changed one is a copy."""
-    kind = entry.get("kind")
-    if kind not in LEGACY_KINDS:
-        return entry
-    new = LEGACY_KINDS[kind]
-    out = dict(entry, kind=new)
-    key = entry.get("key")
-    if isinstance(key, str) and key.startswith(f"{kind}:"):
-        out["key"] = f"{new}:" + key[len(kind) + 1 :]
-    return out
 
 
 def finding_key(signature: str) -> str:
@@ -201,7 +182,6 @@ def phases_up_to(phase: str) -> tuple[str, ...]:
     ledger line lives in ``decisions-design.json`` (the first build under deferred review, sample
     change 0002, 2026-09-24, parked at gate (build) on "closed with no ledger line" because the
     check read the phase's own ledger only)."""
-    phase = c.phase_name(phase)
     if phase not in LEDGER_PHASES:
         return ()
     return LEDGER_PHASES[: LEDGER_PHASES.index(phase) + 1]
@@ -209,12 +189,8 @@ def phases_up_to(phase: str) -> tuple[str, ...]:
 
 # --- paths --------------------------------------------------------------------------------------
 def _phase_path(folder: Path, pattern: str, phase: str, write: bool, **fields: Any) -> Path:
-    """R45: the file ``pattern`` names for ``phase``. A writer (``write``) takes the phase
-    name's always (``decisions-design.json``); a reader takes it too unless only the letter's
-    exists (``decisions-b.json``, ``panel/b-1-reviewer.md``, written by a plugin before R45),
-    which it then reads (``conventions.phase_file``)."""
-    if write:
-        return Path(folder) / pattern.format(phase=c.phase_name(phase), **fields)
+    """The file ``pattern`` names for ``phase`` (``decisions-design.json``), the same for a
+    reader and a writer (``write``) since plugin 1.0.48 (R45)."""
     return c.phase_file(folder, pattern, phase, **fields)
 
 
@@ -404,8 +380,7 @@ def read_member_verdicts(change_dir: Path, phase: str, n: int) -> tuple[dict[str
 def load_ledger(change_dir: Path, phase: str) -> list[dict[str, Any]]:
     """The entries of the phase's ledger, [] when there is none or it is unreadable (the gate's
     ``panel`` check reports an unreadable one; a reader that only lists is not the judge).
-    An older plugin's ``escalate`` line reads as ``park`` (``normalize``), so the next
-    ``save_ledger`` writes it so."""
+    """
     path = ledger_path(change_dir, phase)
     if not path.is_file():
         return []
@@ -416,7 +391,7 @@ def load_ledger(change_dir: Path, phase: str) -> list[dict[str, Any]]:
     entries = data.get("decisions") if isinstance(data, dict) else None
     if not isinstance(entries, list):
         return []
-    return [normalize(e) for e in entries if isinstance(e, dict)]
+    return [e for e in entries if isinstance(e, dict)]
 
 
 def load_ledgers(change_dir: Path, phase: str) -> list[tuple[str, list[dict[str, Any]]]]:
@@ -439,7 +414,6 @@ def ledger_error(change_dir: Path, phase: str) -> str | None:
 
 
 def save_ledger(change_dir: Path, phase: str, entries: list[dict[str, Any]]) -> Path:
-    phase = c.phase_name(phase)
     path = ledger_path(change_dir, phase, write=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {"schema_version": SCHEMA_VERSION, "phase": phase, "decisions": entries}
@@ -657,7 +631,7 @@ def new_entry(
     verdicts = verdicts or {}
     entry: dict[str, Any] = {
         "n": n,
-        "phase": c.phase_name(phase),
+        "phase": phase,
         "kind": str(item.get("kind")),
         "key": str(item.get("key")),
         "item": " ".join(str(item.get("item", "")).split()),

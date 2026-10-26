@@ -137,10 +137,11 @@ def test_the_owner_s_approval_merges_at_the_head_through_the_merge_app(tmp_path,
     assert "merge: merged #12" in (tmp_path / "summary.md").read_text(encoding="utf-8")
 
 
-def test_a_change_in_flight_before_r45_merges_with_its_letters(tmp_path, capsys):
-    """R45, for one release: a build PR an older plugin opened has the head ``sdlc/0007/c``,
-    the label ``sdlc:e-ready``, ``phase: e`` in status.yaml and ``evidence/gate-e.json``;
-    the merge step reads every one of them as deploy and merges."""
+def test_the_letters_of_a_change_in_flight_before_r45_are_refused(tmp_path, capsys):
+    """Since 1.0.48 (R45's sixth PR) the head ``sdlc/0007/c``, the label ``sdlc:e-ready`` and
+    ``evidence/gate-e.json`` an older plugin wrote are not read: each alone makes the merge
+    step wait. ``phase: e`` in status.yaml is a reader of history (choice 273) and still
+    reads as deploy, so with the names elsewhere the PR merges."""
     letter = "e"
     letters = yamlish.dumps(
         {
@@ -149,19 +150,27 @@ def test_a_change_in_flight_before_r45_merges_with_its_letters(tmp_path, capsys)
             "gate": {"phase": letter, "result": "passed", "reason": None, "at": None},
         }
     )
+    gh = FakeGitHub(pr={"head_ref": "sdlc/0007/" + "c"})
+    _waits(tmp_path, capsys, gh, "#12 is not a build PR (head sdlc/0007/c)")
+    gh = FakeGitHub(pr={"labels": ["sdlc:" + letter + "-ready"]})
+    _waits(tmp_path, capsys, gh, "does not carry sdlc:deploy-ready")
     gh = FakeGitHub(
-        pr={"head_ref": "sdlc/0007/" + "c", "labels": ["sdlc:" + letter + "-ready"]},
         files={
-            f"{DIR}/status.yaml": letters,
             f"{DIR}/evidence/gate-deploy.json": None,
             f"{DIR}/evidence/gate-{letter}.json": json.dumps({"result": "wait"}),
-        },
+        }
     )
     assert merge_step.merge(checkout(tmp_path), REPO, 12, env(tmp_path), gh) == 0
+    out = capsys.readouterr().out
+    assert "merge: wait:" in out and not [c for c in gh.calls if c[0] == "merge"], out
+    # the status.yaml of a change in flight, read as history
+    gh = FakeGitHub(files={f"{DIR}/status.yaml": letters})
+    assert merge_step.merge(checkout(tmp_path), REPO, 12, env(tmp_path), gh) == 0
     assert ("merge", 12, HEAD, "merge-app-token") in gh.calls, capsys.readouterr().out
-    assert merge_step.build_change_id("sdlc/0007/" + "c") == "0007"
+    assert merge_step.build_change_id("sdlc/0007/" + "c") is None
     assert merge_step.build_change_id("sdlc/0007/build") == "0007"
     assert merge_step.build_change_id("sdlc/0007/design") is None
+    assert merge_step.gate_e_paths(f"{DIR}/evidence") == (f"{DIR}/evidence/gate-deploy.json",)
 
 
 def _waits(tmp_path, capsys, gh, why):
@@ -379,9 +388,10 @@ def test_any_other_review_dispatches_nothing(tmp_path, capsys):
     assert code == 1
 
 
-def test_the_old_doorbell_subcommand_still_runs_for_one_release(tmp_path, monkeypatch, capsys):
-    """R45 row N5: an sdlc-merge.yml copy from before plugin 1.0.46 calls ``merge_step.py
-    doorbell``; it runs on-approval, under the new log prefix."""
+def test_the_old_doorbell_subcommand_is_refused(tmp_path, monkeypatch, capsys):
+    """R45 row N5: an sdlc-merge.yml copy from before plugin 1.0.46 called ``merge_step.py
+    doorbell``; the alias is refused since 1.0.48 (R45's sixth PR), and on-approval runs
+    under its own log prefix."""
     from ci import run_phase  # noqa: PLC0415
 
     sent = []
@@ -389,12 +399,15 @@ def test_the_old_doorbell_subcommand_still_runs_for_one_release(tmp_path, monkey
     for key, value in env(tmp_path, review_payload(), name="pull_request_review").items():
         monkeypatch.setenv(key, value)
     root = checkout(tmp_path)
-    for cmd in ("doorbell", "on-approval"):
-        assert merge_step.main([cmd, "--root", str(root), "--repo", REPO]) == 0
-        out = capsys.readouterr().out
-        assert "on-approval: dispatched sdlc-merge.yml for #12" in out
-        assert "doorbell" not in out
-    assert len(sent) == 2 and sent[0] == sent[1]
+    with pytest.raises(SystemExit) as exc:
+        merge_step.main(["doorbell", "--root", str(root), "--repo", REPO])
+    assert exc.value.code == 2 and sent == []
+    capsys.readouterr()
+    assert merge_step.main(["on-approval", "--root", str(root), "--repo", REPO]) == 0
+    out = capsys.readouterr().out
+    assert "on-approval: dispatched sdlc-merge.yml for #12" in out
+    assert "doorbell" not in out
+    assert len(sent) == 1
     assert merge_step.LINES[merge_step.ON_APPROVAL] == "on-approval"
 
 
@@ -665,11 +678,10 @@ def test_the_digest_asks_for_a_new_approval_when_it_predates_gate_e(monkeypatch)
     monkeypatch.setattr(gh, "dir_at", lambda *a, **k: {"ok": True, "names": [DIR.split("/")[1]]})
 
     def file_at(repo, path, ref):
-        # R45: the name's record first, then the letter's an older plugin wrote
-        letter = f"{DIR}/evidence/gate-" + "e.json"
-        assert path in (f"{DIR}/evidence/gate-deploy.json", letter)
+        # only the name's record: the letter's gate-e.json is not read since 1.0.48
+        assert path == f"{DIR}/evidence/gate-deploy.json"
         assert ref == early
-        if gate["text"] is None or path == letter:
+        if gate["text"] is None:
             return {"ok": False, "text": None, "missing": True, "reason": "404"}
         return {"ok": True, "text": gate["text"], "missing": False}
 

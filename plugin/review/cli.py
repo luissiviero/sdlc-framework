@@ -391,8 +391,7 @@ def build_parser() -> argparse.ArgumentParser:
                 help="do not write changes/.review-seen.json (a dry run)",
             )
         if name == "check-run":
-            # R45: a letter (``--phase e``) is read as its name for one release
-            s.add_argument("--phase", default=c.DEPLOY, type=c.phase_name, choices=c.PHASES)
+            s.add_argument("--phase", default=c.DEPLOY, choices=c.PHASES)
             s.add_argument(
                 "--final-head",
                 action="store_true",

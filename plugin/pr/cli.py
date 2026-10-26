@@ -130,9 +130,7 @@ def cmd_upsert(args) -> int:
     title = desc.pr_title(st, args.phase)
     gate_json = desc.load_gate(change_dir, args.phase)
     label = desc.label_for(gate_json, args.phase)
-    head = (getattr(args, "head", None) or "").strip() or desc.head_branch(
-        args.id, args.phase, root
-    )
+    head = (getattr(args, "head", None) or "").strip() or desc.head_branch(args.id, args.phase)
     repo, base = _repo_and_base(root)
     out: dict[str, Any] = {
         "repo": repo,
@@ -181,8 +179,8 @@ def cmd_upsert(args) -> int:
         return finish()
 
     number = out["number"]
-    build_heads = c.work_branches(args.id, c.BUILD)  # R45: the letter branch of a change in flight
-    if number and head in build_heads and st.build_pr != int(number):
+    build_head = c.work_branch(args.id, c.BUILD)
+    if number and head == build_head and st.build_pr != int(number):
         # the build PR is the one the release approval reads (release/approval.py, 0.2.27):
         # record its number in status.yaml, where the checkout and the default branch's copy
         # carry it; the runner commits the record (run_phase.ensure_pr)
@@ -190,7 +188,7 @@ def cmd_upsert(args) -> int:
         st.touch()
         status_mod.write_status(change_dir, st)
         out["build_pr_recorded"] = int(number)
-    if number and head not in build_heads:
+    if number and head != build_head:
         # R22 (decision 36, point 5): the review ruleset requires sdlc/review, so every PR
         # that is not a build PR carries a passing "not a build PR" on its head; the workflow
         # token's pushes and pull requests start no run of sdlc-merge.yml that would post it
@@ -206,14 +204,11 @@ def cmd_upsert(args) -> int:
         remove = [lb for lb in carried if lb != label]
         add = [label] if label and label not in carried else []
         if args.phase == c.MAINTAIN and c.TRIAGE_LABEL not in (found.get("labels") or []):
-            # the triage queue is the set of open intent PRs labelled sdlc:triage (step 39);
-            # an older plugin's ``incident`` on the PR gives way to it (R45, row 37)
+            # the triage queue is the set of open intent PRs labelled sdlc:triage (step 39)
             github.ensure_label(
                 repo, c.TRIAGE_LABEL, "B60205", "SDLC maintain: in the triage queue", cwd=root
             )
             add.append(c.TRIAGE_LABEL)
-            if c.LEGACY_TRIAGE_LABEL in (found.get("labels") or []):
-                remove.append(c.LEGACY_TRIAGE_LABEL)
         if add or remove:
             out["labels"] = github.set_labels(repo, int(number), add, remove, cwd=root)
         if args.ready:
@@ -284,8 +279,7 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name)
         p.add_argument("--root", default=".")
         p.add_argument("--id", required=True)
-        # R45: a letter (``--phase c``) is read as its name for one release
-        p.add_argument("--phase", required=True, type=c.phase_name, choices=list(c.PHASES))
+        p.add_argument("--phase", required=True, choices=list(c.PHASES))
         if name == "upsert":
             p.add_argument("--draft", action="store_true", help="open the PR as a draft")
             p.add_argument("--ready", action="store_true", help="mark the PR ready for review")

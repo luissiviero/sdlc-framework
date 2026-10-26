@@ -5003,77 +5003,82 @@ def test_the_baseline_s_own_entries_must_match_a_label_event_on_the_runner(proje
     assert len(reasons) == 2 and all("could not be read: HTTP 502" in r for r in reasons)
 
 
-# --- R45: the phase names, and the letters an older plugin wrote, read for one release -------
-def test_the_phase_flag_reads_a_letter_as_its_name():
-    """An older workflow copy passes ``--phase c``: the runner reads it as ``build`` before
-    anything else, and the runs that are not phases keep their own names."""
+# --- R45: the phase names; the letters an older plugin wrote, refused since 1.0.48 ----------
+def test_the_phase_flag_refuses_a_letter_since_1_0_48():
+    """An older workflow copy passed ``--phase c``, read as ``build`` for one release; since
+    1.0.48 (R45's sixth PR) a letter is refused, and the runs that are not phases keep their
+    own names."""
     parse = run_phase.build_parser().parse_args
     letters = {"b": "design", "c": "build", "d": "test", "e": "deploy", "f": "maintain"}
     for letter, name in letters.items():
-        assert parse(["--phase", letter, "--id", "0001"]).phase == name
+        with pytest.raises(SystemExit):
+            parse(["--phase", letter, "--id", "0001"])
         assert parse(["--phase", name, "--id", "0001"]).phase == name
     for run in ("review", "fix", "explain"):
         assert parse(["--phase", run, "--id", "0001"]).phase == run
-    # R45's PR 2: the explain step's older name, from a workflow copy before it
-    assert parse(["--phase", "triage", "--id", "0001"]).phase == "explain"
+    # R45's PR 2: the explain step's older name is refused too
+    with pytest.raises(SystemExit):
+        parse(["--phase", "triage", "--id", "0001"])
     with pytest.raises(SystemExit):  # the intent is never a run of its own, as (a) was not
         parse(["--phase", "a", "--id", "0001"])
+    assert not hasattr(run_phase, "runnable_name") and not hasattr(run_phase, "LEGACY_RUNNABLE")
 
 
-def test_a_letter_on_the_command_line_runs_the_build(project, capsys, monkeypatch):
+def test_a_letter_on_the_command_line_is_refused_since_1_0_48(project, capsys, monkeypatch):
+    """``--phase c`` exits 2 since 1.0.48 (R45's sixth PR); ``--phase build`` runs the build."""
     root, change = project
     set_state(change, "design", gate_phase="design", gate_result="passed")
     monkeypatch.setenv(KEY_VAR, FAKE_KEY)
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     monkeypatch.setattr(run_phase, "preflight", lambda *a: {"allow": True})
-    code = run_phase.main(["--root", str(root), "--phase", "c", "--id", "0001", "--dry-run"])
+    with pytest.raises(SystemExit) as exited:
+        run_phase.main(["--root", str(root), "--phase", "c", "--id", "0001", "--dry-run"])
+    assert exited.value.code == 2
+    assert "invalid choice: 'c'" in capsys.readouterr().err
+    code = run_phase.main(["--root", str(root), "--phase", "build", "--id", "0001", "--dry-run"])
     assert code == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert out["phase"] == "build" and out["argv"][2] == "/sdlc:sdlc-build 0001"
 
 
-def test_a_change_in_flight_keeps_its_letter_branch(project, tmp_path, capsys):
-    """A change an older plugin moved to its build keeps ``sdlc/0001/c``: the dispatched test
-    run switches to it, its ``status.yaml`` (``phase: c``, ``gate.phase: c``) reads as build,
-    and the hand-over names it as the next head."""
+def test_a_letter_branch_in_flight_is_not_worked_on_since_1_0_48(project, tmp_path, capsys):
+    """A change an older plugin moved to its build kept ``sdlc/0001/c`` for one release; since
+    1.0.48 (R45's sixth PR) the test run works on ``sdlc/0001/build`` and the hand-over names
+    it, whatever letter branch origin carries. A letter head ref still names its change
+    (``parse_branch`` reads history, choice 273)."""
     root, change = project
     set_state(change, "design")
     with_remote(root, tmp_path)
     git(root, "checkout", "-q", "-b", "sdlc/0001/c")
     set_state(change, "build", gate_phase="build", gate_result="passed")
-    status = change / "status.yaml"
-    text = status.read_text(encoding="utf-8").replace("phase: build", "phase: c")
-    status.write_text(text, encoding="utf-8")
-    assert "phase: c" in text
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "build(0001): the work, by an older plugin")
     git(root, "push", "-q", "-u", "origin", "sdlc/0001/c")
     git(root, "checkout", "-q", "main")
     git(root, "branch", "-q", "-D", "sdlc/0001/c")
+    git(root, "fetch", "-q", "origin")
 
     assert run_phase.work_branch_for("0001", "test") == "sdlc/0001/build"
-    git(root, "fetch", "-q", "origin")
-    assert run_phase.work_branch_for("0001", "test", root) == "sdlc/0001/c"
-    assert run_phase.work_branch_for("0001", "design", root) == "sdlc/0001/design"
+    assert run_phase.work_branch_for("0001", "deploy") == "sdlc/0001/build"
+    assert run_phase.work_branch_for("0001", "design") == "sdlc/0001/design"
     args = Args(root=str(root), phase="test")
+    # the letter branch is not switched to: the run reads main's status.yaml and skips
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
-    assert out["branch"]["branch"] == "sdlc/0001/c" and out["branch"]["switched"] is True
-    assert out["argv"][2] == "/sdlc:sdlc-test 0001"
-    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
+    assert out == {"skipped": "change 0001 is at phase design, not build"}
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "main"
     handed = run_phase.hand_over(
         Args(root=str(root), no_dispatch=True), {"result": "continue"}, "build", "0001"
     )
-    assert handed["head_ref"] == "sdlc/0001/c"
-    # the head ref of the letter branch names the change as the name's does
+    assert handed["head_ref"] == "sdlc/0001/build"
+    assert run_phase.resolve_change_id(None, "sdlc/0001/build", "test") == ("0001", None)
     assert run_phase.resolve_change_id(None, "sdlc/0001/c", "test") == ("0001", None)
-    assert run_phase.resolve_change_id(None, "sdlc/0001/b", "build") == ("0001", None)
 
 
-def test_an_older_plugin_s_evidence_file_is_read(project):
-    """``gate-c.json`` and ``claude-c.json`` from a plugin before R45: the runner reads the
-    record by its letter while no name's file exists, and the preflight restart (gap 2)
-    counts the letter's session record as a session that ran."""
+def test_an_older_plugin_s_evidence_file_is_not_read_since_1_0_48(project):
+    """``gate-c.json`` and ``claude-c.json`` from a plugin before R45 were read for one
+    release; since 1.0.48 (R45's sixth PR) the runner reads only ``gate-build.json``, and the
+    preflight restart (gap 2) counts only the name's session record as a session that ran."""
     root, change = project
     evidence = change / "evidence"
     evidence.mkdir(parents=True, exist_ok=True)
@@ -5083,29 +5088,42 @@ def test_an_older_plugin_s_evidence_file_is_read(project):
         "checks": [{"name": "preflight", "ok": False, "reason": "no lint target"}],
     }
     (evidence / "gate-c.json").write_text(json.dumps(record), encoding="utf-8")
-    assert run_phase.read_gate(change, "build") == record
-    assert run_phase.gate_record_path(change, "build").name == "gate-c.json"
-    assert run_phase.gate_record_bytes(change, "build") is not None
+    assert run_phase.read_gate(change, "build") != record
+    assert run_phase.gate_record_path(change, "build").name == "gate-build.json"
+    assert run_phase.gate_record_bytes(change, "build") is None
     st = status_mod.read_status(change)
     st.set_phase("build")
     st.park(run_phase.PREFLIGHT_PARK + "no lint target")
     status_mod.write_status(change, st)
+    assert run_phase.pre_run_park(root, "0001", "build") is False  # gate-c.json is not read
+    named = {**record, "phase": "build"}
+    (evidence / "gate-build.json").write_text(json.dumps(named), encoding="utf-8")
+    assert run_phase.read_gate(change, "build") == named
     assert run_phase.pre_run_park(root, "0001", "build") is True
     (evidence / "claude-c.json").write_text("{}", encoding="utf-8")
-    assert run_phase.pre_run_park(root, "0001", "build") is False
-    # a writer writes the name's file, which every reader then takes
+    assert run_phase.pre_run_park(root, "0001", "build") is True  # not a session that ran
+    # a writer writes the name's file, the one every reader takes
     assert run_phase.run_record_paths(change, "build")[0].name == "claude-build.json"
+    (evidence / "claude-build.json").write_text("{}", encoding="utf-8")
+    assert run_phase.pre_run_park(root, "0001", "build") is False
     (evidence / "gate-build.json").write_text(json.dumps({"result": "wait"}), encoding="utf-8")
     assert run_phase.read_gate(change, "build") == {"result": "wait"}
 
 
-def test_a_letter_branch_on_origin_counts_as_the_change_s_branch(project, tmp_path):
-    """The fast lane's readers of origin take an older plugin's ``sdlc/<id>/c`` as the build
-    branch: no second design starts for a change whose build exists."""
+def test_a_letter_branch_on_origin_is_not_the_change_s_branch_since_1_0_48(project, tmp_path):
+    """The fast lane's readers of origin took an older plugin's ``sdlc/<id>/c`` as the build
+    branch for one release; since 1.0.48 (R45's sixth PR) only ``sdlc/<id>/build`` counts."""
     root, _change = project
     with_remote(root, tmp_path)
     git(root, "push", "-q", "origin", "main:sdlc/0001/c")
-    assert run_phase.origin_branch_ref(root, "0001", "build") == "refs/remotes/origin/sdlc/0001/c"
+    git(root, "fetch", "-q", "origin")
+    assert run_phase.origin_branch_ref(root, "0001", "build") is None
+    assert run_phase.carried_forward(root, "0001") is None
+    git(root, "push", "-q", "origin", "main:sdlc/0001/build")
+    git(root, "fetch", "-q", "origin")
+    assert run_phase.origin_branch_ref(root, "0001", "build") == (
+        "refs/remotes/origin/sdlc/0001/build"
+    )
     assert run_phase.origin_branch_ref(root, "0001", "design") is None
     refused = run_phase.carried_forward(root, "0001")
-    assert refused.startswith("sdlc/0001/c exists: change 0001 is past its design")
+    assert refused.startswith("sdlc/0001/build exists: change 0001 is past its design")

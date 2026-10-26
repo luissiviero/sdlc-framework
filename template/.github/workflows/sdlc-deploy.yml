@@ -276,7 +276,7 @@ jobs:
 
   # ROADMAP R8 (plugin 1.0.19): a second opinion on the build from a model of another vendor,
   # advisory. Off unless the default branch's sdlc.yaml lists deploy under
-  # second_opinion.phases (external_review until plugin 1.0.44, read for one release). A job
+  # second_opinion.phases (external_review until plugin 1.0.44). A job
   # of its own on a fresh runner after the deploy job: the
   # Claude session never held the Gemini key and never shared this machine, and the key
   # reaches only the one step that calls the API. The step reads the PR's head from git

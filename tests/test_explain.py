@@ -159,7 +159,7 @@ def test_a_parked_run_writes_its_out_file_and_the_explain_output(
     assert data["result_file"].endswith("evidence/claude-build.json")
     assert data["emitted"]["parked"].startswith("commands: deferred")
     assert "explain=park\n" in output.read_text(encoding="utf-8")
-    assert "triage=park\n" in output.read_text(encoding="utf-8")  # R45's PR 2: one release
+    assert "triage=" not in output.read_text(encoding="utf-8")  # not written since 1.0.48
 
 
 def test_a_red_run_with_no_park_says_red(project, fake_claude, monkeypatch, capsys, tmp_path):
@@ -620,66 +620,85 @@ def test_each_phase_workflow_explains_after_a_fresh_framework_checkout(name):
     assert "        id: setup\n" in text
 
 
-def test_a_run_file_an_older_plugin_wrote_names_its_phase(tmp_path):
-    """R45: ``phase: c`` in a run's out file reads as the build in the failed-run record."""
+def test_a_letter_phase_in_a_run_file_is_not_read_as_its_name_since_1_0_48(tmp_path):
+    """R45: ``phase: c`` in a run's out file was read as the build for one release; since
+    1.0.48 (R45's sixth PR) the failed-run record keeps the phase as written."""
     record = explain.failed_run_record("red", {"phase": "c", "exit_code": 1}, None, [], {})
+    assert record["phase"] == "c"
+    record = explain.failed_run_record("red", {"phase": "build", "exit_code": 1}, None, [], {})
     assert record["phase"] == "build"
     record = explain.failed_run_record("red", {"phase": "review", "exit_code": 1}, None, [], {})
     assert record["phase"] == "review"
 
 
-# --- R45's PR 2: the step's older name, read for one release -------------------------------------
-def test_the_older_phase_name_still_runs_the_explain_step(tmp_path, monkeypatch, capsys):
-    """A workflow copy from before R45's PR 2 passes ``--phase triage``: the runner reads it
-    as ``explain`` and runs the read-only step, not a phase."""
+# --- R45's PR 2: the step's older name, refused since 1.0.48 (R45's sixth PR) -------------------
+def test_the_older_phase_name_triage_is_refused_since_1_0_48(tmp_path, monkeypatch, capsys):
+    """A workflow copy from before R45's PR 2 passed ``--phase triage``; since 1.0.48 (R45's
+    sixth PR) the runner refuses it (exit 2) and ``--phase explain`` runs the read-only step."""
     for var, value in KEY_ENV.items():
         monkeypatch.setenv(var, value)
     argv = ["--root", str(tmp_path), "--phase", "triage", "--log", "build.log", "--dry-run"]
+    with pytest.raises(SystemExit) as exited:
+        run_phase.main(argv)
+    assert exited.value.code == 2
+    assert "invalid choice: 'triage'" in capsys.readouterr().err
+    argv[argv.index("triage")] = "explain"
     assert run_phase.main(argv) == run_phase.EXIT_OK
     report = json.loads(capsys.readouterr().out)
     assert report["phase"] == "explain"
     assert report["argv"][report["argv"].index("--allowedTools") + 1] == "Read"
 
 
-def test_the_runner_still_writes_the_older_step_output(tmp_path):
-    """A workflow copy from before R45's PR 2 tests ``steps.phase.outputs.triage``: the
-    runner writes ``triage=`` beside ``explain=`` for one release."""
+def test_the_runner_no_longer_writes_the_older_step_output_since_1_0_48(tmp_path):
+    """A workflow copy from before R45's PR 2 tested ``steps.phase.outputs.triage``; since
+    1.0.48 (R45's sixth PR) the runner writes only ``explain=``."""
     out, output = tmp_path / "run.json", tmp_path / "github-output"
     args = Args(root=str(tmp_path), phase="build", out=str(out))
     run_phase.write_run_out(args, {"GITHUB_OUTPUT": str(output)}, {"why": "no App"}, 1)
-    assert output.read_text(encoding="utf-8").splitlines() == ["explain=red", "triage=red"]
+    assert output.read_text(encoding="utf-8").splitlines() == ["explain=red"]
     assert json.loads(out.read_text(encoding="utf-8"))["explain"] == "red"
 
 
-def test_a_run_file_an_older_runner_wrote_is_still_read():
-    """The out file's case was ``triage`` before R45's PR 2."""
-    assert explain.case_of({"triage": "park"}, None) == "park"
-    assert explain.case_of({"triage": "red"}, {"ok": True}) == "red"
+def test_a_run_file_s_older_triage_case_is_not_read_since_1_0_48():
+    """The out file's case was ``triage`` before R45's PR 2; since 1.0.48 (R45's sixth PR)
+    only ``explain`` is read."""
+    assert explain.case_of({"triage": "park"}, None) is None
+    assert explain.case_of({"triage": "red"}, {"ok": True}) is None
     assert explain.case_of({"explain": None, "triage": "park"}, None) is None
+    assert explain.case_of({"explain": "park"}, None) == "park"
 
 
-def test_a_gate_record_with_the_older_key_is_still_read():
-    """A park written before R45's PR 2 keeps the lines under ``triage``; read back, they
-    print under the new heading and are written under ``explanation``."""
+def test_a_gate_record_s_older_triage_key_is_not_read_since_1_0_48():
+    """A park written before R45's PR 2 kept the lines under ``triage``; since 1.0.48 (R45's
+    sixth PR) that key is not read, and ``explanation`` is."""
     result = gate_mod.GateResult.from_dict({**PARK, "change_id": "0001", "triage": ["a", "b"]})
+    assert result.explanation == []
+    assert "Explanation (model-written)" not in result.what_i_need()
+    assert "triage" not in result.as_dict()
+    result = gate_mod.GateResult.from_dict({**PARK, "change_id": "0001", "explanation": ["a", "b"]})
     assert result.explanation == ["a", "b"]
     assert "Explanation (model-written)" in result.what_i_need()
     data = result.as_dict()
     assert data["explanation"] == ["a", "b"] and "triage" not in data
 
 
-def test_a_failed_run_record_with_the_older_key_is_still_read():
-    """A failed-run ref is never rewritten: a record written before R45's PR 2 keeps its
-    lines under ``triage``, and the digest's line still shows them."""
+def test_a_failed_run_record_s_older_triage_key_is_not_read_since_1_0_48():
+    """A record written before R45's PR 2 kept its lines under ``triage``; since 1.0.48
+    (R45's sixth PR) the digest's line shows only ``explanation``."""
     text = failed_runs.line(
         {"run": _run(8, "failure"), "record": {"reason": "claude exited 1", "triage": ["x"]}}
+    )
+    assert "claude exited 1" in text and "explanation (model-written)" not in text
+    text = failed_runs.line(
+        {"run": _run(8, "failure"), "record": {"reason": "claude exited 1", "explanation": ["x"]}}
     )
     assert "claude exited 1 — explanation (model-written): x" in text
 
 
-def test_the_older_result_file_still_counts_toward_the_budget(tmp_path):
-    """``evidence/claude-triage.json`` (before R45's PR 2) is the explain step's run in the
-    spend the budget reads, beside a ``claude-explain.json``."""
+def test_the_older_result_file_keeps_its_own_run_name_since_1_0_48(tmp_path):
+    """``evidence/claude-triage.json`` (before R45's PR 2) was read as the explain step's
+    run for one release; since 1.0.48 (R45's sixth PR) its run is not mapped: it still counts
+    toward the spend the budget reads, under its own name ``triage``."""
     from gate import limits
 
     for name, usd in (("claude-triage.json", 0.1), ("claude-explain.json", 0.2)):
@@ -688,5 +707,5 @@ def test_the_older_result_file_still_counts_toward_the_budget(tmp_path):
     assert spend["total_usd"] == pytest.approx(0.3)
     assert sorted((e["source"], e["run"]) for e in spend["entries"]) == [
         ("claude-explain.json", "explain"),
-        ("claude-triage.json", "explain"),
+        ("claude-triage.json", "triage"),
     ]

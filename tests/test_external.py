@@ -18,8 +18,8 @@ from external import review as review_mod  # noqa: E402
 CHANGE = "changes/0001-add-thing"
 FAKE = "placeholder-gemini-key"  # sdlc: allow-secret
 GOOGLE_SHAPED = "AIza" + "B" * 35
-ON = "second_opinion:\n  model: gemini-4-argon\n  phases: [b, e]\n"
-# R45 (decision 39, row N11): the key until plugin 1.0.44, read for one release
+ON = "second_opinion:\n  model: gemini-4-argon\n  phases: [design, deploy]\n"
+# R45 (decision 39, row N11): the key until plugin 1.0.44, not read since 1.0.48
 LEGACY_ON = ON.replace("second_opinion:", "external_review:")
 
 
@@ -161,7 +161,7 @@ def test_every_failure_is_a_reason_never_an_exception(monkeypatch, result, reaso
 
 def test_the_bundle_leaves_out_env_secrets_and_claude_s_verdicts(project):
     head = git(project, "rev-parse", "HEAD")
-    out = bundle.build(project, "0001", "b", head, None)
+    out = bundle.build(project, "0001", "design", head, None)
     assert out["ok"] and out["change_dir"] == CHANGE
     assert out["sent"] == [f"{CHANGE}/intent.md", f"{CHANGE}/spec.md", f"{CHANGE}/plan.md",
                            "CLAUDE.md", "src/app.py"]  # fmt: skip
@@ -184,7 +184,7 @@ def test_the_diff_at_e_leaves_out_excluded_files_and_withholds_secret_lines(proj
     git(project, "commit", "-q", "-m", "build")
     head = git(project, "rev-parse", "HEAD")
     base = git(project, "merge-base", "main", head)
-    out = bundle.build(project, "0001", "e", head, base)
+    out = bundle.build(project, "0001", "deploy", head, base)
     diff = out["pieces"][-1]["text"]
     assert "return 2" in diff and GOOGLE_SHAPED not in diff and "line withheld" in diff
     assert out["withheld_lines"] == 1 and ".env.prod" not in diff and "gate-e" not in diff
@@ -196,10 +196,10 @@ def test_the_diff_at_e_leaves_out_excluded_files_and_withholds_secret_lines(proj
 
 def test_the_size_cap_leaves_pieces_out_and_never_cuts_the_change_s_own_files(project):
     head = git(project, "rev-parse", "HEAD")
-    small = bundle.build(project, "0001", "b", head, None, max_chars=60)
+    small = bundle.build(project, "0001", "design", head, None, max_chars=60)
     assert not small["ok"] and "size cap" in small["reason"]
     sized = sum(len(bundle.read_at(project, head, f"{CHANGE}/{n}")) for n in bundle.CHANGE_FILES)
-    fits = bundle.build(project, "0001", "b", head, None, max_chars=sized + 5)
+    fits = bundle.build(project, "0001", "design", head, None, max_chars=sized + 5)
     assert fits["ok"] and "src/app.py" not in fits["sent"]
     assert any(x["why"].startswith("size cap") for x in fits["left_out"])
 
@@ -351,7 +351,7 @@ def test_a_pin_without_plugin_external_skips_the_step_green(path):
 
 
 def test_off_writes_and_posts_nothing(project, monkeypatch, tmp_path):
-    """With external_review off on the default branch the job leaves no record, no summary
+    """With second_opinion off on the default branch the job leaves no record, no summary
     and no comment: the printed record is the only trace."""
     monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
     monkeypatch.setattr(cli, "_github", lambda: pytest.fail("GitHub read"))
@@ -391,12 +391,13 @@ ANSWER = {"verdict": "concerns", "summary": "s",
 
 
 def _fast_lane_build(project: Path, design_pr: int | None) -> str:
-    """``sdlc/0001/build`` cut from the design branch, its status.yaml recording ``fast_lane.b``
-    (``design_pr`` None: no fast lane; 0: the entry without its optional ``pr``)."""
+    """``sdlc/0001/build`` cut from the design branch, its status.yaml recording
+    ``fast_lane.design`` (``design_pr`` None: no fast lane; 0: the entry without its optional
+    ``pr``)."""
     git(project, "checkout", "-q", "-b", "sdlc/0001/build")
-    entry = f"fast_lane:\n  b:\n    sha: {'a' * 40}\n    classification: routine\n"
+    entry = f"fast_lane:\n  design:\n    sha: {'a' * 40}\n    classification: routine\n"
     fast = "" if design_pr is None else entry + (f"    pr: {design_pr}\n" if design_pr else "")
-    (project / CHANGE / "status.yaml").write_text(f"id: '0001'\nphase: d\n{fast}", "utf-8")
+    (project / CHANGE / "status.yaml").write_text(f"id: '0001'\nphase: test\n{fast}", "utf-8")
     (project / "src" / "app.py").write_text("def thing():\n    return 2\n", encoding="utf-8")
     git(project, "add", "-A")
     git(project, "commit", "-q", "-m", "build")
@@ -461,7 +462,7 @@ E_ARGV = ["review", "--id", "0001", "--phase", "deploy", "--repo", "o/p", "--ref
 
 def _b_only(project: Path) -> None:
     git(project, "checkout", "-q", "main")
-    (project / "sdlc.yaml").write_text(ON.replace("[b, e]", "[b]"), encoding="utf-8")
+    (project / "sdlc.yaml").write_text(ON.replace("[design, deploy]", "[design]"), encoding="utf-8")
     git(project, "commit", "-q", "-am", "(b) only")
     git(project, "checkout", "-q", "sdlc/0001/design")
 
@@ -574,7 +575,7 @@ def test_the_carried_quote_is_inert_and_only_the_workflow_bot_s_counts(project, 
 def test_the_carry_only_for_a_superseded_design_and_never_silent(
     project, monkeypatch, design_pr, labels, state, opinions, unread, expected
 ):
-    """``design_pr`` 0: ``fast_lane.b`` without its optional ``pr``; the design PR is found
+    """``design_pr`` 0: ``fast_lane.design`` without its optional ``pr``; the design PR is found
     by its branch, as ``run_phase.supersede_earlier_pr`` found it to close it."""
     monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
     head = _fast_lane_build(project, design_pr=design_pr)
@@ -590,11 +591,11 @@ def test_the_carry_only_for_a_superseded_design_and_never_silent(
 
 
 def test_a_phases_value_that_is_not_a_list_is_said_never_silent(project, monkeypatch):
-    """``phases: b`` turns nothing on: the record says so instead of "off" (the summary and
+    """``phases: design`` turns nothing on: the record says so instead of "off" (the summary and
     the JSON; with no PR looked up it is not posted). ``--model`` by hand still runs."""
     monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
     git(project, "checkout", "-q", "main")
-    (project / "sdlc.yaml").write_text(ON.replace("[b, e]", "b"), encoding="utf-8")
+    (project / "sdlc.yaml").write_text(ON.replace("[design, deploy]", "design"), encoding="utf-8")
     git(project, "commit", "-q", "-am", "a string")
     record = cli.run_review(args(root=str(project), ref="main"), {"GEMINI_API_KEY": FAKE})
     assert not record.get("off") and not record["ran"]
@@ -606,64 +607,68 @@ def test_a_phases_value_that_is_not_a_list_is_said_never_silent(project, monkeyp
     assert by_hand["reason"] == "dry run: nothing sent"
 
 
-def test_second_opinion_phases_read_the_names_and_the_letters_of_an_older_file():
+def test_second_opinion_phases_letters_are_refused_since_1_0_48():
     """R45: ``second_opinion.phases: [design, deploy]`` is the written form; the letters
-    ``[b, e]`` an older sdlc.yaml holds turn the same gates on, for one release."""
-    for listed in (["design", "deploy"], ["b", "e"], ["design", "e"]):
+    ``[b, e]`` an older sdlc.yaml held turn nothing on since 1.0.48 (R45's sixth PR)."""
+    for listed in (["design", "deploy"], [" design", "deploy "]):
         config = {"second_opinion": {"model": "m", "phases": listed}}
         assert cli.turned_on(config, "design") and cli.turned_on(config, "deploy")
-        assert cli.turned_on(config, "b") and not cli.turned_on(config, "build")
+        assert not cli.turned_on(config, "build")
+    letters = {"second_opinion": {"model": "m", "phases": ["b", "e"]}}
+    assert not cli.turned_on(letters, "design") and not cli.turned_on(letters, "deploy")
+    mixed = {"second_opinion": {"model": "m", "phases": ["design", "e"]}}
+    assert cli.turned_on(mixed, "design") and not cli.turned_on(mixed, "deploy")
     assert not cli.turned_on({"second_opinion": {"phases": ["deploy"]}}, "design")
     assert cli.PHASES == ("design", "deploy")
-    assert cli.branches("deploy", "0001") == ("sdlc/0001/build", "sdlc/0001/c")
+    assert not hasattr(cli, "branches")
 
 
-def test_the_design_opinion_is_found_under_the_name_or_the_letter():
+def test_the_design_opinion_is_found_under_the_name_only_since_1_0_48(capsys):
     """N12: the comment names the phase (``phase (design)``); a record an older plugin
-    posted (``phase (b)``) is still the opinion the fast lane carries."""
-    for body in ("phase (design), commit", "phase (b), commit"):
+    posted (``phase (b)``) is no longer the opinion the fast lane carries, and a letter
+    ``--phase`` is refused since 1.0.48 (R45's sixth PR)."""
+    for body, found in (("phase (design), commit", True), ("phase (b), commit", False)):
         comment = {
             "type": "Bot",
             "author": cli.WORKFLOW_BOT,
             "body": f"{review_mod.MARKER}\n**Second opinion ... {body}**",
         }
-        assert cli._the_opinion(comment)
+        assert cli._the_opinion(comment) is found
     record = {"phase": "design", "head": "a" * 40, "ran": False, "reason": "x"}
     assert "phase (design)" in review_mod.comment(record)
-    assert review_mod.prompt("b", "0001", [], []) == review_mod.prompt("design", "0001", [], [])
     assert "phase (deploy)" in review_mod.prompt("deploy", "0001", [], []).splitlines()[0]
+    for letter in ("b", "e"):
+        with pytest.raises(SystemExit) as exited:
+            cli.main(["review", "--id", "0001", "--phase", letter, "--dry-run"])
+        assert exited.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
 
 
-def test_the_old_external_review_key_still_turns_the_second_opinion_on(project, monkeypatch):
-    """R45 (decision 39, row N11): an ``external_review:`` block is read as ``second_opinion``
-    for one release, and the record says so once (``config_note``), never a refusal."""
+def test_the_old_external_review_key_is_not_read_since_1_0_48(project, monkeypatch):
+    """R45 (decision 39, row N11): an ``external_review:`` block was read as
+    ``second_opinion`` for one release; since 1.0.48 (R45's sixth PR) it is not read, so it
+    alone leaves the second opinion off and the record names no old key."""
     monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
+    monkeypatch.setattr(cli, "_github", lambda: pytest.fail("GitHub read"))
     git(project, "checkout", "-q", "main")
     (project / "sdlc.yaml").write_text(LEGACY_ON, encoding="utf-8")
     git(project, "commit", "-q", "-am", "the old key")
     git(project, "checkout", "-q", "sdlc/0001/design")
     record = cli.run_review(args(root=str(project), ref="main", dry_run=True), {})
-    assert not record.get("off") and record["reason"] == "dry run: nothing sent"
-    assert record["model"] == "gemini-4-argon"
-    assert record["config_note"] == (
-        "sdlc.yaml: external_review is read as second_opinion for one release (R45); "
-        "rename the key to second_opinion"
-    )
+    assert record.get("off") and not record["ran"]
+    assert "config_note" not in record
     config = {"external_review": {"model": "m", "phases": ["design"], "max_chars": 7}}
-    assert cli.turned_on(config, "design") and not cli.turned_on(config, "deploy")
-    assert cli.max_chars(config) == 7
-    assert "external_review is read as second_opinion" in review_mod.comment(record)
+    assert cli.settings(config) == {}
+    assert not cli.turned_on(config, "design") and not cli.turned_on(config, "deploy")
+    assert not hasattr(cli, "LEGACY_CONFIG_KEY") and not hasattr(cli, "config_note")
 
 
-def test_with_both_keys_the_second_opinion_block_wins_and_the_old_one_is_named():
+def test_with_both_keys_only_the_second_opinion_block_is_read():
+    """Since 1.0.48 (R45's sixth PR) ``external_review`` beside ``second_opinion`` is simply
+    not read: no note, no refusal."""
     config = {
         "second_opinion": {"model": "new", "phases": ["deploy"]},
         "external_review": {"model": "old", "phases": ["design"]},
     }
     assert cli.settings(config)["model"] == "new"
     assert cli.turned_on(config, "deploy") and not cli.turned_on(config, "design")
-    assert cli.config_note(config) == (
-        "sdlc.yaml: external_review is not read beside second_opinion; remove it"
-    )
-    assert cli.config_note({"second_opinion": {"model": "m"}}) == ""
-    assert cli.config_note({}) == ""
