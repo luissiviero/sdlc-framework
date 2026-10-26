@@ -187,7 +187,7 @@ ledger line —
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" overturn --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --item <n> --comment "<the owner's words>"`
 — so the PR summary counts it as overturned. The owner's word replaces the panel's.
 A fix-type change never edits the locked tests (the hook denies it); if the comment asks
-for exactly that, write in `evidence/fix-response.md` that the code owner unlocks with `state/cli.py unlock-tests`, and park.
+for exactly that, write in `evidence/fix-response.md` that the owner unlocks with `state/cli.py unlock-tests`, and park.
 A comment asking for a guardrail-file edit (`.claude/**`, `CLAUDE.md`, `REVIEW.md`,
 `sdlc.yaml`) is answered with the proposed content in `evidence/fix-response.md`; the owner applies it.
 

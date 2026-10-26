@@ -1024,7 +1024,7 @@ def test_dismiss_with_a_reason_opens_the_dismissal_pr(incident, gh, capsys):
 def test_a_second_close_posts_the_check_on_its_new_commit(incident, gh, capsys, monkeypatch):
     """The R22 double check, finding F1: on a second close the dismissal PR is already open,
     so create_pr refuses and names no number; the new head still needs its "not a build PR"
-    check, or ruleset 2 holds the pull request."""
+    check, or the review ruleset holds the pull request."""
     root, _change = incident
     args = ("--root", str(root), "--id", "0001", "--repo", REPO, "--open-pr", "--by", "o")
     code, out = cli(capsys, "dismiss", *args, "--pr-number", "12", "--reason", "first")

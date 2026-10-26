@@ -839,10 +839,10 @@ def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
     assert "Never add this App to a ruleset's bypass list" in text
     assert "still lets `gh pr merge` through" in text
     assert "The daily digest says so" in text
-    # 0.2.26: the owner is Exempt in ruleset 1 (NOTES section 17); 1.0.23 (choice 251, NOTES
-    # section 57): Exempt alone let anything acting as the owner's login write to the default
-    # branch, so ruleset 2 also holds the no-direct-writes rules, with the owner's bypass for
-    # pull requests only
+    # 0.2.26: the owner is Exempt in the merge ruleset (NOTES section 17); 1.0.23 (choice 251,
+    # NOTES section 57): Exempt alone let anything acting as the owner's login write to the
+    # default branch, so the review ruleset also holds the no-direct-writes rules, with the
+    # owner's bypass for pull requests only
     assert "The owner's bypass actor's mode is **Exempt**" in text
     assert "No setting stops a session acting as your login from merging" in text
     assert "the workflow token included" in text

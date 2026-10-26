@@ -987,9 +987,9 @@ def test_upsert_records_the_build_pr_in_status_yaml(project, capsys, recorder):
 
 
 def test_upsert_posts_not_a_build_pr_on_every_other_pull_request(project, capsys, recorder):
-    """R22 (decision 36, point 5): ruleset 2 requires sdlc/review; the workflow token's pull
-    requests start no run of sdlc-merge.yml, so the upsert posts the passing "not a build
-    PR" on the head of every pull request that is not the build PR."""
+    """R22 (decision 36, point 5): the review ruleset requires sdlc/review; the workflow
+    token's pull requests start no run of sdlc-merge.yml, so the upsert posts the passing
+    "not a build PR" on the head of every pull request that is not the build PR."""
     root, change = project
     calls, answers = recorder
     gate_json(change, "design", "wait", c.ready_label("design"))
