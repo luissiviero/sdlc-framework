@@ -1,13 +1,11 @@
 id: "0002"
 slug: security-authz-the-guardrail-self-protec
 title: "security: authz: The guardrail self-protection (protected_paths.py) only"
-phase: e
+phase: deploy
 entry_route: incident
 change_type: feature
-profile_override: null
-review_override: null
 gate:
-  phase: e
+  phase: deploy
   result: passed
   reason: waiting for the owner at gate (e)
   at: "2026-10-12T11:42:36Z"

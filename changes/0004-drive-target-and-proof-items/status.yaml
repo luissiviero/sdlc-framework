@@ -1,11 +1,11 @@
 id: "0004"
 slug: drive-target-and-proof-items
 title: Drive target and proof items
-phase: e
+phase: deploy
 entry_route: idea
 change_type: feature
 gate:
-  phase: e
+  phase: deploy
   result: passed
   reason: waiting for the owner at gate (e)
   at: "2026-10-24T16:38:55Z"
