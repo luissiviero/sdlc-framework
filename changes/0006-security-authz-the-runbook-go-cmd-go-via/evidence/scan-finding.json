@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-26T13:13:55Z",
+  "bounded": true,
+  "class": "authz",
+  "file": "plugin/detect/cli.py",
+  "head": "80d7de5cebd482d8e1f4885b85dafb2b8dc3bf25",
+  "kind": "scan",
+  "line": 1183,
+  "schema_version": 1,
+  "severity": "important",
+  "signature": "a9b4ac78d2494f59",
+  "summary": "The runbook Go (cmd_go via _human_label_actor) accepts the sdlc:go label from any account that is not a bot or the automation identity, so a collaborator with only triage/label rights can make the runbook workflow run a running-system action (rollback, config change) with the runbook secrets on an incident PR the owner never approved, although decision 14 makes Go the owner's per-incident act and the comment trigger, merge step and review request all require is_owner_actor."
+}
