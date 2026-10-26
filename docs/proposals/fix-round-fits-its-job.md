@@ -32,7 +32,7 @@ sources:
 ---
 
 # A fix round at gate (deploy) that fits its job, and a park when GitHub cancels the job
-**Names since R45** (decision 39; only the renames built after this file was written on `main` 0ce7f6b, in plugin 1.0.44 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `triage` -> `explain` (R18's step and its explanation); `plugin/ci/triage.py` -> `plugin/ci/explain.py`; `steps.phase.outputs.triage` -> `steps.phase.outputs.explain`. \
+**Names since R45** (decision 39; only the renames built after this file was written on `main` 0ce7f6b, in plugin 1.0.44 to 1.0.47; added on 2026-10-26, the text below keeps the old names, choice 126): `triage` -> `explain` (R18's step and its explanation); `plugin/ci/triage.py` -> `plugin/ci/explain.py`; `steps.phase.outputs.triage` -> `steps.phase.outputs.explain`; `triage_checkout` -> `explain_checkout`. \
 Phase names follow R45 as built in plugin 1.0.43 (decision 39): "gate (deploy)" is the gate the row calls (e). Every file and line below was read on `main` at `0ce7f6b` (#389).
 
 ## The problem

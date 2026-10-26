@@ -48,8 +48,8 @@ Read from decision 39, the name table (`docs/reviews/2026-10-20-names-against-th
 
 **Not mapped, by rule:**
 - **Row 87, "the owner" at four decision points** (PR 5): the product owner, the code owner, the release manager, the service owner. PR 5 kept "the owner" everywhere else, as the one person who owns the repository, and changed only the sentence at each decision point; a proposal's "the owner" is that person, or a decision point the build of that proposal will name. It is not a name with one replacement, so no block lists it.
-- **Words that are not the renamed name where they stand:** a list marker or an option's letter ("option (a)", "T4's item (d)", "HANDOFF 4(a)"); the article's own words ("continues or is escalated to a human", p.42; "a pre-approved runbook", p.43, which the plugin still writes); the owner's triage at the maintain gate (row 21 keeps "triage" for it); the entry route `incident` (`status.yaml: entry_route`, not the label); GitHub's `schedule` trigger.
-- **Records already written keep their names** (choice 273): change 0002's `evidence/gate-e.json`, change 0001's `claude-b.json`, change 0005's branch `sdlc/0005/a`.
+- **Words that are not the renamed name where they stand:** a list marker or an option's letter ("option (a)", "T4's item (d)", "HANDOFF 4(a)"); the article's own words ("continues or is escalated to a human", p.42; "a pre-approved runbook", p.43, which the plugin still writes); the owner's triage at the maintain gate (row 21 keeps "triage" for it); the entry route `incident` (`status.yaml: entry_route`, not the label); GitHub's `schedule` trigger. The framework's own prose is not the article's: `changes-in-flight-coordinator.md` cites step 33's "escalate on any merge conflict" (`docs/BUILD_GUIDE.md:784`: "on any merge conflict, escalate through the gate (16)"), where "escalate" is the gate's act the framework now calls `park` (decision 31: "Escalation means park"), so its block maps it.
+- **Records already written keep their names** (choice 273): change 0002's `evidence/gate-e.json`, change 0001's `claude-b.json`, change 0005's branch `sdlc/0005/a` and the label `sdlc:a-ready` its PR #180 carried. A status value a live reader takes is mapped: change 0000's "phase a" in `eval-suite-grows.md` is the value the plugin reads, now `intent` (#395 migrated this repository's).
 - **R67's proposal and decision 41:** the PR 1 names, renamed before they were written.
 
 ## Which proposals, and why
@@ -172,6 +172,7 @@ PATTERNS = [
     (r"`schedule`", "schedule"),
     (r"\b[Ee]scalat\w*", "escalate"),
     (r"\b[Tt]riage\b", "triage"),
+    (r"\btriage_checkout\b", "triage_checkout"),
     # PR 3 (1.0.45)
     (r"deploy\.production\b(?!_gate)", "deploy.production"),
     (r"(?<![.\w])production: (?:true|false)\b", "production: true"),
@@ -233,6 +234,7 @@ exclude("eval-suite-grows.md", [60], "gate-e.json", HISTORY + "; change 0002's g
 exclude("learning-from-incidents.md", [34, 60], "gate-e.json", HISTORY + "; change 0002's gate record")
 exclude("weekly-window-guarded.md", [49], "claude-b.json", HISTORY + "; change 0001's session result")
 exclude("ratchets.md", [37], "sdlc/<id>/a", HISTORY + "; change 0005's intent branch `sdlc/0005/a`")
+exclude("ratchets.md", [37], "sdlc:a-ready", HISTORY + "; the label PR #180 carried")
 exclude("learning-from-incidents.md", [57], "incident", ROUTE)
 exclude("tickets-become-intents.md", [65], "incident", ROUTE)
 exclude("tickets-become-intents.md", [62], "schedule", "GitHub's `schedule` trigger, not the label")
@@ -434,6 +436,7 @@ if __name__ == "__main__":
    covered: `phase b` lines [75]
 ## docs/proposals/fix-round-fits-its-job.md
    covered: `triage` lines [28, 31, 59, 63, 81, 83, 92, 141]
+   covered: `triage_checkout` lines [83]
    also listed, written in the file: `plugin/ci/triage.py`
    also listed, written in the file: `steps.phase.outputs.triage`
    not an old name: `(e)` lines [36, 123]: built in PR 1 (1.0.43) before this file was written on 0ce7f6b
@@ -491,8 +494,8 @@ if __name__ == "__main__":
    covered: `(e)` lines [4, 69, 72, 82]
    covered: `(f)` lines [69, 107]
    covered: `incident` lines [60]
-   covered: `sdlc:a-ready` lines [37]
    not an old name: `sdlc/<id>/a` lines [37]: a record already written keeps its name (choice 273: history is never renamed); change 0005's intent branch `sdlc/0005/a`
+   not an old name: `sdlc:a-ready` lines [37]: a record already written keeps its name (choice 273: history is never renamed); the label PR #180 carried
 ## docs/proposals/rejection-keeps-reason.md
    covered: `(a)` lines [22, 37, 41, 54, 65, 91, 102]
    covered: `(b)` lines [75]
@@ -624,7 +627,12 @@ if __name__ == "__main__":
 Every citation this PR adds was opened and compared with the sentence (choice 241): decision 39 (point 1's "Rows 1 to 88 and section 11 are decided as their Verdict column says", point 2's rows 28 and 29 "moot"), decision 37 (the Full profile and its labels removed), choice 126 ("A kept record is annotated, never rewritten", `docs/progress/choices.md`), choice 273 (the readers of history), the versions and PRs (`git rev-list -n1 v1.0.43` to `v1.0.47`: `0ce7f6b` #389, `dc9692b` #390, `54d498e` #393, `05d9412` #394, `80d7de5` #396), and `0ce7f6b` as the parent of R67's commit `1cdca24` (`git log`).
 
 ## The fresh-context review
-Pending: a fresh-context sub-agent reviews a sample of the blocks against their files (report only); its findings and what was done are added here before the merge is asked for.
+A fresh-context sub-agent reviewed the change (report only), given the owner's ask and the R45 records, not this record. It read in full ten proposals, decision 41 and the five "none" files, scanned all 42 files with its own patterns, and checked the ROADMAP rows by script. It found nothing blocking: every file changes one empty line, every listed name occurs in its file with the new name the R45 records give, the 42 annotations sit at the end of their rows' Status cells, every candidate not built and not closed has its block, and it agreed with each exclusion it met. Its findings and what was done:
+1. **Fixed:** `fix-round-fits-its-job.md:83` writes the step id `triage_checkout`, now `explain_checkout` (#390's record, item 3); the block lists it, and the check finds it.
+2. **Fixed:** `ratchets.md` mapped `sdlc:a-ready`, which there names the label PR #180 carried, a record, beside the branch `sdlc/0005/a` the block already left; the pair is dropped and the check names the exclusion.
+3. **Kept, with the reason now above:** `changes-in-flight-coordinator.md` maps `escalate`, though it stands in a citation of `docs/BUILD_GUIDE.md`; the cited word is the framework's own for the act now called `park`, not the article's.
+4. **Kept, with the reason in the table:** R33 is in while R61, built in the same PR, is out: R33's row says "Full Rust support and the quarantine runbook stay open", R61's that all five parts are built.
+5. **Kept:** change 0000's "phase a" in `eval-suite-grows.md` is mapped, since it is the value the plugin reads, not a record (above).
 
 ## Port list
 Nothing under `plugin/` or `template/` changes: not on the port list.
