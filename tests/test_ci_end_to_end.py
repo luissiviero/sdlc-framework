@@ -379,8 +379,15 @@ def workflow_run_line(phase: str = "design", find: bool = False) -> list[str]:
     or with ``find`` the step before it that finds the change (``--find-change``)."""
     text = (WORKFLOW_DIR / WORKFLOW_FILE[phase]).read_text(encoding="utf-8")
     lines = re.findall(r"(?m)^\s+run: (python framework/plugin/ci/run_phase\.py .*)$", text)
-    # R18: the explain step after the phase run is a run_phase.py line of its own
-    lines = [ln for ln in lines if ("--find-change" in ln) == find and "--phase explain" not in ln]
+    # R18: the explain step after the phase run is a run_phase.py line of its own, and so is
+    # decision 41's park after a cancelled run (``--cancelled``)
+    lines = [
+        ln
+        for ln in lines
+        if ("--find-change" in ln) == find
+        and "--phase explain" not in ln
+        and "--cancelled" not in ln
+    ]
     assert len(lines) == 1, f"the run line of {WORKFLOW_FILE[phase]} moved"
     return shlex.split(lines[0])
 
