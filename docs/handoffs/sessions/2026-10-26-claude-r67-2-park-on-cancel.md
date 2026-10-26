@@ -9,18 +9,18 @@
 
 ## Preconditions of the moment
 - The standing ones (`HANDOFF.md`); the central session's in `docs/handoffs/central-session.md`.
-- **Until the owner commits this PR's five workflow copies** on its branch, `Framework checks` is red on two tests of `tests/test_templates.py` that compare the copies with the templates.
+- The owner committed this PR's five workflow copies on its branch (`3942917`); the owner's choice 275 keeps the digest's mark (decision 41 annotated).
 
 ## Next steps, in order
-1. **This PR:** the owner commits the workflow copies and merges when `Framework checks` is green.
-2. **The owner's two answers** in the record's "What I need from you" (a second throwaway check of a cancelled step's child processes; the digest's mark), each with a recommendation.
+1. **This PR:** the owner merges when `Framework checks` is green.
+2. **The second throwaway check** of a cancelled step's child processes (the owner's "1 merge, check later", the record), then a follow-up if they outlive the step.
 3. The other next steps of the files this one builds on, carried, not re-verified; R67's points are done here.
 
 ## Every open item
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
-| This PR | framework, branch `claude/r67-2-park-on-cancel` | The five workflow copies, green checks, the merge | owner | no |
-| A cancelled step's child processes | this PR's record, "What I need from you" 1 | Whether they outlive the step: a second throwaway check, then a follow-up if they do | owner, then a lane | no |
+| This PR | framework, branch `claude/r67-2-park-on-cancel` | Green checks, the merge | owner | no |
+| A cancelled step's child processes | this PR's record, "The owner's choices" | Whether they outlive the step: a second throwaway check (the owner runs it, a lane reads it), then a follow-up if they do | owner, then a lane | no |
 | The port list | this PR's record | This PR touches `plugin/ci/run_phase.py` and the fix workflow template | the 1.0.0 read | no |
 | Everything the files above list open | their "Every open item" | Carried, not re-verified | as there | no |
 
@@ -29,5 +29,5 @@ Done, dropped: lane H's "R67's second PR" and "point 3's live check" rows (this 
 ## What the owner does
 | When | Act |
 |---|---|
-| Now | Commit the five workflow copies on this PR's branch (`python tasks.py workflow-copies`); merge when green. |
-| When convenient | Answer the record's "What I need from you". |
+| Now | Merge when `Framework checks` is green. |
+| Later | Run the second throwaway check a lane designs (a cancelled step's child processes). |

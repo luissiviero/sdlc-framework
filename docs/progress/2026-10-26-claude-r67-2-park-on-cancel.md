@@ -1,6 +1,6 @@
 # Progress — R67's second PR: a job GitHub cancels parks the change (2026-10-26, plugin 1.0.50)
 
-This session ran on branch `claude/r67-2-park-on-cancel`, from `main` at `ae604a6` with R67's first PR (`claude/r67-1-recheck-minutes`, #400, plugin 1.0.49) merged in before its own merge, as lane H of wave 5. It builds decision 41's point 2 (the proposal's B1, `docs/proposals/fix-round-fits-its-job.md`) after point 3's live check, plugin **1.0.50**, and takes **note 62** (`python tasks.py next-free` after `git fetch origin`: note 62, patch 1.0.50, with 1.0.49 taken by #400). No numbered choice or decision is taken.
+This session ran on branch `claude/r67-2-park-on-cancel`, from `main` at `ae604a6` with R67's first PR (`claude/r67-1-recheck-minutes`, #400, plugin 1.0.49) merged in before its own merge, as lane H of wave 5. It builds decision 41's point 2 (the proposal's B1, `docs/proposals/fix-round-fits-its-job.md`) after point 3's live check, plugin **1.0.50**, and takes **note 62** (`python tasks.py next-free` after `git fetch origin`: note 62, patch 1.0.50, with 1.0.49 taken by #400). It records the owner's choice 275 (below); no decision is taken.
 
 ## Point 3: the live check
 The owner ran the throwaway workflow this session designed (branch `r67-timeout-check`, head `e72a11d`, run 40414066074), and this session read its jobs and logs through the GitHub tools; the facts are `docs/notes/62.md`. A job cancelled at its `timeout-minutes` runs its later `always()`, `cancelled()` and `always() && steps.<id>.outcome == 'cancelled'` steps at once; GitHub stops the job about five minutes past the timeout (here 4 min 19 s after the step's cancel, which came 43 s late), killing a step still running; a job of its own on the cancelled result runs after it. B1 works, so decision 41 is not annotated (its point 3 asks for an annotation only if it did not).
@@ -39,9 +39,10 @@ A fresh-context sub-agent reviewed the diff (report only). It found the workflow
 ## Port list
 This PR touches `plugin/ci/run_phase.py` and the fix workflow template (with the design, build, test and deploy templates): it goes on the port list until the 1.0.0 read.
 
-## What I need from you
-1. **Whether a cancelled step's child processes outlive it.** Recommendation: accept this PR as it is, and run a second throwaway check later (a step that starts a background `sleep` child and a Python child that ignores SIGINT, `timeout-minutes: 2`, an `always()` step that lists the processes): if they outlive the step, the park step should wait for them or kill them first, a small follow-up.
-2. **The digest marks, rather than drops, a cancelled run its step parked** (decision 41 says the line no longer lists such a run). Recommendation: keep the mark: a session can push a forged record, and dropping on it would hide a run.
+## The owner's choices
+275. **The digest's "Failed runs" line keeps a cancelled run its park step parked, marked as parked, instead of dropping it** (the owner, 2026-10-26, on #401's question 2, relayed by the central session: "2 keep the mark"). A session can push a forged failed-run record, and dropping a run on it would hide the run; decision 41's sentence on R18's line is annotated beside it in this PR.
+
+The owner's answer to #401's question 1 ("1 merge, check later"): this PR merges as it is, and whether a cancelled step's child processes outlive it is checked later by a second throwaway run (a step that starts a background `sleep` child and a Python child that ignores SIGINT, `timeout-minutes: 2`, an `always()` step that lists the processes); if they do, the park step waits for them or stops them first, a small follow-up. It is an open item of this session's file.
 
 ## Proposed edits for the owner
 None to a guardrail file. The workflow copies:
@@ -53,5 +54,5 @@ None to a guardrail file. The workflow copies:
 ## What the owner does
 | When | Act |
 |---|---|
-| Before merging | Run `python tasks.py workflow-copies` on this PR's branch, commit and push (#400 is merged, as `0fb7b99`; the live check's two throwaway branches are deleted, as the central session reported). |
+| Before merging | Done: the owner committed the five workflow copies on this PR's branch (`3942917`; #400 is merged, as `0fb7b99`; the live check's two throwaway branches are deleted, as the central session reported). |
 | Then | Merge when `Framework checks` is green on the final head. |
