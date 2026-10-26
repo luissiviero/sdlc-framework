@@ -4,9 +4,9 @@
 # - on-approval, on the owner's approving review of a build PR: it dispatches this workflow
 #   on the default branch with the pull request's number. It holds no key: a review-triggered
 #   run may use the pull request's copy of this file, so it only dispatches.
-# - not-a-build-pr, on every pull request whose head is not sdlc/<id>/build (or /c): it
-#   posts a passing sdlc/review check ("not a build PR") on the head, so ruleset 2, which requires that
-#   check, holds only build PRs (decision 36, point 5). pr/cli.py upsert posts the same check
+# - not-a-build-pr, on every pull request whose head is not sdlc/<id>/build: it posts a
+#   passing sdlc/review check ("not a build PR") on the head, so the review ruleset, which
+#   requires that check, holds only build PRs (decision 36, point 5). pr/cli.py upsert posts the same check
 #   on the pull requests the workflow token opens or updates, whose events start no run.
 # - merge, on the dispatch (on-approval's, or the deploy run's when the review turned green
 #   after an early approval): in the sdlc-merge environment, which only the default branch
@@ -19,7 +19,7 @@
 #
 # The merge App is one of its own, not the App the automation pushes as (decision 33):
 # GitHub grants a bypass to an actor, not to a job, and the phase runners hold that App's
-# token, so only the merge App is a bypass actor of ruleset 1 (choice 242, point 4). Its key
+# token, so only the merge App is a bypass actor of the merge ruleset (choice 242, point 4). Its key
 # is a secret of the sdlc-merge environment, read here only. Without vars.SDLC_MERGE_APP_ID
 # the merge job says so and stops: no merge App, so the owner merges after approving.
 #
@@ -63,8 +63,7 @@ jobs:
       github.event.review.state == 'approved' &&
       !endsWith(github.event.review.user.login, '[bot]') &&
       startsWith(github.event.pull_request.head.ref, 'sdlc/') &&
-      (endsWith(github.event.pull_request.head.ref, '/c') ||
-      endsWith(github.event.pull_request.head.ref, '/build')) }}
+      endsWith(github.event.pull_request.head.ref, '/build') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -102,8 +101,7 @@ jobs:
     if: >-
       ${{ github.event_name == 'pull_request' &&
       !(startsWith(github.event.pull_request.head.ref, 'sdlc/') &&
-      (endsWith(github.event.pull_request.head.ref, '/c') ||
-      endsWith(github.event.pull_request.head.ref, '/build'))) }}
+      endsWith(github.event.pull_request.head.ref, '/build')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
