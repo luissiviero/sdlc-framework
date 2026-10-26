@@ -18,7 +18,10 @@ Limits (sdlc.yaml ``gate:`` block, all optional; defaults here):
     180); every other run keeps ``max_turns`` (the runner's, default 200) and
     ``max_wall_clock_minutes``. An unset build key is the larger of the general setting and
     the build default, so no project's cap goes down (``run_caps``); ``start-run`` records
-    ``"run": "build"`` for such a run, and a record without it gets the general cap;
+    ``"run": "build"`` for such a run, and a record without it gets the general cap; at
+    (deploy) the drive's minutes come off the cap (change 0004), and in a fix round there the
+    minutes R51's merge and re-check took, which the record keeps as ``"recheck_minutes"``
+    (decision 41), never below ``RUN_CAP_FLOOR_MINUTES``;
   - ``max_budget_usd``: per-change spend where the substrate exposes one; the run writes the
     figure it observes with ``cli.py record-spend`` (a headless `claude -p` prints
     ``total_cost_usd`` in its JSON result); absent figure = not enforced, so the cap binds CI
@@ -64,6 +67,11 @@ DEFAULT_BUILD_MAX_WALL_CLOCK_MINUTES = 180
 BUILD_RUN = "build"  # run-<phase>.json: "run" for the build run or a fix round
 RUN_KIND_ENV = "SDLC_RUN"  # the runner sets it to FIX_RUN in a fix session's environment
 FIX_RUN = "fix"
+# Decision 41, point 1 (R67): the minutes R51's merge and re-check took before a fix round at
+# (deploy), which the runner took off the session's wall clock; it passes them in the
+# session's environment and ``start-run`` keeps them in the run record for the gate's check
+RECHECK_MINUTES_ENV = "SDLC_RECHECK_MINUTES"
+RECHECK_MINUTES_FIELD = "recheck_minutes"
 RUN_FILE = "run-{phase}.json"  # evidence/run-<phase>.json: started_at, spend_usd
 SPEND_FILE = "spend.json"  # evidence/spend.json: the change's spend ledger (issue #71)
 
@@ -90,7 +98,8 @@ def run_caps(gate_settings: Any, build: bool, less_minutes: int = 0) -> tuple[in
     each of which, when unset or invalid, is the larger of the general setting and the build
     default. The one copy of the rule: the runner's ``--max-turns`` and subprocess timeout and
     the gate's wall-clock check all read it. ``less_minutes`` comes off the wall clock (the
-    drive's minutes at (deploy), change 0004), never below ``RUN_CAP_FLOOR_MINUTES``."""
+    drive's minutes at (deploy), change 0004, and in a fix round at (deploy) the minutes R51's
+    merge and re-check took, decision 41), never below ``RUN_CAP_FLOOR_MINUTES``."""
     cfg = gate_settings if isinstance(gate_settings, dict) else {}
     turns = _int(cfg.get("max_turns"), DEFAULT_MAX_TURNS)
     minutes = _int(cfg.get("max_wall_clock_minutes"), DEFAULT_MAX_WALL_CLOCK_MINUTES)
@@ -153,22 +162,54 @@ DRIVE_FLOOR_NEED = (
     "Lower gate.drive_timeout or raise the wall-clock cap in sdlc.yaml (a reviewed PR), then "
     "re-run the phase."
 )
+RECHECK_FLOOR_NEED = (
+    "The default branch was merged into the branch and re-checked before the session; the park "
+    "pushes that merge, so a fix round started now finds nothing to merge and keeps its whole "
+    "wall clock: start one with a review or an @claude comment. If the targets are this slow, "
+    "lower gate.command_timeout or raise the wall-clock cap in sdlc.yaml (a reviewed PR)."
+)
 
 
-def drive_floor_refusal(config: Any, build: bool) -> str | None:
-    """Why the drive's minutes would take the (deploy) session's wall clock below
+def floor_need(recheck: int) -> str:
+    """The "what I need from you" of the floor park: the re-check's when its minutes counted."""
+    return RECHECK_FLOOR_NEED if recheck > 0 else DRIVE_FLOOR_NEED
+
+
+def drive_floor_refusal(config: Any, build: bool, recheck: int = 0) -> str | None:
+    """Why the drive's minutes, and in a fix round the ``recheck`` minutes R51's merge and
+    re-check took (decision 41), would take the (deploy) session's wall clock below
     ``RUN_CAP_FLOOR_MINUTES``, or None. A cap already under the floor gives up nothing
     (``run_caps``), so it is no refusal: the runner, before the session starts, and the gate's
     wall-clock check read this one rule (change 0004, R4)."""
     config = config if isinstance(config, dict) else {}
-    less = drive_minutes(config)
+    drive = drive_minutes(config)
+    recheck = max(recheck, 0)
+    less = drive + recheck
     _turns, whole = run_caps(config.get("gate"), build)
     if not less or whole < RUN_CAP_FLOOR_MINUTES or whole - less >= RUN_CAP_FLOOR_MINUTES:
         return None
+    if not recheck:
+        what = f"gate.drive_timeout takes {less} min"
+    elif not drive:
+        what = f"R51's merge and re-check took {less} min, which come"
+    else:
+        what = (
+            f"gate.drive_timeout ({drive} min) and R51's merge and re-check ({recheck} min) take "
+            f"{less} min"
+        )
     return (
-        f"gate.drive_timeout takes {less} min off the deploy session's {whole} min, below the "
-        f"floor of {RUN_CAP_FLOOR_MINUTES} min"
+        f"{what} off the deploy session's {whole} min, below the floor of "
+        f"{RUN_CAP_FLOOR_MINUTES} min"
     )
+
+
+def recorded_recheck_minutes(run: dict[str, Any]) -> int:
+    """The minutes R51's merge and re-check took, as the run record keeps them (decision 41;
+    ``start-run`` from ``RECHECK_MINUTES_ENV``); 0 when absent or not a positive whole number."""
+    value = run.get(RECHECK_MINUTES_FIELD)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return max(value, 0)
 
 
 def iteration_cap(ctx: GateContext, classification: str | None) -> int:
@@ -576,21 +617,32 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
     # has no field and gets the general cap, as before 1.0.8
     build = run.get("run") == BUILD_RUN
     # change 0004: at (deploy) the drive's minutes came off the session's cap; the runner
-    # subtracted the same figure (``run_phase.run_caps`` with the gate phase)
+    # subtracted the same figure (``run_phase.run_caps`` with the gate phase). Decision 41: in
+    # a fix round so did the minutes R51's merge and re-check took, which only the run knows,
+    # so they are read from the record ``start-run`` wrote, never recomputed
     less = drive_minutes(ctx.config) if ctx.phase == DRIVE_PHASE else 0
-    _turns, max_minutes = run_caps(ctx.config.get("gate"), build, less)
-    floor = drive_floor_refusal(ctx.config, build) if less else None
+    recheck = recorded_recheck_minutes(run) if ctx.phase == DRIVE_PHASE else 0
+    _turns, max_minutes = run_caps(ctx.config.get("gate"), build, less + recheck)
+    floor = drive_floor_refusal(ctx.config, build, recheck) if less + recheck else None
     if floor:
         _turns, whole = run_caps(ctx.config.get("gate"), build)
         return CheckResult(
             "limits",
             False,
             floor,
-            DRIVE_FLOOR_NEED,
-            {**details, "stop": False, "drive_minutes": less, "max_wall_clock_minutes": whole},
+            floor_need(recheck),
+            {
+                **details,
+                "stop": False,
+                "drive_minutes": less,
+                RECHECK_MINUTES_FIELD: recheck,
+                "max_wall_clock_minutes": whole,
+            },
         )
     if less:
         details["drive_minutes"] = less
+    if recheck:
+        details[RECHECK_MINUTES_FIELD] = recheck
     elapsed = _elapsed_minutes(run.get("started_at"), now)
     details.update({"elapsed_minutes": round(elapsed, 1) if elapsed is not None else None})
     if elapsed is not None and elapsed > max_minutes:

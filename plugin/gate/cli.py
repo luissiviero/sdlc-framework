@@ -28,7 +28,9 @@ check compares ``gate.max_budget_usd`` with the ledger's total, not with the las
 The build run (``--phase build``) and a fix round, whatever the change's phase, also record
 ``"run": "build"``, which gives them the build caps (decision 32, 1.0.8:
 ``gate.build_max_wall_clock_minutes``): the runner marks a fix session with ``SDLC_RUN=fix``
-in its environment, and ``--run fix|build`` says the same for a by-hand run.
+in its environment, and ``--run fix|build`` says the same for a by-hand run. A fix session
+at deploy whose default branch moved also carries ``SDLC_RECHECK_MINUTES``, the minutes R51's
+merge and re-check took off its wall clock, kept as ``"recheck_minutes"`` (decision 41).
 
 ``spec-header`` prints the two header lines of spec.md (step 22; article p.14: the spec, the
 prompt that produced it and the skill versions in force are logged together) as JSON, with
@@ -135,6 +137,14 @@ def _write_run(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8", newline="\n")
 
 
+def _whole_minutes(value: str | None) -> int:
+    try:
+        n = int(value or "")
+    except ValueError:
+        return 0
+    return max(n, 0)
+
+
 def cmd_start_run(args) -> int:
     change_dir, _st = _change(args)
     if change_dir is None:
@@ -148,6 +158,11 @@ def cmd_start_run(args) -> int:
         or os.environ.get(limits.RUN_KIND_ENV) == limits.FIX_RUN
     ):
         data["run"] = limits.BUILD_RUN
+    # decision 41: the minutes R51's merge and re-check took off a fix round's wall clock at
+    # deploy, which the gate's wall-clock check subtracts as the runner did
+    recheck = _whole_minutes(os.environ.get(limits.RECHECK_MINUTES_ENV))
+    if recheck and os.environ.get(limits.RUN_KIND_ENV) == limits.FIX_RUN:
+        data[limits.RECHECK_MINUTES_FIELD] = recheck
     _write_run(_run_file(change_dir, args.phase, write=True), data)
     _emit(data)
     return 0
