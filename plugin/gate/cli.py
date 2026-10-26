@@ -137,7 +137,7 @@ def _write_run(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8", newline="\n")
 
 
-def _positive_int(value: str | None) -> int:
+def _whole_minutes(value: str | None) -> int:
     try:
         n = int(value or "")
     except ValueError:
@@ -160,7 +160,7 @@ def cmd_start_run(args) -> int:
         data["run"] = limits.BUILD_RUN
     # decision 41: the minutes R51's merge and re-check took off a fix round's wall clock at
     # deploy, which the gate's wall-clock check subtracts as the runner did
-    recheck = _positive_int(os.environ.get(limits.RECHECK_MINUTES_ENV))
+    recheck = _whole_minutes(os.environ.get(limits.RECHECK_MINUTES_ENV))
     if recheck and os.environ.get(limits.RUN_KIND_ENV) == limits.FIX_RUN:
         data[limits.RECHECK_MINUTES_FIELD] = recheck
     _write_run(_run_file(change_dir, args.phase, write=True), data)

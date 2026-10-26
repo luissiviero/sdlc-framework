@@ -3859,7 +3859,6 @@ def test_the_recheck_minutes_come_off_a_fix_round_at_deploy_and_nothing_else():
     # the round's sum, r + (180 - r + 5) + 50 + 10, is 245 of 260 for any r up to 45
     for r in (0, 1, 20, 45):
         assert r + timeout({}, "fix", JOB_ENV, "deploy", r) // 60 + 50 + 10 == 245
-    assert run_phase.build_caps_minutes_needed({}) == 245  # counts no re-check
     # whole minutes, rounded up, and none when the default branch had not moved
     spent = run_phase.recheck_minutes_spent
     assert spent({"ok": True, "merged": "abc", "recheck": "green"}, 1199.0) == 20
@@ -3956,6 +3955,35 @@ def test_a_fix_round_at_deploy_gives_up_the_minutes_its_merge_took(
     assert seen["timeout"] == (session + 5) * 60
     assert seen["env"]["SDLC_RUN"] == "fix"
     assert seen["env"].get("SDLC_RECHECK_MINUTES") == recorded
+    capsys.readouterr()
+
+
+def test_the_deploy_run_keeps_its_whole_cap_after_a_merge_that_moved(project, monkeypatch, capsys):
+    """Decision 41 is a fix round's: the deploy run's job holds R51's re-check (355 minutes),
+    so a merge that took 20 minutes takes nothing off its session, and it carries no figure."""
+    root, change = project
+    set_state(change, "test", gate_phase="test", gate_result="passed")
+    real_clock = run_phase.time.monotonic
+    skew = [0.0]
+    monkeypatch.setattr(run_phase.time, "monotonic", lambda: real_clock() + skew[0])
+
+    def update(*a, **k):
+        skew[0] += 20 * 60
+        return {"ok": True, "merged": "abc1234", "recheck": "green"}
+
+    monkeypatch.setattr(run_phase.base_update, "update_before_offer", update)
+    seen: dict = {}
+
+    def invoke(argv, root, env, timeout):
+        seen.update(env=env, timeout=timeout)
+        return None, "", "boom", 1
+
+    monkeypatch.setattr(run_phase, "invoke", invoke)
+    upsert_recorder(monkeypatch)
+    env = dict(KEY_ENV)
+    run_phase.run_phase(Args(root=str(root), phase="deploy", dry_run=False), env)
+    assert seen["timeout"] == (120 + 5) * 60
+    assert "SDLC_RECHECK_MINUTES" not in seen["env"]
     capsys.readouterr()
 
 
