@@ -1,13 +1,13 @@
 id: "0006"
 slug: security-authz-the-runbook-go-cmd-go-via
 title: "security: authz: The runbook Go (cmd_go via _human_label_actor) accepts the"
-phase: maintain
+phase: design
 entry_route: incident
 change_type: fix
 gate:
-  phase: maintain
+  phase: intent
   result: passed
-  reason: waiting for the owner at gate (maintain)
+  reason: "merged by the owner: the incident intent PR's merge is gate (intent) (decision 25)"
   at: "2026-10-26T13:13:57Z"
 parked_reason: null
 iterations: 0
@@ -26,5 +26,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-26T13:13:55Z"
-updated_at: "2026-10-26T13:13:57Z"
+updated_at: "2026-10-28T16:40:06Z"
 schema_version: 1
