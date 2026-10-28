@@ -1,0 +1,30 @@
+id: "0006"
+slug: security-authz-the-runbook-go-cmd-go-via
+title: "security: authz: The runbook Go (cmd_go via _human_label_actor) accepts the"
+phase: maintain
+entry_route: incident
+change_type: fix
+gate:
+  phase: maintain
+  result: passed
+  reason: waiting for the owner at gate (maintain)
+  at: "2026-10-26T13:13:57Z"
+parked_reason: null
+iterations: 0
+panel_calls: 0
+external_ref: null
+risk_accepted: []
+tests_locked: false
+risk_accepted_by: []
+iterations_reset_by: null
+iterations_reset_at: null
+tests_unlocked_by: null
+runbook_authorized_by: null
+abandoned_reason: null
+build_pr: null
+released_at: null
+released_sha: null
+released_pr: null
+created_at: "2026-10-26T13:13:55Z"
+updated_at: "2026-10-26T13:13:57Z"
+schema_version: 1

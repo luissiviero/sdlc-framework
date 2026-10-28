@@ -1,0 +1,20 @@
+--- a/plugin/detect/cli.py
++++ b/plugin/detect/cli.py
+@@ -1181,12 +1181,17 @@
+ 
+ # --- go: the owner's per-incident authorization (decision 14) ----------------------------------
+ def _human_label_actor(repo: str, number: int, label: str, config: dict[str, Any]):
++    from state.unpark import is_owner_actor  # noqa: PLC0415
++
+     found = _github().label_actor(repo, number, label)
+     if not found.get("ok"):
+         return None, f"could not read the label events: {found.get('reason') or 'failed'}"
+     actor = found.get("actor")
+     if not actor:
+         return None, f"no `labeled` event for {label} on #{number}"
+     if BOT_RE.search(actor) or is_automation(actor, "", automation_identity(config)):
+         return None, f"{label} was applied by {actor}, not by a person: left where it is"
++    if not is_owner_actor(actor, config, None, repo):
++        # decision 14: the Go is the owner's act; config is the default branch's copy
++        return None, f"{label} was applied by {actor}, not by the owner's account (decision 34)"
+     return actor, ""

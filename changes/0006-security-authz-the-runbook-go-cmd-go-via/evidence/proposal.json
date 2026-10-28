@@ -1,0 +1,7 @@
+{
+  "args": {},
+  "rationale": "the weekly security review; the intent PR is the route",
+  "route": "pull_request",
+  "schema_version": 1,
+  "tier": 3
+}
