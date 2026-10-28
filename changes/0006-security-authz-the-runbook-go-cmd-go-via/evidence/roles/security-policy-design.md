@@ -1,0 +1,7 @@
+# Security & policy brief, gate (design)
+
+## auth
+- Verdict: continue
+- What the change does to it: Today any person's `sdlc:go` label authorizes a runbook that runs with the runbook secrets. After the change only the owner's account can. `_human_label_actor` in `plugin/detect/cli.py` gets one `is_owner_actor(actor, approved, None, repo)` check after the bot and automation branch (decision 34's one rule), and `approved` is the default branch's `sdlc.yaml`, never the PR head's copy. `tests/test_detect_cli.py` gets two reproducing tests. It also gets one fixture line that names the test project's owner (`GITHUB_REPOSITORY_OWNER=the-owner` in `rollback_incident`), committed before the test lock (panel decision 1).
+- What could break: A collaborator's Go no longer runs a runbook. The label stays, and the owner has to apply it again from their own account. On an organization repository whose default-branch `sdlc.yaml` names no `owner:`, the runner's `GITHUB_REPOSITORY_OWNER` is the organization's login, which no person's label matches. Every Go is then refused (fail closed) until the owner sets that key in a reviewed PR.
+- How to undo it: Revert the fix commit on `plugin/detect/cli.py`, which removes the one check and the import. The fixture line and the new tests come out with a revert of the reproducing-test commit; the collaborator test would fail without the fix, so revert both commits together.

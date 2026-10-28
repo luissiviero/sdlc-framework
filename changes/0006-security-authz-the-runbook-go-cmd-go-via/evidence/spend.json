@@ -1,0 +1,17 @@
+{
+  "entries": [
+    {
+      "at": "2026-10-28T16:48:28Z",
+      "run": "design",
+      "source": "claude-design.json",
+      "usd": 9.177447149999995
+    },
+    {
+      "at": "2026-10-28T16:55:41Z",
+      "run": "explain",
+      "source": "claude-explain.json",
+      "usd": 0.24319460000000004
+    }
+  ],
+  "total_usd": 9.420642
+}

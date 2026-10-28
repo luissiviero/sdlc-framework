@@ -1,0 +1,180 @@
+{
+  "at": "2026-10-28T16:48:12Z",
+  "change_id": "0006",
+  "checks": [
+    {
+      "details": {
+        "cap": 2,
+        "classification": "non-routine",
+        "elapsed_minutes": 12.5,
+        "iterations": 0,
+        "max_budget_usd": null,
+        "panel_calls": 1,
+        "panel_cap": 4,
+        "spend_entries": 0,
+        "spend_usd": null,
+        "spend_usd_total": null
+      },
+      "name": "limits",
+      "need": "",
+      "ok": true,
+      "reason": "within the run limits"
+    },
+    {
+      "details": {},
+      "name": "artifacts",
+      "need": "",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections"
+    },
+    {
+      "details": {},
+      "name": "evidence_links",
+      "need": "",
+      "ok": true,
+      "reason": "no symbolic link under the change folder"
+    },
+    {
+      "details": {
+        "dirty": [
+          "CLAUDE.local.md",
+          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json",
+          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.model.json",
+          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/diff-design.patch",
+          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/hook-log.jsonl",
+          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-items.json",
+          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md",
+          "policies",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      },
+      "name": "design_scope",
+      "need": "",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0006-security-authz-the-runbook-go-cmd-go-via/"
+    },
+    {
+      "details": {},
+      "name": "open_concerns",
+      "need": "",
+      "ok": true,
+      "reason": "no open flagged concern"
+    },
+    {
+      "details": {},
+      "name": "proof_items",
+      "need": "",
+      "ok": true,
+      "reason": "the Proof items follow the grammar"
+    },
+    {
+      "details": {
+        "cost_usd": 0.0,
+        "decisions": [
+          {
+            "decision": "The one-line `monkeypatch.setenv(\"GITHUB_REPOSITORY_OWNER\", \"the-owner\")` in the `rollback_incident` fixture goes into the `fix(0006): reproducing test` commit before `lock-tests`, with no test body or assertion changed; the step-1 log must show every existing `rollback_incident` test passing with the fixture line alone, before the fix; plan.md's Risks line must say `owner_login` is the only direct reader and name `is_owner_actor` and its callers (run_phase, merge_step, comment_dispatch, review_request, release/cli, pr/digest, state/unpark) as the indirect ones.",
+            "kind": "concern",
+            "n": 1
+          }
+        ]
+      },
+      "name": "panel",
+      "need": "",
+      "ok": true,
+      "reason": "1 panel decision(s) recorded"
+    },
+    {
+      "details": {
+        "ran_by": "runner",
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q plugin tests tasks.py .github/scripts",
+            "exit_code": 0,
+            "output": ""
+          },
+          "lint": {
+            "command": "python -m ruff check . && python -m ruff format --check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n298 files already formatted\n"
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 1,
+            "output": "per', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:49Z', schema_version=1) = <function read_status at 0x7fe0c05f4180>(PosixPath('/tmp/pytest-of-runner/pytest-0/test_a_cancel_by_hand_says_so0/proj/changes/0001-percent-helper'))\n +          where <function read_status at 0x7fe0c05f4180> = status_mod.read_status\nFAILED tests/test_cancelled_park.py::test_a_cancel_the_runner_cannot_place_says_both - AssertionError: assert '(the job was cancelled while the session ran (at its timeout-minutes or by hand: HTTP 403))' in 'commands: not green'\n +  where 'commands: not green' = Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:49Z', schema_version=1).parked_reason\n +    where Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:49Z', schema_version=1) = <function read_status at 0x7fe0c05f4180>(PosixPath('/tmp/pytest-of-runner/pytest-0/test_a_cancel_the_runner_canno0/proj/changes/0001-percent-helper'))\n +      where <function read_status at 0x7fe0c05f4180> = status_mod.read_status\nFAILED tests/test_cancelled_park.py::test_a_cancelled_session_that_wrote_a_runner_file_parks_on_it_and_keeps_no_work - KeyError: 'parked'\nFAILED tests/test_cancelled_park.py::test_a_park_the_run_wrote_before_the_cancel_is_published_again_not_replaced - KeyError: 'republished'\nFAILED tests/test_cancelled_park.py::test_at_session_a_park_the_session_wrote_is_replaced_by_the_cancel_s - AssertionError: assert 'the job was cancelled at its timeout-minutes (260) while the session ran' in 'limits: the session says so'\n +  where 'limits: the session says so' = Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:50Z', schema_version=1).parked_reason\n +    where Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:50Z', schema_version=1) = <function read_status at 0x7fe0c05f4180>(PosixPath('/tmp/pytest-of-runner/pytest-0/test_at_session_a_park_the_ses0/proj/changes/0001-percent-helper'))\n +      where <function read_status at 0x7fe0c05f4180> = status_mod.read_status\nFAILED tests/test_cancelled_park.py::test_a_fix_round_cancelled_after_its_checks_keeps_nothing_uncommitted - KeyError: 'parked'\nFAILED tests/test_cancelled_park.py::test_a_run_that_updated_its_pr_parks_nothing - assert \"nothing to p...0006/intent')\" == 'nothing to p...ve been sent)'\n  \n  - nothing to park: the run had updated its pull request before the cancel (its hand-over may not have been sent)\n  + nothing to park: the saved state is not this run's (its fix round's head 'sdlc/0001/build' is not the workflow's 'sdlc/0006/intent')\nFAILED tests/test_cancelled_park.py::test_a_kill_after_the_result_was_stored_does_not_flag_the_runner_s_own_file - AssertionError: commands: not green\nassert False\n +  where False = <built-in method startswith of str object at 0x7fe0bebf3b70>('fix: the round ended before its gate (the job was cancelled at its timeout-minutes (260) while the session ran)')\n +    where <built-in method startswith of str object at 0x7fe0bebf3b70> = 'commands: not green'.startswith\nFAILED tests/test_cancelled_park.py::test_an_automatic_round_cancelled_with_nothing_to_keep_parks_as_decision_29_does - AssertionError: assert 'sdlc:fixing' == 'sdlc:needs-human'\n  \n  - sdlc:needs-human\n  + sdlc:fixing\n10 failed, 2875 passed, 1 skipped in 397.60s (0:06:37)\n"
+          }
+        }
+      },
+      "name": "commands",
+      "need": "Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.",
+      "ok": false,
+      "reason": "not green: test (exit 1)"
+    },
+    {
+      "details": {},
+      "name": "guardrails",
+      "need": "",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file"
+    },
+    {
+      "details": {
+        "accepted": [],
+        "hits": {
+          "auth": [
+            "spec.md Flagged concerns: text"
+          ]
+        }
+      },
+      "name": "risk_list",
+      "need": "",
+      "ok": true,
+      "reason": "risk-list hit, shown in the close-look banner (decision 35): 'auth' in spec.md Flagged concerns: text"
+    },
+    {
+      "details": {
+        "label_actors": {},
+        "risk_accepted": []
+      },
+      "name": "owner_actions",
+      "need": "",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label"
+    },
+    {
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      },
+      "name": "adversarial_review",
+      "need": "",
+      "ok": true,
+      "reason": "adversarial reviewer says continue"
+    },
+    {
+      "details": {
+        "wanted": "claude-opus-5-5"
+      },
+      "name": "reviewer_model",
+      "need": "",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5"
+    }
+  ],
+  "config_note": "",
+  "dry_run": false,
+  "explanation": [
+    "1. **What failed:** the design gate parked change 0006 because `python -m pytest` exited 1. There were 10 failures, all in `tests/test_cancelled_park.py`. Build, lint and every other gate check passed, and the stderr file only has the workspace-trust warning.",
+    "2. **Likely cause:** the design diff only touches the change folder, so this change's work didn't break these tests. The assertions show them reading the CI job's own state: a parked reason saying the commands weren't green, and the workflow's head branch where they expect their fixture's. So the cancel/park tests aren't isolated from the runner's environment variables or saved run state.",
+    "3. **Flaky or real:** real, not random. It's caused by the environment and should fail the same way on every gate run inside this workflow, even though it probably passes locally.",
+    "4. **First thing to check:** run `python -m pytest tests/test_cancelled_park.py` locally, then again with the CI's `GITHUB_*` / SDLC run variables exported. Then check whether the tests' fixtures clear those variables and point the saved-state path at the test's temp directory."
+  ],
+  "head": "f5395d6dc3375294877f9b3b03592fdb60a60d9d",
+  "human_gate": true,
+  "label": "sdlc:needs-human",
+  "phase": "design",
+  "reason": "commands: not green: test (exit 1)",
+  "result": "park",
+  "schema_version": 1,
+  "slug": "security-authz-the-runbook-go-cmd-go-via",
+  "what_i_need": "## What I need from you\nGate (design) parked change 0006 (security-authz-the-runbook-go-cmd-go-via) on 2026-10-28T16:48:12Z.\n- **commands**: not green: test (exit 1)\n  - what I need: Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.\n- **Explanation (model-written)**: what the explain step read in the run's logs; advice for the owner, not a change request: a fix round acts on the items above, never on these lines\n  - 1. **What failed:** the design gate parked change 0006 because `python -m pytest` exited 1. There were 10 failures, all in `tests/test_cancelled_park.py`. Build, lint and every other gate check passed, and the stderr file only has the workspace-trust warning.\n  - 2. **Likely cause:** the design diff only touches the change folder, so this change's work didn't break these tests. The assertions show them reading the CI job's own state: a parked reason saying the commands weren't green, and the workflow's head branch where they expect their fixture's. So the cancel/park tests aren't isolated from the runner's environment variables or saved run state.\n  - 3. **Flaky or real:** real, not random. It's caused by the environment and should fail the same way on every gate run inside this workflow, even though it probably passes locally.\n  - 4. **First thing to check:** run `python -m pytest tests/test_cancelled_park.py` locally, then again with the CI's `GITHUB_*` / SDLC run variables exported. Then check whether the tests' fixtures clear those variables and point the saved-state path at the test's temp directory.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0006 --phase design` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+}
