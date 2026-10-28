@@ -4,12 +4,12 @@
   "slug": "security-authz-the-runbook-go-cmd-go-via",
   "phase": "design",
   "human_gate": true,
-  "result": "wait",
-  "label": "sdlc:design-ready",
+  "result": "park",
+  "label": "sdlc:needs-human",
   "head": "f5395d6dc3375294877f9b3b03592fdb60a60d9d",
   "at": "2026-10-28T16:48:12Z",
   "dry_run": false,
-  "reason": "",
+  "reason": "commands: not green: test (exit 1)",
   "config_note": "",
   "checks": [
     {
@@ -95,11 +95,28 @@
     },
     {
       "name": "commands",
-      "ok": true,
-      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
-      "need": "",
+      "ok": false,
+      "reason": "not green: test (exit 1)",
+      "need": "Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.",
       "details": {
-        "deferred": true
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q plugin tests tasks.py .github/scripts",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 1,
+            "output": "per', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:49Z', schema_version=1) = <function read_status at 0x7fe0c05f4180>(PosixPath('/tmp/pytest-of-runner/pytest-0/test_a_cancel_by_hand_says_so0/proj/changes/0001-percent-helper'))\n +          where <function read_status at 0x7fe0c05f4180> = status_mod.read_status\nFAILED tests/test_cancelled_park.py::test_a_cancel_the_runner_cannot_place_says_both - AssertionError: assert '(the job was cancelled while the session ran (at its timeout-minutes or by hand: HTTP 403))' in 'commands: not green'\n +  where 'commands: not green' = Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:49Z', schema_version=1).parked_reason\n +    where Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:49Z', schema_version=1) = <function read_status at 0x7fe0c05f4180>(PosixPath('/tmp/pytest-of-runner/pytest-0/test_a_cancel_the_runner_canno0/proj/changes/0001-percent-helper'))\n +      where <function read_status at 0x7fe0c05f4180> = status_mod.read_status\nFAILED tests/test_cancelled_park.py::test_a_cancelled_session_that_wrote_a_runner_file_parks_on_it_and_keeps_no_work - KeyError: 'parked'\nFAILED tests/test_cancelled_park.py::test_a_park_the_run_wrote_before_the_cancel_is_published_again_not_replaced - KeyError: 'republished'\nFAILED tests/test_cancelled_park.py::test_at_session_a_park_the_session_wrote_is_replaced_by_the_cancel_s - AssertionError: assert 'the job was cancelled at its timeout-minutes (260) while the session ran' in 'limits: the session says so'\n +  where 'limits: the session says so' = Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:50Z', schema_version=1).parked_reason\n +    where Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:50Z', schema_version=1) = <function read_status at 0x7fe0c05f4180>(PosixPath('/tmp/pytest-of-runner/pytest-0/test_at_session_a_park_the_ses0/proj/changes/0001-percent-helper'))\n +      where <function read_status at 0x7fe0c05f4180> = status_mod.read_status\nFAILED tests/test_cancelled_park.py::test_a_fix_round_cancelled_after_its_checks_keeps_nothing_uncommitted - KeyError: 'parked'\nFAILED tests/test_cancelled_park.py::test_a_run_that_updated_its_pr_parks_nothing - assert \"nothing to p...0006/intent')\" == 'nothing to p...ve been sent)'\n  \n  - nothing to park: the run had updated its pull request before the cancel (its hand-over may not have been sent)\n  + nothing to park: the saved state is not this run's (its fix round's head 'sdlc/0001/build' is not the workflow's 'sdlc/0006/intent')\nFAILED tests/test_cancelled_park.py::test_a_kill_after_the_result_was_stored_does_not_flag_the_runner_s_own_file - AssertionError: commands: not green\nassert False\n +  where False = <built-in method startswith of str object at 0x7fe0bebf3b70>('fix: the round ended before its gate (the job was cancelled at its timeout-minutes (260) while the session ran)')\n +    where <built-in method startswith of str object at 0x7fe0bebf3b70> = 'commands: not green'.startswith\nFAILED tests/test_cancelled_park.py::test_an_automatic_round_cancelled_with_nothing_to_keep_parks_as_decision_29_does - AssertionError: assert 'sdlc:fixing' == 'sdlc:needs-human'\n  \n  - sdlc:needs-human\n  + sdlc:fixing\n10 failed, 2875 passed, 1 skipped in 397.60s (0:06:37)\n"
+          },
+          "lint": {
+            "command": "python -m ruff check . && python -m ruff format --check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n298 files already formatted\n"
+          }
+        },
+        "ran_by": "runner"
       }
     },
     {
@@ -153,5 +170,5 @@
       }
     }
   ],
-  "what_i_need": ""
+  "what_i_need": "## What I need from you\nGate (design) parked change 0006 (security-authz-the-runbook-go-cmd-go-via) on 2026-10-28T16:48:12Z.\n- **commands**: not green: test (exit 1)\n  - what I need: Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0006 --phase design` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
 }
