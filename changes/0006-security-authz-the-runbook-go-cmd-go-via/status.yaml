@@ -5,10 +5,10 @@ phase: design
 entry_route: incident
 change_type: fix
 gate:
-  phase: intent
+  phase: design
   result: passed
-  reason: "merged by the owner: the incident intent PR's merge is gate (intent) (decision 25)"
-  at: "2026-10-26T13:13:57Z"
+  reason: waiting for the owner at gate (design)
+  at: "2026-10-28T16:48:12Z"
 parked_reason: null
 iterations: 0
 panel_calls: 1
@@ -26,5 +26,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-26T13:13:55Z"
-updated_at: "2026-10-28T16:45:00Z"
+updated_at: "2026-10-28T16:48:12Z"
 schema_version: 1
