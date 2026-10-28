@@ -1,0 +1,28 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "The existing Go tests in `tests/test_detect_cli.py` authorize with the actor `the-owner` on the repository `o/r` and no owner named, so with the fix that actor is not the owner and five of them (the runbook runs, the App refusal's re-run, the route that asked for Go, the head-listed automation identity, the malformed head copy) would fail. The reproducing-test commit, before the test-file lock, must also make the fixture's owner explicit (the `rollback_incident` fixture sets `GITHUB_REPOSITORY_OWNER` to `the-owner` through `monkeypatch`, the pattern `tests/conftest.py` prescribes for a runner variable a test needs); the tests' bodies and assertions are untouched and they pass before the fix as they do today. The intent says \"no pre-existing test is edited to make the fix pass\": the fixture edit changes no test's assertion and weakens nothing (coding-standards rule 4), but it is an edit under `tests/` that the fix needs, so it is declared here rather than made silently.",
+      "key": "concern:e8ff2e4ed004de40",
+      "kind": "concern",
+      "n": 1
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [],
+  "pending": [
+    1
+  ],
+  "phase": "design"
+}

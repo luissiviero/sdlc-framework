@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "phase": "design",
+  "head": "adcf49b958b3976a901db4d044f15ba39f0a5a5f",
+  "verdict": "continue",
+  "reasons": [],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Blast radius: the change is to the authorization of the runbook Go, the one gate before a running-system action runs with the runbook secrets; it touches the risk-list item 'auth'.",
+    "Spec tightness: tight. No open concern is left, the acceptance can be measured (two named tests, eight existing Go tests that must stay unchanged, the three targets) and the refusal's shape is the existing one.",
+    "Test coverage: existing tests cover the Go path, but the change needs a declared fixture edit under tests/ (GITHUB_REPOSITORY_OWNER in rollback_incident) so that five existing Go tests keep passing. That is a test-infrastructure change in a fix-type change, which is not routine."
+  ],
+  "attempted": [
+    "Intent: the intent asks for cli.py:1183 to lose the weakness where any person's sdlc:go label runs the runbook, proven by a reproducing test. The spec adds is_owner_actor after the bot/automation branch of _human_label_actor, which is the intent's suggested patch with a top-level import. This solves the stated problem and not a nearby one.",
+    "Spec and plan: R1 to R10 each map to a plan step or a proof line. The only flagged concerns are the 'auth' risk item (decided, decision 35), the fixture edit (declared, with its reason) and the label-stays question (decided, with its rule). Two files are listed and the order is test first, then fix, which matches the intent's constraint.",
+    "Claim: _human_label_actor(repo, number, label, config) sits at cli.py:1179-1188 with the bot/automation branch as its last refusal. Checked; true.",
+    "Claim: cmd_go passes the approved copy (_approved_config -> approved_files: the fetched origin/<default> copy, fail closed) into _human_label_actor before _judge, and a (None, why) emits performed:false, exits 0 and touches no label, status or runbook. Checked at cli.py:1201-1218; true.",
+    "Claim: is_owner_actor(actor, config, env=None, repo) reads sdlc.yaml:owner, else GITHUB_REPOSITORY_OWNER, else the owner part of GITHUB_REPOSITORY or repo, ignores case and fails closed on bot, automation and unknown. Checked at unpark.py:78-115; true. The spec's R2 leaves out the GITHUB_REPOSITORY step, which is harmless.",
+    "Claim: state.unpark imports nothing from detect (no import cycle). Checked: its top-level imports are state.conventions and state.status, and gate.policy and pr.github are imported lazily; true. detect/cli.py already uses the sys.path plus '# noqa: E402' import pattern (lines 54-61).",
+    "Claim: label_actor reads the last labeled event. Checked at pr/github.py:472-489; true. The owner's re-application is therefore the one judged, and a collaborator's later re-application fails closed.",
+    "Claim: the runbook workflow's if: keeps only the coarse [bot] check and its comment says 'detect/cli.py go checks the actor again'. Checked in template/.github/workflows/sdlc-runbook.yml:52-56; true. The Go step runs on a runner where GITHUB_REPOSITORY_OWNER is set by default, so the owner resolves in CI.",
+    "Claim: five existing Go tests would fail without the fixture edit. Checked: by_a_person, refuse_without_the_app (the go re-run), runs_only_a_route_that_asked_for_it (its reason would change), reads_the_automation_identity (the head case) and malformed_head (go) all use actor 'the-owner' on REPO 'o/r' with no owner named. The rewritten-origin and unreadable-copy tests refuse before the actor check, and the main case of the automation-identity test refuses at the bot/automation branch. The count of five is correct.",
+    "Claim: tests/conftest.py removes every GITHUB_* variable and says a test that needs one sets it itself through monkeypatch. Checked at lines 14-21 and 78-84; true. The only reader of GITHUB_REPOSITORY_OWNER in plugin/ is unpark.owner_login (grep), so the fixture variable changes no other module's behaviour. test_park_records_... sets GITHUB_REPOSITORY, which owner_login reads only after GITHUB_REPOSITORY_OWNER, and park does not call the owner check.",
+    "Claim: the template sdlc.yaml carries no active owner: key (it is '# owner: your-login' at line 203), so the fixture project's main names no owner and the plan's head/main test cases are meaningful. Checked; true.",
+    "Decisions: 14 (Go is the owner's per-incident act for running-system actions) and 34 point 3 (one function, is_owner_actor, fail closed, the default branch's sdlc.yaml:owner; a workflow if: is only a coarse check). Decision 37 removes only the (c)/(d) label approvals from 34. The design matches all three.",
+    "Proof: design phase, so there is no toolchain log to compare. The plan's proof names two new tests with concrete assertions and says each must fail on 80d7de5 before the fix.",
+    "Tests: could the collaborator test pass with the bug present? No. Today 'colleague' passes the bot check and the runbook runs (performed True, spy called). Build-time note: in the main case of test_go_reads_the_owner_from_the_default_branch, the 'the-owner' half must run before the colleague's Go and assert the owner reason. If it runs after, the go-requested record is already 'ran' and the refusal would come from 'did not ask for Go', which passes vacuously. Step 1 says that half fails before the fix, which implies the right order. This is a hint, not a reason.",
+    "Tests: the intent forbids editing pre-existing tests to make the fix pass. The fixture edit touches no test body or assertion, sets one runner variable the way conftest prescribes, is in the reproducing commit before the lock, and is declared in spec Flagged concerns and plan Risks. It does not weaken what any test proves, since the existing tests still assert the runbook runs for the (now explicit) owner.",
+    "Blast radius: one caller (cmd_go). No data shape, schema, migration or workflow change and no guardrail file. The by-hand route still resolves the owner from --repo. Live projects where a collaborator's Go used to run lose that, which is the intended narrowing under decision 34.",
+    "Policies: security-baseline rule 1 (the check sits on the server in the step with the secrets, against the default branch's copy), rule 3 (no credential) and rule 6 (no new dependency), coding-standards rule 4 (test first, nothing weakened) and ux-and-brand rule 4 (the reason names the label, the actor, the owner requirement and that the label stays). All applied; none silently skipped.",
+    "Skip markers: not checked at design (the ratchets check runs at build and test).",
+    "Drive: not applicable at design."
+  ]
+}
