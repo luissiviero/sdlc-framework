@@ -48,6 +48,11 @@ RUNNER_NAMES = (
     "SDLC_GATE_COMMANDS",
     "SDLC_APP_TOKEN_MINTED_AT",
     "SDLC_WORKFLOW_TOKEN",
+    # the phase workflows export the run's head branch to the runner's steps; a fix round's
+    # cancelled-run check compares its saved head with it (run_phase.cancel_state_refusal),
+    # so a test that builds its environment from os.environ would read the job's own branch
+    # (the design run of change 0006, PR #403, parked on it)
+    "HEAD_REF",
 )
 
 
