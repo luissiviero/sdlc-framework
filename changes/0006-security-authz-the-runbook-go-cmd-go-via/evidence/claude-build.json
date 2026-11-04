@@ -1,0 +1,105 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 148128,
+  "duration_ms": 303543,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 817,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "cacheCreationInputTokens": 91496,
+      "cacheReadInputTokens": 2638668,
+      "canonicalModel": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 1.5848335999999998,
+      "inputTokens": 78,
+      "maxOutputTokens": 128000,
+      "outputTokens": 16241,
+      "provider": "firstParty",
+      "thinkingTokens": 2695,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 54,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "The fix for change 0006 is committed, but the build is **parked**: one of the reproducing tests is itself wrong, and the test files are locked. Draft PR: https://github.com/luissiviero/sdlc-framework/pull/405\n\n**What was done on `sdlc/0006/build`**\n1. `5ae9227` \u2014 the reproducing tests. I added the fixture line that names `the-owner` as the owner (panel decision 1) and the two new tests. With the fixture line alone, all 96 tests in `tests/test_detect_cli.py` passed. The three new cases then failed with `performed` True, which is the weakness the intent describes. The log is in `evidence/failing-test.log`. After this commit the test files were locked.\n2. `6a2429f` \u2014 the fix. `_human_label_actor` in `plugin/detect/cli.py` now refuses a `sdlc:go` label that wasn't applied by the owner's account. It uses `is_owner_actor` with the default branch's `sdlc.yaml`, imported at the top of the module.\n3. Park commit, then the PR number recorded, both pushed.\n\n**Why it's parked**\n`tests/test_detect_cli.py:859` in `test_go_by_a_collaborator_performs_nothing` asserts `runbook_records(change) == []`. I copied that line from plan.md step 1, but it can never pass: the test's own `dispatch` step writes `evidence/runbook-rollback-deploy.json` with status `go-requested`. The existing `test_dispatch_go_route_records_go_requested_and_runs_nothing` asserts the same file. After the fix, everything else in that test passes: nothing runs, no label changes, the reason names the owner and the colleague, and `runbook_authorized_by` stays null.\n\n**What I need from you**\n| File | Row | Now | Must become |\n|---|---|---|---|\n| [tests/test_detect_cli.py](tests/test_detect_cli.py#L859) | 859 | `assert runbook_records(change) == []` | `record = json.loads((change / \"evidence\" / \"runbook-rollback-deploy.json\").read_text(\"utf-8\"))` then `assert record[\"status\"] == \"go-requested\"` |\n\nThe tests have to be unlocked first. Then re-run `/sdlc-build 0006`.\n\n**Check results**\n- Build: `python -m compileall -q plugin tests tasks.py .github/scripts` printed nothing.\n- Tests: `tests/test_detect_cli.py` plus `tests/test_owner_rounds.py` gave **1 failed, 121 passed**. The one failure is line 859. Both cases of `test_go_reads_the_owner_from_the_default_branch` and every existing Go test pass.\n- Lint: `ruff check .` printed `All checks passed!`. `ruff format --check .` reported `299 files already formatted` but exited 2, because the sandbox would not let it read `CLAUDE.local.md`.\n- I did not run the full test suite in this session.\n\n**Other things to know**\n- **Tests run through a wrapper:** the sandbox blocks reading the fixture's `.env` (issue #91), so I ran pytest through a small wrapper outside the repo that skips copying `.env*` files. Nothing else about the tests changed. The runner runs the targets again outside the sandbox.\n- **Steps not run:** the simplifier, the verifier, the adversarial review and the build gate didn't run, because the change parked before them.\n- **Park label missing:** the PR upsert returned `label: null`, so the `sdlc:needs-human` label probably isn't on PR #405. I didn't try to add it another way.\n- **Other uncommitted files:** the working tree also shows a modified `tests/fixtures/sample-python-project/.env` and untracked `CLAUDE.local.md` and `policies/`. I didn't edit or commit any of them.",
+  "result_index": 0,
+  "safety_stops": 0,
+  "sdlc_run": {
+    "at": "2026-11-04T15:24:32Z",
+    "credential": "oauth",
+    "seconds": 304.9,
+    "timed_out": false
+  },
+  "session_id": "bae45700-7117-48d3-afc6-c9ad5e7048b8",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {},
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 0,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "spawned": 0,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 118,
+  "total_cost_usd": 1.5848335999999998,
+  "ttft_ms": 1291,
+  "ttft_stream_ms": 817,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 91496,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 91496,
+    "cache_read_input_tokens": 2638668,
+    "fallback_credit": null,
+    "inference_geo": "global",
+    "input_tokens": 78,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 453,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 453,
+        "cache_read_input_tokens": 91043,
+        "input_tokens": 2,
+        "output_tokens": 1339,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 16241,
+    "output_tokens_details": {
+      "thinking_tokens": 2695
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "0e52840c-aac1-45ff-bed6-d3c33cb8a3de"
+}
