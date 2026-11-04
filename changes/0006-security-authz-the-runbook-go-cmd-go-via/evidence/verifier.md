@@ -1,52 +1,67 @@
-# Verifier report — change 0006, build, fix round 2 (HEAD 490423111acdcb674ec26fe5474cebedb513ea04)
+# Verifier report: change 0006, test phase
 
-The record read is `evidence/gate-design.json`, the runner's run on `ff4344849a` (2026-11-04T14:19:39Z): the design-phase tree, older than the fix commits `5ae9227` and `6a2429f` and this round's `4904231`, so it says nothing about the new tests or the fix. The final tree's result is the runner's, from the three targets it runs once after this session (check run `sdlc/test` and this phase's gate record). A red target there starts the next fix round by itself; nothing here stands in for it.
+Verdict: **matches the plan.**
 
-## Commands run
-In this CI session (`SDLC_GATE_COMMANDS=runner`) the targets were read from the record, not run.
+## Which tree this covers
+The verifier read `evidence/gate-build.json`, the runner's run on commit `490423111acdcb674ec26fe5474cebedb513ea04` (2026-11-04T19:28:55Z). That is the tree this phase started from, not the final one. The runner runs the three targets on the final tree after this session, and their result shows in the `sdlc/test` check run and in this phase's gate record. The two commits after `4904231` (`8bbe5b7`, `1efc48d`) change only files under `changes/0006-.../`, and no file under `plugin/` or `tests/`.
 
-`gate-design.json` `commands` check: `ok: true`, `"reason": "build, test and lint exit 0"`, `"ran_by": "runner"`, no `deferred` flag.
-- `python -m compileall -q plugin tests tasks.py .github/scripts`: exit 0, output `""`
-- `python -m pytest`: exit 0, tail `.......................................................................s [ 97%] ... 2885 passed, 1 skipped in 250.68s (0:04:10)`
-- `python -m ruff check . && python -m ruff format --check .`: exit 0, output `All checks passed!` / `299 files already formatted`
+## Commands (read, not run: `SDLC_GATE_COMMANDS=runner`)
+The build gate's `commands` check reads `ok: true`, `ran_by: runner`, with the reason "build, test and lint exit 0".
 
-The change folder has no `evidence/test.log`, `build.log` or `lint.log`, as expected at build.
+| Target | Command | Exit code | Output tail |
+|---|---|---|---|
+| build | `python -m compileall -q plugin tests tasks.py .github/scripts` | 0 | (no output) |
+| test | `python -m pytest` | 0 | `2888 passed, 1 skipped in 296.68s (0:04:56)` |
+| lint | `python -m ruff check . && python -m ruff format --check .` | 0 | `All checks passed!` / `301 files already formatted` |
+
+The first lines of `test.log`, `build.log` and `lint.log` carry this session's deferred mark (2026-11-04T19:35:19Z). They are placeholders that the runner replaces, not failures.
+
+`evidence/failing-test.log` holds the build's record of the tests before the fix:
+- **Fixture line alone:** `96 passed`, with every existing Go test listed as PASSED.
+- **With the two new tests, before the fix:** `3 failed, 16 passed, 80 deselected`. The three failures are `test_go_by_a_collaborator_performs_nothing` (`assert True is False`) and both `[head]` and `[main]`. The `main` failure is on the-owner's half.
 
 ## Behavior exercised
-`_human_label_actor` was called directly from an inline `python -I -c` script that loaded `plugin/detect/cli.py`, stubbed `_github().label_actor`, read no `.env*` and wrote no files; pytest was not started. `cmd_go` passes `approved` from `_approved_config` (the default branch's copy) at `plugin/detect/cli.py:1218-1222`.
+**Diff review (`git diff origin/main...HEAD -- plugin tests`).**
+- Only two files changed: `plugin/detect/cli.py` and `tests/test_detect_cli.py`.
+- **`plugin/detect/cli.py`:**
+  - A top-level import was added: `from state.unpark import is_owner_actor  # noqa: E402`.
+  - In `_human_label_actor`, after the bot/automation branch, the change adds `if not is_owner_actor(actor, config, None, repo): return None, "<label> was applied by <actor>, not by the owner's account: left where it is (decision 34)"`.
+  - `cmd_go` passes `approved`, the default-branch copy, and `cmd_go` itself is unchanged.
+- **`tests/test_detect_cli.py`, existing tests:** the only change is the `rollback_incident` fixture. It now takes `monkeypatch` and sets `GITHUB_REPOSITORY_OWNER=the-owner` (panel decision 1). No existing test body or assertion changed.
+- **`test_go_by_a_collaborator_performs_nothing`:** it asserts every item in plan.md step 1:
+  - `code == 0` and `performed is False`
+  - the reason names the owner and the colleague
+  - no runbook call and no label change
+  - the dispatch record still says `go-requested`
+  - `runbook_authorized_by` is None
+- **`test_go_reads_the_owner_from_the_default_branch`:**
+  - `[head]`: the head's `owner: colleague` is ignored, and the colleague is refused.
+  - `[main]`: the-owner is refused first, then the colleague's Go runs the runbook once, with `runbook_authorized_by == "colleague"`.
+- **Credentials:** grepping the added lines for tokens, secrets, passwords, API keys, `ghp_`, `github_pat_`, `sk-ant` and private keys found nothing.
 
-**The changed behavior**
-- Actor `colleague`, `GITHUB_REPOSITORY_OWNER=the-owner`: `(None, "sdlc:go was applied by colleague, not by the owner's account: left where it is (decision 34)")`.
-- Actor `the-owner`: `('the-owner', '')`.
-- Actor `THE-OWNER`: `('THE-OWNER', '')` (the match is case-insensitive).
-- Config `{"owner": "colleague"}` (the default branch's stand-in), actor `the-owner`: refused with the owner reason.
-- Same config, actor `colleague`: `('colleague', '')`.
-- Just outside the tested inputs:
-  - No environment variable, `--repo o/r`, actor `o`: `('o', '')`.
-  - Same setup, actor `the-owner`: refused.
-  - Empty repo and no environment variable: refused (fails closed).
+**Direct call of `_human_label_actor`** (the GitHub call replaced by a stub; with `GITHUB_REPOSITORY_OWNER=the-owner` and repo `o/r` unless stated):
 
-**First neighbouring flow: the bot or automation branch.** Actor `github-actions[bot]`: `(None, 'sdlc:go was applied by github-actions[bot], not by a person: left where it is')`. The text is unchanged and this check still runs before the owner check (R6).
+| Actor | Config | Result |
+|---|---|---|
+| `colleague` | `{}` | refused with the owner reason |
+| `the-owner` | `{}` | accepted |
+| `THE-OWNER` | `{}` | accepted (case ignored) |
+| `github-actions[bot]` | `{}` | refused with the unchanged "not by a person" reason, which comes first |
+| `the-owner` | `{owner: colleague}` | refused |
+| `colleague` | `{owner: colleague}` | accepted |
+| `sdlc-bot` | named both automation identity and owner | refused as "not by a person" (fails closed) |
+| `o` | `{}`, no environment variables | accepted (the owner comes from `--repo`) |
+| `the-owner` | `{}`, no environment variables | refused |
 
-**Second neighbouring flow: the label-event paths.**
-- Actor `None`: `(None, 'no \`labeled\` event for sdlc:go on #12')`.
-- `ok: False`: `(None, 'could not read the label events: boom')`.
-
-Both texts are unchanged.
-
-**This round's test edit.** The diff of `tests/test_detect_cli.py:859-860` replaces `runbook_records(change) == []` with a check that `evidence/runbook-rollback-deploy.json` has `status == "go-requested"`. The path matches `plugin/detect/runbooks.py:956` (`runbook-{safe}.json`) and `json` is imported at line 13. The test runs `dispatch` before `go`, so the record exists. plan.md step 1 (line 10) says the same. The edit follows the owner's `sdlc:unlock-tests` (commit `30643eb`).
+With no owner known anywhere, `is_owner_actor` returns False (fails closed).
 
 ## Not exercised
-- `cmd_go` end to end: the dispatch, the `_approved_config` read of `origin/main`, the runbook spy, `set_labels` and the `status.yaml` write. Only the call site's argument was checked.
-- The new tests and every existing Go test on the final tree; in CI the runner judges them.
-- The three targets on the final tree; `gate-design.json` covers `ff43448` only.
-- Windows (this ran on Linux).
-- An `sdlc.yaml: owner` given as a non-string or blank value.
-- A `GITHUB_REPOSITORY`-only environment.
-- The security-baseline check on the diff.
+- **Full `cmd_go` path:** not run through pytest in this CI session (sandbox rule). Runbook execution, label removal and the `status.yaml` write are covered only by the runner's suite.
+- **Final tree:** the targets were not run on HEAD; the runner does that after this session.
+- **`tests/test_owner_rounds.py`:** not run separately. It passed as part of the runner's full suite.
+- **Windows:** not run.
+- **Live GitHub:** the label-events API and `sdlc-runbook.yml` were not exercised.
+- **Security-baseline tool:** not run; only the credential grep above was done.
 
 ## Mismatches with plan.md / spec.md
-None in behavior. One wording note: spec.md:5 (R1) and spec.md:33 (Acceptance) say "no runbook record is written" / "no runbook record". The dispatch writes `runbook-rollback-deploy.json` before the Go, so the test checks that the Go left that record at `go-requested` and wrote none of its own. plan.md:10 was updated to match; spec.md keeps the old wording.
-
-## Verdict
-matches the plan
+None. R5's "is required" is conveyed by "not by the owner's account", the literal string of plan.md step 2.
