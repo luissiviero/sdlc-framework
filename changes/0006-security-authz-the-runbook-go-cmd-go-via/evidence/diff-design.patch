@@ -1,72 +1,79 @@
- .../evidence/adversarial-review-design.json        |  34 +++++
- .../evidence/adversarial-review-design.model.json  |  14 ++
- .../evidence/decisions-design.json                 |  28 ++++
+ .../evidence/adversarial-review-design.json        |  33 ++
+ .../evidence/adversarial-review-design.model.json  |  14 +
+ .../evidence/claude-design.json                    | 131 +++++
+ .../evidence/claude-design.stderr.txt              |   1 +
+ .../evidence/claude-explain.json                   | 105 ++++
+ .../evidence/decisions-design.json                 |  28 +
  .../evidence/decisions-design.md                   |   7 +
- .../evidence/diff-design.patch                     | 161 +++++++++++++++++++++
- .../evidence/hook-log.jsonl                        |  38 +++++
- .../evidence/panel/design-1-advocate.md            |   9 ++
- .../evidence/panel/design-1-advocate.model.json    |  14 ++
- .../evidence/panel/design-1-conciliator.json       |  12 ++
- .../evidence/panel/design-1-reviewer.md            |  10 ++
- .../evidence/panel/design-items.json               |  28 ++++
+ .../evidence/diff-design.patch                     | 600 +++++++++++++++++++++
+ .../evidence/fix-requests.json                     |  25 +
+ .../evidence/fix-response.md                       |  13 +
+ .../evidence/gate-design.json                      | 180 +++++++
+ .../evidence/hook-log.jsonl                        |  62 +++
+ .../evidence/panel-models-design.json              |  14 +
+ .../evidence/panel/design-1-advocate.md            |   9 +
+ .../evidence/panel/design-1-advocate.model.json    |  14 +
+ .../evidence/panel/design-1-conciliator.json       |  12 +
+ .../evidence/panel/design-1-reviewer.md            |  10 +
+ .../evidence/panel/design-items.json               |  18 +
  .../evidence/roles/security-policy-design.md       |   7 +
- .../evidence/run-design.json                       |   5 +
- .../plan.md                                        |  53 +++++++
- .../spec.md                                        |  38 +++++
- .../status.yaml                                    |  10 +-
- 16 files changed, 463 insertions(+), 5 deletions(-)
+ .../evidence/run-design.json                       |   6 +
+ .../evidence/spend.json                            |  17 +
+ .../plan.md                                        |  53 ++
+ .../spec.md                                        |  38 ++
+ .../status.yaml                                    |  18 +-
+ 24 files changed, 1406 insertions(+), 9 deletions(-)
 
 diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json
 new file mode 100644
-index 0000000..78f1560
+index 0000000..05dd28a
 --- /dev/null
 +++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,33 @@
 +{
 +  "schema_version": 1,
 +  "phase": "design",
-+  "head": "adcf49b958b3976a901db4d044f15ba39f0a5a5f",
++  "head": "f5395d6dc3375294877f9b3b03592fdb60a60d9d",
 +  "verdict": "continue",
 +  "reasons": [],
 +  "classification": "non-routine",
 +  "classification_reasons": [
-+    "Blast radius: the change is to the authorization of the runbook Go, the one gate before a running-system action runs with the runbook secrets; it touches the risk-list item 'auth'.",
-+    "Spec tightness: tight. No open concern is left, the acceptance can be measured (two named tests, eight existing Go tests that must stay unchanged, the three targets) and the refusal's shape is the existing one.",
-+    "Test coverage: existing tests cover the Go path, but the change needs a declared fixture edit under tests/ (GITHUB_REPOSITORY_OWNER in rollback_incident) so that five existing Go tests keep passing. That is a test-infrastructure change in a fix-type change, which is not routine."
++    "Blast radius: the change is to the authorization of the runbook Go, the one gate before a running-system action runs with the runbook secrets. It touches the risk-list item 'auth'.",
++    "Spec tightness: tight. Every flagged concern is decided (auth by decision 35, the fixture edit by panel decision 1, the label that stays). The acceptance can be measured: two named tests with stated assertions, eight existing Go tests unchanged in body, and the three targets.",
++    "Test coverage: the Go path is covered, but the fix needs a declared test-infrastructure edit (a GITHUB_REPOSITORY_OWNER line in the rollback_incident fixture) in a fix-type change, so it is not covered by the existing tests as they stand."
 +  ],
 +  "attempted": [
-+    "Intent: the intent asks for cli.py:1183 to lose the weakness where any person's sdlc:go label runs the runbook, proven by a reproducing test. The spec adds is_owner_actor after the bot/automation branch of _human_label_actor, which is the intent's suggested patch with a top-level import. This solves the stated problem and not a nearby one.",
-+    "Spec and plan: R1 to R10 each map to a plan step or a proof line. The only flagged concerns are the 'auth' risk item (decided, decision 35), the fixture edit (declared, with its reason) and the label-stays question (decided, with its rule). Two files are listed and the order is test first, then fix, which matches the intent's constraint.",
-+    "Claim: _human_label_actor(repo, number, label, config) sits at cli.py:1179-1188 with the bot/automation branch as its last refusal. Checked; true.",
-+    "Claim: cmd_go passes the approved copy (_approved_config -> approved_files: the fetched origin/<default> copy, fail closed) into _human_label_actor before _judge, and a (None, why) emits performed:false, exits 0 and touches no label, status or runbook. Checked at cli.py:1201-1218; true.",
-+    "Claim: is_owner_actor(actor, config, env=None, repo) reads sdlc.yaml:owner, else GITHUB_REPOSITORY_OWNER, else the owner part of GITHUB_REPOSITORY or repo, ignores case and fails closed on bot, automation and unknown. Checked at unpark.py:78-115; true. The spec's R2 leaves out the GITHUB_REPOSITORY step, which is harmless.",
-+    "Claim: state.unpark imports nothing from detect (no import cycle). Checked: its top-level imports are state.conventions and state.status, and gate.policy and pr.github are imported lazily; true. detect/cli.py already uses the sys.path plus '# noqa: E402' import pattern (lines 54-61).",
-+    "Claim: label_actor reads the last labeled event. Checked at pr/github.py:472-489; true. The owner's re-application is therefore the one judged, and a collaborator's later re-application fails closed.",
-+    "Claim: the runbook workflow's if: keeps only the coarse [bot] check and its comment says 'detect/cli.py go checks the actor again'. Checked in template/.github/workflows/sdlc-runbook.yml:52-56; true. The Go step runs on a runner where GITHUB_REPOSITORY_OWNER is set by default, so the owner resolves in CI.",
-+    "Claim: five existing Go tests would fail without the fixture edit. Checked: by_a_person, refuse_without_the_app (the go re-run), runs_only_a_route_that_asked_for_it (its reason would change), reads_the_automation_identity (the head case) and malformed_head (go) all use actor 'the-owner' on REPO 'o/r' with no owner named. The rewritten-origin and unreadable-copy tests refuse before the actor check, and the main case of the automation-identity test refuses at the bot/automation branch. The count of five is correct.",
-+    "Claim: tests/conftest.py removes every GITHUB_* variable and says a test that needs one sets it itself through monkeypatch. Checked at lines 14-21 and 78-84; true. The only reader of GITHUB_REPOSITORY_OWNER in plugin/ is unpark.owner_login (grep), so the fixture variable changes no other module's behaviour. test_park_records_... sets GITHUB_REPOSITORY, which owner_login reads only after GITHUB_REPOSITORY_OWNER, and park does not call the owner check.",
-+    "Claim: the template sdlc.yaml carries no active owner: key (it is '# owner: your-login' at line 203), so the fixture project's main names no owner and the plan's head/main test cases are meaningful. Checked; true.",
-+    "Decisions: 14 (Go is the owner's per-incident act for running-system actions) and 34 point 3 (one function, is_owner_actor, fail closed, the default branch's sdlc.yaml:owner; a workflow if: is only a coarse check). Decision 37 removes only the (c)/(d) label approvals from 34. The design matches all three.",
-+    "Proof: design phase, so there is no toolchain log to compare. The plan's proof names two new tests with concrete assertions and says each must fail on 80d7de5 before the fix.",
-+    "Tests: could the collaborator test pass with the bug present? No. Today 'colleague' passes the bot check and the runbook runs (performed True, spy called). Build-time note: in the main case of test_go_reads_the_owner_from_the_default_branch, the 'the-owner' half must run before the colleague's Go and assert the owner reason. If it runs after, the go-requested record is already 'ran' and the refusal would come from 'did not ask for Go', which passes vacuously. Step 1 says that half fails before the fix, which implies the right order. This is a hint, not a reason.",
-+    "Tests: the intent forbids editing pre-existing tests to make the fix pass. The fixture edit touches no test body or assertion, sets one runner variable the way conftest prescribes, is in the reproducing commit before the lock, and is declared in spec Flagged concerns and plan Risks. It does not weaken what any test proves, since the existing tests still assert the runbook runs for the (now explicit) owner.",
-+    "Blast radius: one caller (cmd_go). No data shape, schema, migration or workflow change and no guardrail file. The by-hand route still resolves the owner from --repo. Live projects where a collaborator's Go used to run lose that, which is the intended narrowing under decision 34.",
-+    "Policies: security-baseline rule 1 (the check sits on the server in the step with the secrets, against the default branch's copy), rule 3 (no credential) and rule 6 (no new dependency), coding-standards rule 4 (test first, nothing weakened) and ux-and-brand rule 4 (the reason names the label, the actor, the owner requirement and that the label stays). All applied; none silently skipped.",
++    "Intent: the intent wants cli.py:1183 to stop accepting any person's sdlc:go, with a reproducing test written first. The spec puts is_owner_actor after the bot and automation branch of _human_label_actor, against the approved copy. That is the intent's suggested patch with a top-level import and a reason text that follows R5. It solves the stated problem.",
++    "Spec and plan: R1 to R10 each map to a plan step or a proof line. Two files are listed, in the order test then fix. The panel decision's three conditions are all in plan.md: the fixture line goes in the reproducing-test commit before lock-tests; the step-1 log runs the module with the fixture line alone; the Risks line names owner_login as the only direct reader and lists the seven indirect callers. The spec's Flagged concerns record the decision.",
++    "Claim: _human_label_actor(repo, number, label, config) is at cli.py:1179-1188 and its last refusal is the bot/automation branch. Checked; true.",
++    "Claim: cmd_go passes `approved` (_approved_config, fail closed) to _human_label_actor before _judge, and a (None, why) emits performed:false and exits 0 without touching labels, status or the runbook. Checked at cli.py:1201-1218; true.",
++    "Claim: is_owner_actor/owner_login read sdlc.yaml:owner, then GITHUB_REPOSITORY_OWNER, then GITHUB_REPOSITORY or repo; they ignore case and fail closed on an empty actor, a [bot], the automation identity and an unknown owner. Checked at unpark.py:78-115; true. R2 omits the GITHUB_REPOSITORY step, which is harmless.",
++    "Claim: there is no import cycle. Checked: unpark imports state.conventions and state.status at the top, and gate.policy and pr.github lazily, nothing from detect. detect/cli.py already uses the sys.path plus '# noqa: E402' pattern at lines 50-61, so the plan's E402 import matches.",
++    "Claim (the corrected Risks line): GITHUB_REPOSITORY_OWNER reaches no is_owner_actor caller under the rollback_incident fixture. Checked further: cmd_go's _gate_and_pr runs gate/cli.py and pr/cli.py as subprocesses that inherit os.environ (_cli at cli.py:134 passes no env), so the variable does reach them. However, gate/checks.py imports only is_automation_actor and runner-reset helpers from unpark, and pr/cli.py reaches review_request (owner_login) only after a GitHub repo is resolved. The tests' bare local origin returns 'no GitHub remote' at pr/cli.py:157 first. The claim holds in effect, and the step-1 log is the stated check.",
++    "Claim: five existing Go tests use actor 'the-owner' on REPO 'o/r' with no owner named and would fail without the fixture line. Checked (tests/test_detect_cli.py:789, 843, 1296, 1690 head case, 2040 go case); true. With the fixture, the main case of the automation-identity test still refuses at the bot/automation branch first, with the same reason, which meets R6's order. The rewritten-origin and unreadable-copy tests refuse before the actor check.",
++    "Claim: tests/conftest.py removes every GITHUB_* variable and tells a test to set the one it needs through monkeypatch. Checked at lines 14-21 and 78-84; true. The fixture's monkeypatch is the same function-scoped instance the tests use, so the tests that also setenv/delenv other variables are unaffected.",
++    "Claim: the new main case orders the-owner's Go (refused, because owner: colleague on origin/main overrides GITHUB_REPOSITORY_OWNER) before the colleague's Go (which runs). Checked: the order is needed because after a run the record says 'ran', and a later Go is refused with 'did not ask for Go'. On today's code the-owner's half runs the runbook, so the test fails before the fix as step 1 says. The head case fails today because the colleague passes the bot check. Neither can pass with the bug present.",
++    "Claim: the template's sdlc.yaml has no active owner: key, so appending 'owner: colleague' creates no duplicate key and the fixture project's main names no owner. The previous round checked this and it is unchanged here. load_sdlc_config has no owner-specific rule that would reject the key.",
++    "Decisions: 14 (Go is the owner's per-incident act) and 34 point 3 (one function, fail closed, the default branch's owner; a workflow if: is only a coarse check). The design matches both and leaves sdlc-runbook.yml unchanged.",
++    "Proof: design phase, so there is no toolchain log to compare. The plan names the two new tests with their assertions, says each fails on 80d7de5 before the fix, and requires the step-1 log with the fixture line alone.",
++    "Tests: no pre-existing test body or assertion changes. The fixture line is declared in the spec, the plan and the panel decision, and sits before the lock. It does not weaken what any test proves: the existing tests still assert that the runbook runs for the now explicit owner, and the new tests prove a non-owner is refused.",
++    "Blast radius: one caller (cmd_go). No data shape, schema, migration, workflow or guardrail file changes. The diff stays inside the change folder. The by-hand route still resolves the owner from --repo. The intended narrowing affects live projects where a collaborator gave the Go and organization repositories with no owner: key; the brief records both.",
++    "Policies: security-baseline rule 1 (the server-side check in the step that holds the secrets, against the default branch's copy), rule 3 (no credential) and rule 6 (no new dependency). Coding-standards rule 4 (test first, nothing weakened). ux-and-brand rule 4 (the reason names the label, the actor and the owner requirement, and says the label stays). All applied.",
 +    "Skip markers: not checked at design (the ratchets check runs at build and test).",
 +    "Drive: not applicable at design."
 +  ]
 +}
 diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.model.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.model.json
 new file mode 100644
-index 0000000..67c213d
+index 0000000..fbd5b2b
 --- /dev/null
 +++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.model.json
 @@ -0,0 +1,14 @@
 +{
-+  "agent_id": "a900e913137bafcd3",
++  "agent_id": "a204ebc48f039334b",
 +  "agent_type": "sdlc:adversarial-reviewer",
-+  "at": "2026-10-28T16:42:01Z",
-+  "head": "adcf49b958b3976a901db4d044f15ba39f0a5a5f",
++  "at": "2026-10-28T16:47:52Z",
++  "head": "f5395d6dc3375294877f9b3b03592fdb60a60d9d",
 +  "member": "reviewer",
 +  "models": [
 +    "claude-opus-5-5"
@@ -74,7 +81,262 @@ index 0000000..67c213d
 +  "phase": "design",
 +  "reason": null,
 +  "schema_version": 1,
-+  "transcript": "/home/runner/.claude/projects/-home-runner-work-sdlc-framework-sdlc-framework/af7fafc1-4b7d-4bd2-8d67-c7fa106e5300/subagents/agent-a900e913137bafcd3.jsonl"
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-sdlc-framework-sdlc-framework/af7fafc1-4b7d-4bd2-8d67-c7fa106e5300/subagents/agent-a204ebc48f039334b.jsonl"
++}
+diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/claude-design.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/claude-design.json
+new file mode 100644
+index 0000000..d3461c9
+--- /dev/null
++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/claude-design.json
+@@ -0,0 +1,131 @@
++{
++  "api_error_status": null,
++  "duration_api_ms": 826641,
++  "duration_ms": 780118,
++  "fast_mode_disabled_reason": "sdk_opt_in_required",
++  "fast_mode_state": "off",
++  "first_content_frame_ms": 946,
++  "is_error": false,
++  "modelUsage": {
++    "claude-fable-5-1": {
++      "cacheCreationInputTokens": 243482,
++      "cacheReadInputTokens": 3429691,
++      "canonicalModel": "claude-fable-5-1",
++      "contextWindow": 1000000,
++      "costBasis": "list",
++      "costUSD": 7.389482749999998,
++      "inputTokens": 1254,
++      "maxOutputTokens": 64000,
++      "outputTokens": 48135,
++      "provider": "firstParty",
++      "thinkingTokens": 13452,
++      "webSearchRequests": 0
++    },
++    "claude-opus-5-5": {
++      "cacheCreationInputTokens": 175637,
++      "cacheReadInputTokens": 1659297,
++      "canonicalModel": "claude-opus-5-5",
++      "contextWindow": 1000000,
++      "costBasis": "list",
++      "costUSD": 1.7879643999999997,
++      "inputTokens": 80,
++      "maxOutputTokens": 128000,
++      "outputTokens": 28880,
++      "provider": "firstParty",
++      "thinkingTokens": 10478,
++      "webSearchRequests": 0
++    }
++  },
++  "num_turns": 87,
++  "permission_denials": [
++    {
++      "tool_input": {
++        "command": "python \"/home/runner/work/sdlc-framework/sdlc-framework/framework/plugin/gate/cli.py\" check --root \"/home/runner/work/sdlc-framework/sdlc-framework\" --id 0006 --phase design; echo \"exit=$?\"",
++        "description": "Run the design gate"
++      },
++      "tool_name": "Bash",
++      "tool_use_id": "toolu_016GAPm2DSACU8djYWNzKQZA"
++    }
++  ],
++  "queued_turn_count": 0,
++  "result": "Design PR https://github.com/luissiviero/sdlc-framework/pull/403 is open with `sdlc:design-ready`; the gate result is `wait` (the owner's merge is the design gate), 0 open concerns (1 closed by panel decision 1, plus the `auth` risk-list declaration in the close-look banner), 1 panel decision; the adversarial reviewer said continue and classed the plan non-routine. Nothing else was started.\n\nOne note: a chained Bash call (the gate command followed by an echo) was denied as a whole by the permission rules, so I re-ran the gate command alone; nothing was lost.",
++  "result_index": 0,
++  "safety_stops": 0,
++  "sdlc_run": {
++    "at": "2026-10-28T16:48:28Z",
++    "credential": "oauth",
++    "seconds": 781.1,
++    "timed_out": false
++  },
++  "session_id": "af7fafc1-4b7d-4bd2-8d67-c7fa106e5300",
++  "stop_reason": "end_turn",
++  "subagent_stats": {
++    "by_type": {
++      "general-purpose": 2,
++      "sdlc:adversarial-reviewer": 3
++    },
++    "completed": 5,
++    "failed": 0,
++    "killed": {
++      "parent": 0,
++      "system": 0,
++      "user": 0
++    },
++    "max_depth": 1,
++    "refused": {
++      "budget": 0,
++      "concurrency_limit": 0,
++      "depth_limit": 0
++    },
++    "requested": {
++      "background": 0,
++      "foreground": 0,
++      "unset": 5
++    },
++    "spawned": 5,
++    "spawned_by_subagents": 0,
++    "started_in_background": 0
++  },
++  "subtype": "success",
++  "terminal_reason": "completed",
++  "time_to_request_ms": 91,
++  "total_cost_usd": 9.177447149999995,
++  "ttft_ms": 1561,
++  "ttft_stream_ms": 946,
++  "type": "result",
++  "usage": {
++    "cache_creation": {
++      "ephemeral_1h_input_tokens": 142566,
++      "ephemeral_5m_input_tokens": 0
++    },
++    "cache_creation_input_tokens": 142566,
++    "cache_read_input_tokens": 3088802,
++    "fallback_credit": null,
++    "inference_geo": "global",
++    "input_tokens": 962,
++    "iterations": [
++      {
++        "cache_creation": {
++          "ephemeral_1h_input_tokens": 535,
++          "ephemeral_5m_input_tokens": 0
++        },
++        "cache_creation_input_tokens": 535,
++        "cache_read_input_tokens": 142031,
++        "input_tokens": 32,
++        "output_tokens": 206,
++        "type": "message"
++      }
++    ],
++    "output_tokens": 37603,
++    "output_tokens_details": {
++      "thinking_tokens": 10013
++    },
++    "server_tool_use": {
++      "web_fetch_requests": 0,
++      "web_search_requests": 0
++    },
++    "service_tier": "standard",
++    "speed": "standard"
++  },
++  "uuid": "d28c55d8-128d-450a-af32-fb49b2083182"
++}
+diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/claude-design.stderr.txt b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/claude-design.stderr.txt
+new file mode 100644
+index 0000000..6dc929f
+--- /dev/null
++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/claude-design.stderr.txt
+@@ -0,0 +1 @@
++Ignoring 4 permissions.allow entries from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects["/home/runner/work/sdlc-framework/sdlc-framework"].hasTrustDialogAccepted: true in /home/runner/.claude.json.
+diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/claude-explain.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/claude-explain.json
+new file mode 100644
+index 0000000..3aa9e68
+--- /dev/null
++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/claude-explain.json
+@@ -0,0 +1,105 @@
++{
++  "api_error_status": null,
++  "duration_api_ms": 10841,
++  "duration_ms": 11005,
++  "fast_mode_disabled_reason": "sdk_opt_in_required",
++  "fast_mode_state": "off",
++  "first_content_frame_ms": 698,
++  "is_error": false,
++  "modelUsage": {
++    "claude-opus-5-5": {
++      "cacheCreationInputTokens": 27375,
++      "cacheReadInputTokens": 19793,
++      "canonicalModel": "claude-opus-5-5",
++      "contextWindow": 1000000,
++      "costBasis": "list",
++      "costUSD": 0.24319460000000004,
++      "inputTokens": 4,
++      "maxOutputTokens": 128000,
++      "outputTokens": 1011,
++      "provider": "firstParty",
++      "thinkingTokens": 349,
++      "webSearchRequests": 0
++    }
++  },
++  "num_turns": 4,
++  "permission_denials": [],
++  "queued_turn_count": 0,
++  "result": "1. **What failed:** the design gate parked change 0006 because `python -m pytest` exited 1. There were 10 failures, all in `tests/test_cancelled_park.py`. Build, lint and every other gate check passed, and the stderr file only has the workspace-trust warning.\n2. **Likely cause:** the design diff only touches the change folder, so this change's work didn't break these tests. The assertions show them reading the CI job's own state: a parked reason saying the commands weren't green, and the workflow's head branch where they expect their fixture's. So the cancel/park tests aren't isolated from the runner's environment variables or saved run state.\n3. **Flaky or real:** real, not random. It's caused by the environment and should fail the same way on every gate run inside this workflow, even though it probably passes locally.\n4. **First thing to check:** run `python -m pytest tests/test_cancelled_park.py` locally, then again with the CI's `GITHUB_*` / SDLC run variables exported. Then check whether the tests' fixtures clear those variables and point the saved-state path at the test's temp directory.",
++  "result_index": 0,
++  "safety_stops": 0,
++  "sdlc_run": {
++    "at": "2026-10-28T16:55:40Z",
++    "credential": "oauth",
++    "seconds": 12.3,
++    "timed_out": false
++  },
++  "session_id": "cb54b5c3-cee8-4d42-a691-8a073523c968",
++  "stop_reason": "end_turn",
++  "subagent_stats": {
++    "by_type": {},
++    "completed": 0,
++    "failed": 0,
++    "killed": {
++      "parent": 0,
++      "system": 0,
++      "user": 0
++    },
++    "max_depth": 0,
++    "refused": {
++      "budget": 0,
++      "concurrency_limit": 0,
++      "depth_limit": 0
++    },
++    "requested": {
++      "background": 0,
++      "foreground": 0,
++      "unset": 0
++    },
++    "spawned": 0,
++    "spawned_by_subagents": 0,
++    "started_in_background": 0
++  },
++  "subtype": "success",
++  "terminal_reason": "completed",
++  "time_to_request_ms": 85,
++  "total_cost_usd": 0.24319460000000004,
++  "ttft_ms": 1248,
++  "ttft_stream_ms": 698,
++  "type": "result",
++  "usage": {
++    "cache_creation": {
++      "ephemeral_1h_input_tokens": 27375,
++      "ephemeral_5m_input_tokens": 0
++    },
++    "cache_creation_input_tokens": 27375,
++    "cache_read_input_tokens": 19793,
++    "fallback_credit": null,
++    "inference_geo": "global",
++    "input_tokens": 4,
++    "iterations": [
++      {
++        "cache_creation": {
++          "ephemeral_1h_input_tokens": 7582,
++          "ephemeral_5m_input_tokens": 0
++        },
++        "cache_creation_input_tokens": 7582,
++        "cache_read_input_tokens": 19793,
++        "input_tokens": 2,
++        "output_tokens": 710,
++        "type": "message"
++      }
++    ],
++    "output_tokens": 1011,
++    "output_tokens_details": {
++      "thinking_tokens": 349
++    },
++    "server_tool_use": {
++      "web_fetch_requests": 0,
++      "web_search_requests": 0
++    },
++    "service_tier": "standard",
++    "speed": "standard"
++  },
++  "uuid": "0a0273f2-5982-4523-b5b7-2fa4ea243372"
 +}
 diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/decisions-design.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/decisions-design.json
 new file mode 100644
@@ -125,23 +387,308 @@ index 0000000..2696431
 +Total panel cost: n/a
 diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/diff-design.patch b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/diff-design.patch
 new file mode 100644
-index 0000000..7c7179e
+index 0000000..496c701
 --- /dev/null
 +++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/diff-design.patch
-@@ -0,0 +1,161 @@
-+ .../evidence/hook-log.jsonl                        | 11 +++++
-+ .../evidence/run-design.json                       |  5 +++
-+ .../plan.md                                        | 47 ++++++++++++++++++++++
-+ .../spec.md                                        | 38 +++++++++++++++++
-+ .../status.yaml                                    |  8 ++--
-+ 5 files changed, 105 insertions(+), 4 deletions(-)
+@@ -0,0 +1,600 @@
++ .../evidence/adversarial-review-design.json        |  34 +++++
++ .../evidence/adversarial-review-design.model.json  |  14 ++
++ .../evidence/decisions-design.json                 |  28 ++++
++ .../evidence/decisions-design.md                   |   7 +
++ .../evidence/diff-design.patch                     | 161 +++++++++++++++++++++
++ .../evidence/hook-log.jsonl                        |  38 +++++
++ .../evidence/panel/design-1-advocate.md            |   9 ++
++ .../evidence/panel/design-1-advocate.model.json    |  14 ++
++ .../evidence/panel/design-1-conciliator.json       |  12 ++
++ .../evidence/panel/design-1-reviewer.md            |  10 ++
++ .../evidence/panel/design-items.json               |  28 ++++
++ .../evidence/roles/security-policy-design.md       |   7 +
++ .../evidence/run-design.json                       |   5 +
++ .../plan.md                                        |  53 +++++++
++ .../spec.md                                        |  38 +++++
++ .../status.yaml                                    |  10 +-
++ 16 files changed, 463 insertions(+), 5 deletions(-)
 +
++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json
++new file mode 100644
++index 0000000..78f1560
++--- /dev/null
+++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json
++@@ -0,0 +1,34 @@
+++{
+++  "schema_version": 1,
+++  "phase": "design",
+++  "head": "adcf49b958b3976a901db4d044f15ba39f0a5a5f",
+++  "verdict": "continue",
+++  "reasons": [],
+++  "classification": "non-routine",
+++  "classification_reasons": [
+++    "Blast radius: the change is to the authorization of the runbook Go, the one gate before a running-system action runs with the runbook secrets; it touches the risk-list item 'auth'.",
+++    "Spec tightness: tight. No open concern is left, the acceptance can be measured (two named tests, eight existing Go tests that must stay unchanged, the three targets) and the refusal's shape is the existing one.",
+++    "Test coverage: existing tests cover the Go path, but the change needs a declared fixture edit under tests/ (GITHUB_REPOSITORY_OWNER in rollback_incident) so that five existing Go tests keep passing. That is a test-infrastructure change in a fix-type change, which is not routine."
+++  ],
+++  "attempted": [
+++    "Intent: the intent asks for cli.py:1183 to lose the weakness where any person's sdlc:go label runs the runbook, proven by a reproducing test. The spec adds is_owner_actor after the bot/automation branch of _human_label_actor, which is the intent's suggested patch with a top-level import. This solves the stated problem and not a nearby one.",
+++    "Spec and plan: R1 to R10 each map to a plan step or a proof line. The only flagged concerns are the 'auth' risk item (decided, decision 35), the fixture edit (declared, with its reason) and the label-stays question (decided, with its rule). Two files are listed and the order is test first, then fix, which matches the intent's constraint.",
+++    "Claim: _human_label_actor(repo, number, label, config) sits at cli.py:1179-1188 with the bot/automation branch as its last refusal. Checked; true.",
+++    "Claim: cmd_go passes the approved copy (_approved_config -> approved_files: the fetched origin/<default> copy, fail closed) into _human_label_actor before _judge, and a (None, why) emits performed:false, exits 0 and touches no label, status or runbook. Checked at cli.py:1201-1218; true.",
+++    "Claim: is_owner_actor(actor, config, env=None, repo) reads sdlc.yaml:owner, else GITHUB_REPOSITORY_OWNER, else the owner part of GITHUB_REPOSITORY or repo, ignores case and fails closed on bot, automation and unknown. Checked at unpark.py:78-115; true. The spec's R2 leaves out the GITHUB_REPOSITORY step, which is harmless.",
+++    "Claim: state.unpark imports nothing from detect (no import cycle). Checked: its top-level imports are state.conventions and state.status, and gate.policy and pr.github are imported lazily; true. detect/cli.py already uses the sys.path plus '# noqa: E402' import pattern (lines 54-61).",
+++    "Claim: label_actor reads the last labeled event. Checked at pr/github.py:472-489; true. The owner's re-application is therefore the one judged, and a collaborator's later re-application fails closed.",
+++    "Claim: the runbook workflow's if: keeps only the coarse [bot] check and its comment says 'detect/cli.py go checks the actor again'. Checked in template/.github/workflows/sdlc-runbook.yml:52-56; true. The Go step runs on a runner where GITHUB_REPOSITORY_OWNER is set by default, so the owner resolves in CI.",
+++    "Claim: five existing Go tests would fail without the fixture edit. Checked: by_a_person, refuse_without_the_app (the go re-run), runs_only_a_route_that_asked_for_it (its reason would change), reads_the_automation_identity (the head case) and malformed_head (go) all use actor 'the-owner' on REPO 'o/r' with no owner named. The rewritten-origin and unreadable-copy tests refuse before the actor check, and the main case of the automation-identity test refuses at the bot/automation branch. The count of five is correct.",
+++    "Claim: tests/conftest.py removes every GITHUB_* variable and says a test that needs one sets it itself through monkeypatch. Checked at lines 14-21 and 78-84; true. The only reader of GITHUB_REPOSITORY_OWNER in plugin/ is unpark.owner_login (grep), so the fixture variable changes no other module's behaviour. test_park_records_... sets GITHUB_REPOSITORY, which owner_login reads only after GITHUB_REPOSITORY_OWNER, and park does not call the owner check.",
+++    "Claim: the template sdlc.yaml carries no active owner: key (it is '# owner: your-login' at line 203), so the fixture project's main names no owner and the plan's head/main test cases are meaningful. Checked; true.",
+++    "Decisions: 14 (Go is the owner's per-incident act for running-system actions) and 34 point 3 (one function, is_owner_actor, fail closed, the default branch's sdlc.yaml:owner; a workflow if: is only a coarse check). Decision 37 removes only the (c)/(d) label approvals from 34. The design matches all three.",
+++    "Proof: design phase, so there is no toolchain log to compare. The plan's proof names two new tests with concrete assertions and says each must fail on 80d7de5 before the fix.",
+++    "Tests: could the collaborator test pass with the bug present? No. Today 'colleague' passes the bot check and the runbook runs (performed True, spy called). Build-time note: in the main case of test_go_reads_the_owner_from_the_default_branch, the 'the-owner' half must run before the colleague's Go and assert the owner reason. If it runs after, the go-requested record is already 'ran' and the refusal would come from 'did not ask for Go', which passes vacuously. Step 1 says that half fails before the fix, which implies the right order. This is a hint, not a reason.",
+++    "Tests: the intent forbids editing pre-existing tests to make the fix pass. The fixture edit touches no test body or assertion, sets one runner variable the way conftest prescribes, is in the reproducing commit before the lock, and is declared in spec Flagged concerns and plan Risks. It does not weaken what any test proves, since the existing tests still assert the runbook runs for the (now explicit) owner.",
+++    "Blast radius: one caller (cmd_go). No data shape, schema, migration or workflow change and no guardrail file. The by-hand route still resolves the owner from --repo. Live projects where a collaborator's Go used to run lose that, which is the intended narrowing under decision 34.",
+++    "Policies: security-baseline rule 1 (the check sits on the server in the step with the secrets, against the default branch's copy), rule 3 (no credential) and rule 6 (no new dependency), coding-standards rule 4 (test first, nothing weakened) and ux-and-brand rule 4 (the reason names the label, the actor, the owner requirement and that the label stays). All applied; none silently skipped.",
+++    "Skip markers: not checked at design (the ratchets check runs at build and test).",
+++    "Drive: not applicable at design."
+++  ]
+++}
++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.model.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.model.json
++new file mode 100644
++index 0000000..67c213d
++--- /dev/null
+++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.model.json
++@@ -0,0 +1,14 @@
+++{
+++  "agent_id": "a900e913137bafcd3",
+++  "agent_type": "sdlc:adversarial-reviewer",
+++  "at": "2026-10-28T16:42:01Z",
+++  "head": "adcf49b958b3976a901db4d044f15ba39f0a5a5f",
+++  "member": "reviewer",
+++  "models": [
+++    "claude-opus-5-5"
+++  ],
+++  "phase": "design",
+++  "reason": null,
+++  "schema_version": 1,
+++  "transcript": "/home/runner/.claude/projects/-home-runner-work-sdlc-framework-sdlc-framework/af7fafc1-4b7d-4bd2-8d67-c7fa106e5300/subagents/agent-a900e913137bafcd3.jsonl"
+++}
++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/decisions-design.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/decisions-design.json
++new file mode 100644
++index 0000000..f0ffe15
++--- /dev/null
+++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/decisions-design.json
++@@ -0,0 +1,28 @@
+++{
+++  "decisions": [
+++    {
+++      "advocate": "No objection: accept the declared fixture edit (`rollback_incident` sets `GITHUB_REPOSITORY_OWNER=the-owner` through `monkeypatch` in the reproducing-test commit), on two conditions: the step-1 log must show every existing `rollback_incident` test passing before the fix, and the Risks line on readers must be corrected.",
+++      "at": "2026-10-28T16:45:00Z",
+++      "cost_usd": null,
+++      "decision": "The one-line `monkeypatch.setenv(\"GITHUB_REPOSITORY_OWNER\", \"the-owner\")` in the `rollback_incident` fixture goes into the `fix(0006): reproducing test` commit before `lock-tests`, with no test body or assertion changed; the step-1 log must show every existing `rollback_incident` test passing with the fixture line alone, before the fix; plan.md's Risks line must say `owner_login` is the only direct reader and name `is_owner_actor` and its callers (run_phase, merge_step, comment_dispatch, review_request, release/cli, pr/digest, state/unpark) as the indirect ones.",
+++      "head": "adcf49b958b3976a901db4d044f15ba39f0a5a5f",
+++      "item": "The existing Go tests in `tests/test_detect_cli.py` authorize with the actor `the-owner` on the repository `o/r` and no owner named, so with the fix that actor is not the owner and five of them (the runbook runs, the App refusal's re-run, the route that asked for Go, the head-listed automation identity, the malformed head copy) would fail. The reproducing-test commit, before the test-file lock, must also make the fixture's owner explicit (the `rollback_incident` fixture sets `GITHUB_REPOSITORY_OWNER` to `the-owner` through `monkeypatch`, the pattern `tests/conftest.py` prescribes for a runner variable a test needs); the tests' bodies and assertions are untouched and they pass before the fix as they do today. The intent says \"no pre-existing test is edited to make the fix pass\": the fixture edit changes no test's assertion and weakens nothing (coding-standards rule 4), but it is an edit under `tests/` that the fix needs, so it is declared here rather than made silently.",
+++      "item_n": 1,
+++      "key": "concern:e8ff2e4ed004de40",
+++      "kind": "concern",
+++      "n": 1,
+++      "overturned": null,
+++      "phase": "design",
+++      "rationale": [
+++        "Both verdicts accept the fixture edit and decide as the plan does; the decision follows them.",
+++        "REVIEW.md lines 23-24 and the gate's test_lock check lock test files from the lock commit on; a fixture line in the reproducing-test commit sits outside that range by the rule's own mechanism, like the two new tests added to the same file, and the intent's constraint is at test level (coding-standards rule 4: no assertion skipped, weakened or deleted).",
+++        "On the one fact the verdicts dispute, the grep over plugin/ confirms the advocate: GITHUB_REPOSITORY_OWNER is read only in plugin/state/unpark.py owner_login, but is_owner_actor wraps it and is called from seven modules, so the plan's 'only reader' line is true for direct reads and too narrow for the blast radius; the safer reading corrects the line and requires the before-the-fix log rather than asserting the pass.",
+++        "The alternatives (actor to `o` in six bodies and asserted strings; owner in the fixture project's sdlc.yaml; the variable in conftest.py against its clean-environment rule) each edit more of tests/ and are worse under the same rules.",
+++        "The by-hand route's --repo fallback is no longer reached by the Go tests; tests/test_owner_rounds.py covers that rule, so this is noted, not parked."
+++      ],
+++      "reviewer": "Decide the concern as allowed: the fixture line ships in the reproducing-test commit, before `lock-tests`, and is declared in plan.md; no test body or assertion changes."
+++    }
+++  ],
+++  "phase": "design",
+++  "schema_version": 1
+++}
++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/decisions-design.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/decisions-design.md
++new file mode 100644
++index 0000000..2696431
++--- /dev/null
+++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/decisions-design.md
++@@ -0,0 +1,7 @@
+++# Decisions taken for you — the design phase
+++
+++One line per panel decision (decision 21): the item, the reviewer's and the devil's advocate's verdicts, the conciliator's decision and rationale, the cost. A review comment on any of them overturns it (/sdlc-fix); an overturned line says so.
+++
+++- 1. [concern] The existing Go tests in `tests/test_detect_cli.py` authorize with the actor `the-owner` on the repository `o/r` and no owner named, so with the fix that actor is not the owner and five of them (the runbook runs, the App refusal's re-run, the route that asked for Go, the head-listed automation identity, the malformed head copy) would fail. The reproducing-test commit, before the test-file lock, must also make the fixture's owner explicit (the `rollback_incident` fixture sets `GITHUB_REPOSITORY_OWNER` to `the-owner` through `monkeypatch`, the pattern `tests/conftest.py` prescribes for a runner variable a test needs); the tests' bodies and assertions are untouched and they pass before the fix as they do today. The intent says "no pre-existing test is edited to make the fix pass": the fixture edit changes no test's assertion and weakens nothing (coding-standards rule 4), but it is an edit under `tests/` that the fix needs, so it is declared here rather than made silently. — reviewer: Decide the concern as allowed: the fixture line ships in the reproducing-test commit, before `lock-tests`, and is declared in plan.md; no test body or assertion changes.; devil's advocate: No objection: accept the declared fixture edit (`rollback_incident` sets `GITHUB_REPOSITORY_OWNER=the-owner` through `monkeypatch` in the reproducing-test commit), on two conditions: the step-1 log must show every existing `rollback_incident` test passing before the fix, and the Risks line on readers must be corrected.; decision: The one-line `monkeypatch.setenv("GITHUB_REPOSITORY_OWNER", "the-owner")` in the `rollback_incident` fixture goes into the `fix(0006): reproducing test` commit before `lock-tests`, with no test body or assertion changed; the step-1 log must show every existing `rollback_incident` test passing with the fixture line alone, before the fix; plan.md's Risks line must say `owner_login` is the only direct reader and name `is_owner_actor` and its callers (run_phase, merge_step, comment_dispatch, review_request, release/cli, pr/digest, state/unpark) as the indirect ones.; rationale: Both verdicts accept the fixture edit and decide as the plan does; the decision follows them. REVIEW.md lines 23-24 and the gate's test_lock check lock test files from the lock commit on; a fixture line in the reproducing-test commit sits outside that range by the rule's own mechanism, like the two new tests added to the same file, and the intent's constraint is at test level (coding-standards rule 4: no assertion skipped, weakened or deleted). On the one fact the verdicts dispute, the grep over plugin/ confirms the advocate: GITHUB_REPOSITORY_OWNER is read only in plugin/state/unpark.py owner_login, but is_owner_actor wraps it and is called from seven modules, so the plan's 'only reader' line is true for direct reads and too narrow for the blast radius; the safer reading corrects the line and requires the before-the-fix log rather than asserting the pass. The alternatives (actor to `o` in six bodies and asserted strings; owner in the fixture project's sdlc.yaml; the variable in conftest.py against its clean-environment rule) each edit more of tests/ and are worse under the same rules. The by-hand route's --repo fallback is no longer reached by the Go tests; tests/test_owner_rounds.py covers that rule, so this is noted, not parked.; cost: n/a
+++
+++Total panel cost: n/a
++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/diff-design.patch b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/diff-design.patch
++new file mode 100644
++index 0000000..7c7179e
++--- /dev/null
+++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/diff-design.patch
++@@ -0,0 +1,161 @@
+++ .../evidence/hook-log.jsonl                        | 11 +++++
+++ .../evidence/run-design.json                       |  5 +++
+++ .../plan.md                                        | 47 ++++++++++++++++++++++
+++ .../spec.md                                        | 38 +++++++++++++++++
+++ .../status.yaml                                    |  8 ++--
+++ 5 files changed, 105 insertions(+), 4 deletions(-)
+++
+++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/hook-log.jsonl b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/hook-log.jsonl
+++new file mode 100644
+++index 0000000..4ffc700
+++--- /dev/null
++++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/hook-log.jsonl
+++@@ -0,0 +1,11 @@
++++{"at": "2026-10-28T16:35:33Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++++{"at": "2026-10-28T16:35:38Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++++{"at": "2026-10-28T16:36:49Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++++{"at": "2026-10-28T16:39:14Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++++{"at": "2026-10-28T16:39:14Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++++{"at": "2026-10-28T16:39:14Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++++{"at": "2026-10-28T16:39:14Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++++{"at": "2026-10-28T16:39:58Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++++{"at": "2026-10-28T16:39:58Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++++{"at": "2026-10-28T16:39:58Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++++{"at": "2026-10-28T16:39:58Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/run-design.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/run-design.json
+++new file mode 100644
+++index 0000000..c8fa309
+++--- /dev/null
++++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/run-design.json
+++@@ -0,0 +1,5 @@
++++{
++++  "phase": "design",
++++  "spend_usd": null,
++++  "started_at": "2026-10-28T16:35:44Z"
++++}
+++\ No newline at end of file
+++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md
+++new file mode 100644
+++index 0000000..7deec50
+++--- /dev/null
++++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md
+++@@ -0,0 +1,47 @@
++++# Plan: security: authz: The runbook Go (cmd_go via _human_label_actor) accepts the (from intent.md 2026-10-26, spec.md 2026-10-28)
++++
++++## Files that change
++++- `tests/test_detect_cli.py` — the reproducing tests (a collaborator's `sdlc:go` is refused; the owner named in `sdlc.yaml` is read from the default branch, never the head) and the fixture change that names the test project's owner, in the first commit, before the test-file lock.
++++- `plugin/detect/cli.py` — `_human_label_actor` refuses a label whose actor is not the owner's account (`state.unpark.is_owner_actor`, decision 34); one top-level import added.
++++
++++## Order of work
++++1. Write the reproducing test and see it fail. In `tests/test_detect_cli.py`, in the `# --- go` section, add `test_go_by_a_collaborator_performs_nothing`: `rollback_incident`, `write_proposal(change, "runbook:rollback-deploy")`, `dispatch` so the record says `go-requested`, `gh.actor = {"ok": True, "actor": "colleague", "reason": ""}`, then `go`; assert `code == 0`, `out["performed"] is False`, `"owner" in out["reason"]` and `"colleague" in out["reason"]`, `spy.calls == []`, `gh.named("set_labels") == []`, `runbook_records(change) == []`, `status_mod.read_status(change).runbook_authorized_by is None`. In the same commit, make the owner explicit: the `rollback_incident` fixture takes `monkeypatch` and sets `GITHUB_REPOSITORY_OWNER` to `the-owner` (the actor the existing Go tests use; `tests/conftest.py` removes every `GITHUB_*` variable and says a test that needs one sets it itself). Add the second test, `test_go_reads_the_owner_from_the_default_branch`, parametrized like `test_go_reads_the_automation_identity_from_the_default_branch`: `head` appends `owner: colleague` to the checkout's `sdlc.yaml` only and the colleague's label is still refused (`performed` false, no runbook call, no label change); `main` commits `owner: colleague` on `origin/main` through a clone, as `list_owner_as_automation_on_main` does, and the colleague's label then runs the runbook (`performed` true, `actor == "colleague"`, one runbook call) while `the-owner`'s does not. Run `python -m pytest tests/test_detect_cli.py -k go` and paste the output: the collaborator test and the `head` case fail (`performed` is True), the `main` case's `the-owner` half fails, every existing test passes. Commit the test file alone (`fix(0006): reproducing test`); the build run locks the test files after this commit.
++++2. The fix in `plugin/detect/cli.py`: add `from state.unpark import is_owner_actor  # noqa: E402` beside the `from state import ...` lines at the top; in `_human_label_actor`, after the bot/automation branch, add
++++   `if not is_owner_actor(actor, config, None, repo): return None, f"{label} was applied by {actor}, not by the owner's account: left where it is (decision 34)"`
++++   with a one-line comment that `config` is the default branch's copy. Nothing else in the function or in `cmd_go` changes. Update the function's section comment if it helps the reader; no other file.
++++3. Run the three targets (`python -m compileall -q plugin tests tasks.py .github/scripts`, `python -m pytest`, `python -m ruff check . && python -m ruff format --check .`) and the security-baseline check; paste the outputs. All green: the two new tests pass, the existing Go tests pass unchanged.
++++4. Commit the fix (`fix(0006): the runbook Go needs the owner's account`).
++++
++++## Risks
++++- The existing Go tests use the actor `the-owner` on repository `o/r` with no owner named; without the fixture change of step 1 the fix breaks five of them. Mitigation: the fixture change ships in the test commit, before the lock, and is declared in spec.md's Flagged concerns; the tests' bodies and assertions are not touched, and they pass before the fix as today.
++++- `GITHUB_REPOSITORY_OWNER` set by the fixture could reach another reader. Checked: `plugin/state/unpark.py owner_login` is its only reader in the plugin; `origin_mismatch` reads `GITHUB_REPOSITORY`, which stays unset, so the tests of the rewritten origin keep their reasons.
++++- A circular import: `state.unpark` imports `state.conventions`, `state.status` and, lazily, `gate.policy` and `pr.github`; nothing from `detect`. A top-level import matches how `plugin/ci/run_phase.py`, `merge_step.py` and `comment_dispatch.py` import it; if the import order in `detect/cli.py` proves awkward, the suggested patch's function-local import (`# noqa: PLC0415`) is the fallback.
++++- The riskiest step is 2, the one line of authorization: a wrong argument (the head's `config` instead of the approved one, `env` other than the process's) would read the wrong owner. `cmd_go` passes `approved` already; the test's `head` case proves the head's copy is ignored, the `main` case proves the default branch's `owner` is read.
++++- The by-hand route (`detect/cli.py go --repo owner/name` on the owner's PC, no runner variables): the owner is the owner part of `--repo`, which `cmd_go` requires; an organization repository names `owner` in `sdlc.yaml`. Fail closed when none of the three is known: the Go is refused with its reason, nothing runs.
++++- A live project where the Go was authorized by a collaborator's account on purpose: after this change that label no longer runs the runbook; the reason names the owner's account, and the owner applies the label themselves. This is decision 34's intended narrowing, not a regression.
++++- No new dependency; no guardrail file; no workflow change (the runbook workflow's `if:` keeps its coarse `[bot]` check, as decision 34 allows).
++++
++++## Options not taken
++++- Checking the owner in the runbook workflow's `if:` (`github.event.sender.login == github.repository_owner`): a workflow expression is the coarse check only (decision 34, point 3); it does not know `sdlc.yaml: owner` of an organization repository, and the step that holds the secrets must decide for itself (security-baseline rule 1). Not taken; the workflow is unchanged.
++++- Removing a non-owner's label instead of leaving it: the bot branch and the un-park labels leave a rejected label where it is (`plugin/state/unpark.py`), and removing it would need a labels call before the owner's act. Not taken (spec.md, the closed concern).
++++- Writing a second owner rule in `detect/cli.py` (reading `sdlc.yaml: owner` and the repository owner itself): decision 34 wants one function, fail closed; `is_owner_actor` already does it and is tested in `tests/test_owner_rounds.py`. Not taken.
++++- Naming the owner in the fixture project's `sdlc.yaml` on `main` instead of the environment variable: it would change the cached fixture repository (`fixture_repos.copy("detect-project", ...)`) for every test of the module and the dismiss tests' assumptions; the environment variable is one line in one fixture and the pattern `conftest.py` prescribes. Not taken.
++++- Changing the existing tests' actor from `the-owner` to `o`: edits six test bodies and the reason strings they assert; the intent forbids editing pre-existing tests to make the fix pass. Not taken.
++++- Also reading `author_association` of the label event: GitHub's `labeled` event carries the actor's login, not an association, and the owner rule is by login (decision 34). Not taken.
++++
++++## Proof
++++- test: tests/test_detect_cli.py::test_go_by_a_collaborator_performs_nothing (to be written in step 1; fails on `80d7de5cebd4`, passes after step 2)
++++- test: tests/test_detect_cli.py::test_go_reads_the_owner_from_the_default_branch (to be written in step 1; parametrized `head` and `main`)
++++- test: tests/test_detect_cli.py::test_go_by_a_person_runs_the_runbook_and_reruns_the_gate (exists; unchanged)
++++- test: tests/test_detect_cli.py::test_go_not_by_a_person_performs_nothing (exists; unchanged)
++++- test: tests/test_detect_cli.py::test_go_reads_the_automation_identity_from_the_default_branch (exists; unchanged)
++++- test: tests/test_owner_rounds.py (exists; the rule itself)
++++- The three targets of `sdlc.yaml` green with their literal output pasted in the build's evidence; the security-baseline check reports nothing on the diff.
++++- Quantifiable target (spec.md Acceptance): a collaborator's `sdlc:go` performs nothing; the owner's runs the runbook once; the full suite green.
++++
++++Interrogation (article p.16 step 3), answered and folded in above:
++++1. What could break: the callers of `_human_label_actor` (only `cmd_go`); the Go tests that use `the-owner`; nothing else reads the function. No data shape changes (`status.yaml: runbook_authorized_by` is written as before).
++++2. Riskiest step: step 2's argument choice, covered by the `head` and `main` test cases.
++++3. Options considered: the six above.
++++4. Implementable from the plan alone: yes, the test names, fixture, assertions, import and the one condition are named here; the suggested patch in `evidence/suggested-patch.diff` is the reference for the condition.
++++5. Proof items: the two new tests are to be written in step 1; the rest exist.
+++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md
+++new file mode 100644
+++index 0000000..a42e4c1
+++--- /dev/null
++++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md
+++@@ -0,0 +1,38 @@
++++# Spec: security: authz: The runbook Go (cmd_go via _human_label_actor) accepts the
++++Change id: 0006. Status: proposed. Produced by: sdlc plugin 1.0.46, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-and-brand, data-conventions, definition-of-done (plugin 1.0.46); overrides: none; policy sources: none
++++
++++## Requirements
++++- R1. A `sdlc:go` label applied by an account that is not the owner's performs nothing: no runbook runs, `status.yaml: runbook_authorized_by` stays `null`, no runbook record is written, the label stays on the pull request, and the command exits 0 with `performed: false` and a reason (decision 14: Go is the owner's per-incident act).
++++- R2. "The owner's account" is decision 34's one rule, `plugin/state/unpark.py is_owner_actor`: `sdlc.yaml: owner` when named, else the repository owner (the runner's `GITHUB_REPOSITORY_OWNER`, else the owner part of `--repo`); the comparison ignores case; a `[bot]`, the automation identity and an unknown owner fail closed. No second rule is written (decision 34, point 3: "One function ... decides it and fails closed").
++++- R3. The `sdlc.yaml` the rule reads is the owner's approved copy from the default branch, the one `cmd_go` already reads for the automation identity (`_approved_config`), never the pull request head's copy: a head that names the collaborator as `owner` changes nothing (decision 34, point 3; security-baseline rule 1, authorization checked on the server).
++++- R4. A label the owner's account applied still runs the runbook once, records the actor and removes the label, exactly as today (`cmd_go` after the actor check is unchanged).
++++- R5. The refusal's reason names the label and the actor and says the owner's account is required and the label was left where it is (ux-and-brand rule 4: what happened and what the person can do next; the existing "not by a person" wording stays for the bot and automation branch, which is a different reason).
++++- R6. The existing reasons for an unreadable label event, a missing `labeled` event, a bot or automation actor, an unreadable default-branch copy and a route that did not ask for Go keep their texts and their order; the owner check comes after the bot and automation check and before the proposal is judged.
++++- R7. A test that reproduces the weakness (a collaborator's label makes the runbook run) is written first and fails on the code the review scanned; after the fix it passes; no existing test is skipped, weakened or deleted (coding-standards rule 4; the intent's constraints).
++++- R8. No new dependency: `is_owner_actor` is already in the plugin (security-baseline rule 6; coding-standards rule 5).
++++- R9. No credential appears in the change, its tests or its evidence (security-baseline rule 3; the intent's constraints).
++++- R10. Build, test and lint targets of `sdlc.yaml` stay green (coding-standards rule 8; definition-of-done, build).
++++- Policies that do not apply: data-conventions (no new stored field, schema, migration, event or pipeline: `runbook_authorized_by` already records the owner's login, and the refused actor's login appears in the run's output only, as the bot branch's reason does today; a GitHub login is an account identifier, classified internal); ux-and-brand beyond rule 4 (no screen; the output is the CLI's JSON in the workflow log). Risk-list items `data migrations`, `money movement` and `production config` are not touched; `auth` is, declared under Flagged concerns.
++++
++++## Design
++++- One file of the plugin changes, `plugin/detect/cli.py`: `_human_label_actor` gains one check between the bot/automation branch and the return, `is_owner_actor(actor, config, None, repo)`; `config` is the approved copy `cmd_go` already passes in, `repo` the `--repo` argument, and the environment is the process's own (the runner's `GITHUB_REPOSITORY_OWNER` in the Go step, the shell's by hand). On False it returns `(None, reason)` like the other refusals. `is_owner_actor` is imported at the module top beside the module's other plugin imports (`gate.policy`, `state.gitops`), as `plugin/ci/run_phase.py`, `merge_step.py` and `comment_dispatch.py` import it; `state.unpark` imports nothing from `detect`, so there is no cycle.
++++- `cmd_go` is unchanged: a `(None, reason)` from `_human_label_actor` already emits `performed: false` with the reason and returns 0 without judging the proposal, running anything, writing `status.yaml` or touching labels (the label stays, the rule of the un-park labels in `plugin/state/unpark.py`: "rejected and left on the PR"). The owner removes the collaborator's label and applies it again; `label_actor` reads the last `labeled` event, so the owner's own application is the one judged.
++++- The runbook workflow (`template/.github/workflows/sdlc-runbook.yml`) is unchanged: its `if:` keeps the coarse `[bot]` check decision 34 allows, and its comment "detect/cli.py go checks the actor again" stays true. The Go step holds the runbook secrets, so the check sits in that step, on the server (security-baseline rule 1), not in a workflow expression a head can influence.
++++- Error behaviour: the same JSON shape as every other refusal (`change_id`, `performed: false`, `reason`), exit 0, so the job stays green and the label stays for the owner's own application (as the bot refusal does).
++++- Interfaces, data shapes, the un-park labels, the dismissal's member rule (`_closing_reason`, a comment that closes an incident is still any member's) and the other commands stay as they are.
++++
++++## Open questions from intent
++++none
++++
++++## Flagged concerns
++++- decided (decision 35): risk item 'auth': the change adds the owner check to the runbook Go's authorization, the one gate before a running-system action runs with the runbook secrets; the close-look banner shows it and the owner's merge accepts it (at the deploy gate, the owner's approving review).
++++- The existing Go tests in `tests/test_detect_cli.py` authorize with the actor `the-owner` on the repository `o/r` and no owner named, so with the fix that actor is not the owner and five of them (the runbook runs, the App refusal's re-run, the route that asked for Go, the head-listed automation identity, the malformed head copy) would fail. The reproducing-test commit, before the test-file lock, must also make the fixture's owner explicit (the `rollback_incident` fixture sets `GITHUB_REPOSITORY_OWNER` to `the-owner` through `monkeypatch`, the pattern `tests/conftest.py` prescribes for a runner variable a test needs); the tests' bodies and assertions are untouched and they pass before the fix as they do today. The intent says "no pre-existing test is edited to make the fix pass": the fixture edit changes no test's assertion and weakens nothing (coding-standards rule 4), but it is an edit under `tests/` that the fix needs, so it is declared here rather than made silently.
++++- [x] What happens to a label a non-owner applied: decided the label stays on the pull request and the owner applies their own, per coding-standards rule 2 (match the surrounding code: the bot branch of `_human_label_actor` and the un-park labels of `plugin/state/unpark.py` both leave a rejected label where it is).
++++
++++## Acceptance
++++- A new test in `tests/test_detect_cli.py`: with a `go-requested` rollback route, a `sdlc:go` label applied by a collaborator who is not the owner leaves `performed` false, the reason naming the owner's account, no runbook call, no label change, no runbook record and `runbook_authorized_by` null; it fails on commit `80d7de5cebd4` and passes after the fix.
++++- A second new test: the same with the pull request head's `sdlc.yaml` naming the collaborator as `owner`, still refused; and with `owner` named on the default branch, that account's label runs the runbook.
++++- Every existing test of `go` passes unchanged in body and assertions (`test_go_by_a_person_runs_the_runbook_and_reruns_the_gate`, `test_go_not_by_a_person_performs_nothing`, `test_go_and_park_refuse_without_the_app`, `test_go_runs_only_a_route_that_asked_for_it`, `test_go_reads_the_automation_identity_from_the_default_branch`, `test_go_fails_closed_when_the_default_branch_copy_is_unreadable`, `test_go_refuses_a_rewritten_origin_and_leaves_the_label`, `test_a_malformed_head_sdlc_yaml_does_not_stop_go_or_dismiss`).
++++- `python -m compileall -q plugin tests tasks.py .github/scripts` prints nothing; `python -m pytest` all green; `python -m ruff check . && python -m ruff format --check .` zero warnings.
++++- The security-baseline check reports nothing on the diff; no credential in the diff.
++++- Mock: none, screens follow the UX conventions
+++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml b/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml
+++index fcc8d6b..0cc9ca9 100644
+++--- a/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml
++++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml
+++@@ -1,13 +1,13 @@
+++ id: "0006"
+++ slug: security-authz-the-runbook-go-cmd-go-via
+++ title: "security: authz: The runbook Go (cmd_go via _human_label_actor) accepts the"
+++-phase: maintain
++++phase: design
+++ entry_route: incident
+++ change_type: fix
+++ gate:
+++-  phase: maintain
++++  phase: intent
+++   result: passed
+++-  reason: waiting for the owner at gate (maintain)
++++  reason: "merged by the owner: the incident intent PR's merge is gate (intent) (decision 25)"
+++   at: "2026-10-26T13:13:57Z"
+++ parked_reason: null
+++ iterations: 0
+++@@ -26,5 +26,5 @@ released_at: null
+++ released_sha: null
+++ released_pr: null
+++ created_at: "2026-10-26T13:13:55Z"
+++-updated_at: "2026-10-26T13:13:57Z"
++++updated_at: "2026-10-28T16:40:06Z"
+++ schema_version: 1
 +diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/hook-log.jsonl b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/hook-log.jsonl
 +new file mode 100644
-+index 0000000..4ffc700
++index 0000000..bd6aadd
 +--- /dev/null
 ++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/hook-log.jsonl
-+@@ -0,0 +1,11 @@
++@@ -0,0 +1,38 @@
 ++{"at": "2026-10-28T16:35:33Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
 ++{"at": "2026-10-28T16:35:38Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
 ++{"at": "2026-10-28T16:36:49Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
@@ -153,6 +700,149 @@ index 0000000..7c7179e
 ++{"at": "2026-10-28T16:39:58Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
 ++{"at": "2026-10-28T16:39:58Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
 ++{"at": "2026-10-28T16:39:58Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:40:11Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-28T16:40:11Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-28T16:40:14Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-28T16:42:01Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:42:01Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:42:01Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:42:01Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:42:05Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:42:05Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:42:05Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:42:05Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:43:47Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:43:47Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:43:47Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:43:47Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:44:10Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:44:10Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:44:10Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:44:11Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:44:52Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:44:52Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:44:52Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:44:52Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:45:51Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:45:51Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:45:51Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-28T16:45:51Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.md
++new file mode 100644
++index 0000000..5e5e598
++--- /dev/null
+++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.md
++@@ -0,0 +1,9 @@
+++## Verdict
+++No objection: accept the declared fixture edit (`rollback_incident` sets `GITHUB_REPOSITORY_OWNER=the-owner` through `monkeypatch` in the reproducing-test commit), on two conditions: the step-1 log must show every existing `rollback_incident` test passing before the fix, and the Risks line on readers must be corrected.
+++
+++## The case against
+++1. Read literally, the edit breaks the intent: "no pre-existing test is edited to make the fix pass", and the fixture is pre-existing test code that changes only so that the fix passes. But every alternative also edits `tests/`: naming `owner:` in `tests/fixture_repos`' project, setting the variable in `tests/conftest.py` (which goes against that file's clean-environment rule), or changing six test bodies from `the-owner` to `o`. The fixture line is the smallest of these, and it is declared at gate (design), where the owner decides. The constraint exists to stop weakened assertions, and no assertion changes here.
+++2. Tests that could pass with the bug still there: none found. The bot branch comes before the owner check, so `test_go_not_by_a_person_performs_nothing` and the `main` case of the automation-identity test still exercise refusal. In the new `head` case, `owner: colleague` in the checkout would let the colleague through if the code read the head's copy, so that case catches the wrong-config bug even though the environment says `the-owner`.
+++3. Blast radius is wider than the plan says. Risks says `owner_login` is the variable's "only reader". That is true for direct reads, but `owner_login` sits under `is_owner_actor`, which is called from `run_phase`, `merge_step`, `comment_dispatch`, `review_request`, `release/cli`, `pr/digest` and `state/cli`. Every `rollback_incident` test now resolves the owner as `the-owner` where it used to resolve `o` (from `--repo`/`GITHUB_REPOSITORY`) or nothing. One example is the App-refusal test at `tests/test_detect_cli.py:882`, which re-runs the gate with `GITHUB_REPOSITORY=o/r` set: any subprocess on that path that checks the owner now gets a different answer. The claim "pass before the fix as today" has to be shown in the step-1 log, not asserted.
+++4. A minor gap: with the variable set in the fixture, none of the Go tests reaches the `--repo` fallback (the by-hand route, owner `o`), which the Risks line on the by-hand route relies on. `tests/test_owner_rounds.py` covers the rule itself, so this is not a park.
+++I would decide the same as the plan. What would change my mind: any existing `rollback_incident` test whose result or reason differs after the fixture line alone, before the fix.
++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.model.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.model.json
++new file mode 100644
++index 0000000..54d1188
++--- /dev/null
+++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.model.json
++@@ -0,0 +1,14 @@
+++{
+++  "agent_id": "ab2e5f88f864a6604",
+++  "agent_type": "sdlc:adversarial-reviewer",
+++  "at": "2026-10-28T16:43:47Z",
+++  "member": "advocate",
+++  "models": [
+++    "claude-opus-5-5"
+++  ],
+++  "n": 1,
+++  "phase": "design",
+++  "reason": null,
+++  "schema_version": 1,
+++  "transcript": "/home/runner/.claude/projects/-home-runner-work-sdlc-framework-sdlc-framework/af7fafc1-4b7d-4bd2-8d67-c7fa106e5300/subagents/agent-ab2e5f88f864a6604.jsonl"
+++}
++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-conciliator.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-conciliator.json
++new file mode 100644
++index 0000000..53b2dde
++--- /dev/null
+++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-conciliator.json
++@@ -0,0 +1,12 @@
+++{
+++  "reviewer": "Allowed: the fixture line ships in the reproducing-test commit before lock-tests, declared in plan.md, with no test body or assertion changed.",
+++  "advocate": "No objection on two conditions: the step-1 log shows every existing rollback_incident test passing before the fix, and the plan's Risks line on readers is corrected.",
+++  "decision": "The one-line `monkeypatch.setenv(\"GITHUB_REPOSITORY_OWNER\", \"the-owner\")` in the `rollback_incident` fixture goes into the `fix(0006): reproducing test` commit before `lock-tests`, with no test body or assertion changed; the step-1 log must show every existing `rollback_incident` test passing with the fixture line alone, before the fix; plan.md's Risks line must say `owner_login` is the only direct reader and name `is_owner_actor` and its callers (run_phase, merge_step, comment_dispatch, review_request, release/cli, pr/digest, state/unpark) as the indirect ones.",
+++  "rationale": [
+++    "Both verdicts accept the fixture edit and decide as the plan does; the decision follows them.",
+++    "REVIEW.md lines 23-24 and the gate's test_lock check lock test files from the lock commit on; a fixture line in the reproducing-test commit sits outside that range by the rule's own mechanism, like the two new tests added to the same file, and the intent's constraint is at test level (coding-standards rule 4: no assertion skipped, weakened or deleted).",
+++    "On the one fact the verdicts dispute, the grep over plugin/ confirms the advocate: GITHUB_REPOSITORY_OWNER is read only in plugin/state/unpark.py owner_login, but is_owner_actor wraps it and is called from seven modules, so the plan's 'only reader' line is true for direct reads and too narrow for the blast radius; the safer reading corrects the line and requires the before-the-fix log rather than asserting the pass.",
+++    "The alternatives (actor to `o` in six bodies and asserted strings; owner in the fixture project's sdlc.yaml; the variable in conftest.py against its clean-environment rule) each edit more of tests/ and are worse under the same rules.",
+++    "The by-hand route's --repo fallback is no longer reached by the Go tests; tests/test_owner_rounds.py covers that rule, so this is noted, not parked."
+++  ]
+++}
++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-reviewer.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-reviewer.md
++new file mode 100644
++index 0000000..4929518
++--- /dev/null
+++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-reviewer.md
++@@ -0,0 +1,10 @@
+++## Verdict
+++Decide the concern as allowed: the fixture line ships in the reproducing-test commit, before `lock-tests`, and is declared in plan.md; no test body or assertion changes.
+++
+++## Why
+++- The rule is REVIEW.md line 23-24: in a fix-type change the diff must not modify test files that existed before the fix; its deterministic backing is `plugin/gate/checks.py check_test_lock` (line 1851-1883), which fails only on a test path changed between the lock commit and HEAD, and the hook `plugin/hooks/test_file_lock.py` (lines 5-13), which denies test edits from the commit that sets `tests_locked: true` on. `plugin/commands/sdlc-build.md` lines 83-88 commit the reproducing test first and lock afterwards. A fixture line in the reproducing commit is outside the locked range by the rule's own mechanism, exactly as the two new tests added to the same pre-existing file are.
+++- The intent's constraint ("no pre-existing test is edited to make the fix pass") and spec R7 are at test level: the five tests named keep their bodies and assertions (`tests/test_detect_cli.py` lines 789-871, 1296-1310, 1689-1709, 2040-2067); `rollback_incident` (line 350-356) is a fixture every one of them already uses, so one `monkeypatch.setenv` there is the smallest edit that names the owner. Coding-standards rule 4 is met: nothing is skipped, weakened or deleted, and the existing tests still prove the owner's label runs the runbook, now against an explicit owner.
+++- The pattern is the one `tests/conftest.py` lines 14-21 prescribe: every `GITHUB_*` variable is removed and "a test that needs one sets it itself ... through `monkeypatch`"; `monkeypatch` is function-scoped, so nothing leaks and `tests/test_scaffold.py`'s clean-environment assertion holds. The only reader is `plugin/state/unpark.py owner_login` (line 90; grep over `plugin/`), read before `GITHUB_REPOSITORY`, so the park test's `GITHUB_REPOSITORY=o/r` (line 894) and the rewritten-origin reasons are unaffected.
+++- The alternatives are worse by the same rules: changing the actor to `o` edits six test bodies and asserted strings (plan Options not taken); naming `owner` in the fixture project's `sdlc.yaml` on `main` alters the cached fixture repository for every test of the module.
+++- Compliance: plan.md "Files that change" names the fixture change in `tests/test_detect_cli.py` and Risks explains it (REVIEW.md line 25-26 satisfied); the adversarial verdict (`evidence/adversarial-review-design.json`, attempted items 9, 10 and 15) checked the count of five and the single reader and found them true.
+++- Condition for the build run: the fixture line and the two new tests go in the one `fix(0006): reproducing test` commit, and `lock-tests` runs after it; a fixture edit after the lock would be the Important finding of REVIEW.md line 23 and the gate's `test_lock` failure. The spec's Flagged concerns entry can be ticked `[x]` with this decision.
++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-items.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-items.json
++new file mode 100644
++index 0000000..2e98493
++--- /dev/null
+++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-items.json
++@@ -0,0 +1,28 @@
+++{
+++  "decided": 0,
+++  "gate": "park",
+++  "items": [
+++    {
+++      "decided": false,
+++      "item": "The existing Go tests in `tests/test_detect_cli.py` authorize with the actor `the-owner` on the repository `o/r` and no owner named, so with the fix that actor is not the owner and five of them (the runbook runs, the App refusal's re-run, the route that asked for Go, the head-listed automation identity, the malformed head copy) would fail. The reproducing-test commit, before the test-file lock, must also make the fixture's owner explicit (the `rollback_incident` fixture sets `GITHUB_REPOSITORY_OWNER` to `the-owner` through `monkeypatch`, the pattern `tests/conftest.py` prescribes for a runner variable a test needs); the tests' bodies and assertions are untouched and they pass before the fix as they do today. The intent says \"no pre-existing test is edited to make the fix pass\": the fixture edit changes no test's assertion and weakens nothing (coding-standards rule 4), but it is an edit under `tests/` that the fix needs, so it is declared here rather than made silently.",
+++      "key": "concern:e8ff2e4ed004de40",
+++      "kind": "concern",
+++      "n": 1
+++    }
+++  ],
+++  "iterations": {
+++    "cap": 2,
+++    "left": 2,
+++    "used": 0
+++  },
+++  "panel_calls": {
+++    "cap": 4,
+++    "left": 4,
+++    "used": 0
+++  },
+++  "parks": [],
+++  "pending": [
+++    1
+++  ],
+++  "phase": "design"
+++}
++diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md
++new file mode 100644
++index 0000000..f388fea
++--- /dev/null
+++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md
++@@ -0,0 +1,7 @@
+++# Security & policy brief, gate (design)
+++
+++## auth
+++- Verdict: continue
+++- What the change does to it: Today any person's `sdlc:go` label authorizes the runbook. The change makes the owner's account the only one that can. `_human_label_actor` in `plugin/detect/cli.py` gains one `is_owner_actor(actor, approved_config, None, repo)` check (decision 34), and `config` is the default branch's `sdlc.yaml`. `tests/test_detect_cli.py` gains two reproducing tests and a fixture line that names the test project's owner (`GITHUB_REPOSITORY_OWNER`).
+++- What could break: A collaborator's Go no longer runs a runbook. The label stays and the owner has to apply it themselves. An organization repository with no `owner:` in the default branch's `sdlc.yaml` resolves the owner to the organization login, which no person's label matches, so the Go is refused (fail closed) until the owner sets that key.
+++- How to undo it: Revert the fix commit on `plugin/detect/cli.py`. That removes the one-line check and the import. The tests' fixture line is harmless and can stay, or be reverted with the test commit.
 +diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/run-design.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/run-design.json
 +new file mode 100644
 +index 0000000..c8fa309
@@ -167,18 +857,23 @@ index 0000000..7c7179e
 +\ No newline at end of file
 +diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md
 +new file mode 100644
-+index 0000000..7deec50
++index 0000000..46b015d
 +--- /dev/null
 ++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md
-+@@ -0,0 +1,47 @@
++@@ -0,0 +1,53 @@
 ++# Plan: security: authz: The runbook Go (cmd_go via _human_label_actor) accepts the (from intent.md 2026-10-26, spec.md 2026-10-28)
 ++
 ++## Files that change
-++- `tests/test_detect_cli.py` — the reproducing tests (a collaborator's `sdlc:go` is refused; the owner named in `sdlc.yaml` is read from the default branch, never the head) and the fixture change that names the test project's owner, in the first commit, before the test-file lock.
+++- `tests/test_detect_cli.py` — the reproducing tests (a collaborator's `sdlc:go` is refused; the owner named in `sdlc.yaml` is read from the default branch, never the head) and the one fixture line that names the test project's owner, in the first commit, before the test-file lock (panel decision 1).
 ++- `plugin/detect/cli.py` — `_human_label_actor` refuses a label whose actor is not the owner's account (`state.unpark.is_owner_actor`, decision 34); one top-level import added.
 ++
 ++## Order of work
-++1. Write the reproducing test and see it fail. In `tests/test_detect_cli.py`, in the `# --- go` section, add `test_go_by_a_collaborator_performs_nothing`: `rollback_incident`, `write_proposal(change, "runbook:rollback-deploy")`, `dispatch` so the record says `go-requested`, `gh.actor = {"ok": True, "actor": "colleague", "reason": ""}`, then `go`; assert `code == 0`, `out["performed"] is False`, `"owner" in out["reason"]` and `"colleague" in out["reason"]`, `spy.calls == []`, `gh.named("set_labels") == []`, `runbook_records(change) == []`, `status_mod.read_status(change).runbook_authorized_by is None`. In the same commit, make the owner explicit: the `rollback_incident` fixture takes `monkeypatch` and sets `GITHUB_REPOSITORY_OWNER` to `the-owner` (the actor the existing Go tests use; `tests/conftest.py` removes every `GITHUB_*` variable and says a test that needs one sets it itself). Add the second test, `test_go_reads_the_owner_from_the_default_branch`, parametrized like `test_go_reads_the_automation_identity_from_the_default_branch`: `head` appends `owner: colleague` to the checkout's `sdlc.yaml` only and the colleague's label is still refused (`performed` false, no runbook call, no label change); `main` commits `owner: colleague` on `origin/main` through a clone, as `list_owner_as_automation_on_main` does, and the colleague's label then runs the runbook (`performed` true, `actor == "colleague"`, one runbook call) while `the-owner`'s does not. Run `python -m pytest tests/test_detect_cli.py -k go` and paste the output: the collaborator test and the `head` case fail (`performed` is True), the `main` case's `the-owner` half fails, every existing test passes. Commit the test file alone (`fix(0006): reproducing test`); the build run locks the test files after this commit.
+++1. Write the reproducing test and see it fail. In `tests/test_detect_cli.py`:
+++   - Make the owner explicit first (panel decision 1): the `rollback_incident` fixture takes `monkeypatch` and adds the one line `monkeypatch.setenv("GITHUB_REPOSITORY_OWNER", "the-owner")` (the actor the existing Go tests use; `tests/conftest.py` removes every `GITHUB_*` variable and says a test that needs one sets it itself). No test body or assertion changes. Run `python -m pytest tests/test_detect_cli.py` with the fixture line alone, before any other edit, and paste the log: every existing test of the module, the `rollback_incident` ones included, passes.
+++   - Add `test_go_by_a_collaborator_performs_nothing` in the `# --- go` section: `rollback_incident`, `write_proposal(change, "runbook:rollback-deploy")`, `dispatch` so the record says `go-requested`, `gh.actor = {"ok": True, "actor": "colleague", "reason": ""}`, then `go`; assert `code == 0`, `out["performed"] is False`, `"owner" in out["reason"]` and `"colleague" in out["reason"]`, `spy.calls == []`, `gh.named("set_labels") == []`, `runbook_records(change) == []`, `status_mod.read_status(change).runbook_authorized_by is None`.
+++   - Add `test_go_reads_the_owner_from_the_default_branch`, parametrized like `test_go_reads_the_automation_identity_from_the_default_branch`: the `head` case appends `owner: colleague` to the checkout's `sdlc.yaml` only, and the colleague's label is still refused (`performed` false, no runbook call, no label change); the `main` case commits `owner: colleague` on `origin/main` through a clone, as `list_owner_as_automation_on_main` does, then first runs `the-owner`'s Go and asserts it is refused with the owner reason (`performed` false, `spy.calls == []`), and only then the colleague's Go, which runs the runbook (`performed` true, `actor == "colleague"`, one runbook call). The order matters: once the runbook ran, the record says `ran` and a later Go is refused with "did not ask for Go", which would not prove the owner check (the adversarial review's note).
+++   - Run `python -m pytest tests/test_detect_cli.py -k go` and paste the output: the collaborator test and the `head` case fail (`performed` is True), the `main` case fails on `the-owner`'s half, every existing test passes.
+++   - Commit the test file alone (`fix(0006): reproducing test`); the build run locks the test files after this commit.
 ++2. The fix in `plugin/detect/cli.py`: add `from state.unpark import is_owner_actor  # noqa: E402` beside the `from state import ...` lines at the top; in `_human_label_actor`, after the bot/automation branch, add
 ++   `if not is_owner_actor(actor, config, None, repo): return None, f"{label} was applied by {actor}, not by the owner's account: left where it is (decision 34)"`
 ++   with a one-line comment that `config` is the default branch's copy. Nothing else in the function or in `cmd_go` changes. Update the function's section comment if it helps the reader; no other file.
@@ -186,11 +881,11 @@ index 0000000..7c7179e
 ++4. Commit the fix (`fix(0006): the runbook Go needs the owner's account`).
 ++
 ++## Risks
-++- The existing Go tests use the actor `the-owner` on repository `o/r` with no owner named; without the fixture change of step 1 the fix breaks five of them. Mitigation: the fixture change ships in the test commit, before the lock, and is declared in spec.md's Flagged concerns; the tests' bodies and assertions are not touched, and they pass before the fix as today.
-++- `GITHUB_REPOSITORY_OWNER` set by the fixture could reach another reader. Checked: `plugin/state/unpark.py owner_login` is its only reader in the plugin; `origin_mismatch` reads `GITHUB_REPOSITORY`, which stays unset, so the tests of the rewritten origin keep their reasons.
+++- The existing Go tests use the actor `the-owner` on repository `o/r` with no owner named; without the fixture line of step 1 the fix breaks five of them. Mitigation (panel decision 1): the fixture line ships in the test commit, before the lock, declared in spec.md's Flagged concerns; the tests' bodies and assertions are not touched, and the step-1 log shows them passing with the fixture line alone, before the fix.
+++- `GITHUB_REPOSITORY_OWNER` set by the fixture reaches more than one caller. `plugin/state/unpark.py owner_login` is its only direct reader, but `is_owner_actor` wraps it and is called from seven modules: `ci/run_phase.py`, `ci/merge_step.py`, `ci/comment_dispatch.py`, `pr/review_request.py`, `pr/digest.py`, `release/cli.py` and `state/unpark.py` itself. The `rollback_incident` tests exercise `detect/cli.py go` only, and none of those seven run under that fixture; `origin_mismatch` reads `GITHUB_REPOSITORY`, which stays unset, so the tests of the rewritten origin keep their reasons. The step-1 log is the check.
 ++- A circular import: `state.unpark` imports `state.conventions`, `state.status` and, lazily, `gate.policy` and `pr.github`; nothing from `detect`. A top-level import matches how `plugin/ci/run_phase.py`, `merge_step.py` and `comment_dispatch.py` import it; if the import order in `detect/cli.py` proves awkward, the suggested patch's function-local import (`# noqa: PLC0415`) is the fallback.
 ++- The riskiest step is 2, the one line of authorization: a wrong argument (the head's `config` instead of the approved one, `env` other than the process's) would read the wrong owner. `cmd_go` passes `approved` already; the test's `head` case proves the head's copy is ignored, the `main` case proves the default branch's `owner` is read.
-++- The by-hand route (`detect/cli.py go --repo owner/name` on the owner's PC, no runner variables): the owner is the owner part of `--repo`, which `cmd_go` requires; an organization repository names `owner` in `sdlc.yaml`. Fail closed when none of the three is known: the Go is refused with its reason, nothing runs.
+++- The by-hand route (`detect/cli.py go --repo owner/name` on the owner's PC, no runner variables): the owner is the owner part of `--repo`, which `cmd_go` requires; an organization repository names `owner` in `sdlc.yaml`. Fail closed when none of the three is known: the Go is refused with its reason, nothing runs. The Go tests no longer reach that fallback once the fixture names the owner; `tests/test_owner_rounds.py` covers the rule itself.
 ++- A live project where the Go was authorized by a collaborator's account on purpose: after this change that label no longer runs the runbook; the reason names the owner's account, and the owner applies the label themselves. This is decision 34's intended narrowing, not a regression.
 ++- No new dependency; no guardrail file; no workflow change (the runbook workflow's `if:` keeps its coarse `[bot]` check, as decision 34 allows).
 ++
@@ -199,6 +894,7 @@ index 0000000..7c7179e
 ++- Removing a non-owner's label instead of leaving it: the bot branch and the un-park labels leave a rejected label where it is (`plugin/state/unpark.py`), and removing it would need a labels call before the owner's act. Not taken (spec.md, the closed concern).
 ++- Writing a second owner rule in `detect/cli.py` (reading `sdlc.yaml: owner` and the repository owner itself): decision 34 wants one function, fail closed; `is_owner_actor` already does it and is tested in `tests/test_owner_rounds.py`. Not taken.
 ++- Naming the owner in the fixture project's `sdlc.yaml` on `main` instead of the environment variable: it would change the cached fixture repository (`fixture_repos.copy("detect-project", ...)`) for every test of the module and the dismiss tests' assumptions; the environment variable is one line in one fixture and the pattern `conftest.py` prescribes. Not taken.
+++- Setting the variable in `tests/conftest.py` for the whole suite: against its clean-environment rule (every `GITHUB_*` removed; a test that needs one sets it itself). Not taken.
 ++- Changing the existing tests' actor from `the-owner` to `o`: edits six test bodies and the reason strings they assert; the intent forbids editing pre-existing tests to make the fix pass. Not taken.
 ++- Also reading `author_association` of the label event: GitHub's `labeled` event carries the actor's login, not an association, and the owner rule is by login (decision 34). Not taken.
 ++
@@ -209,18 +905,18 @@ index 0000000..7c7179e
 ++- test: tests/test_detect_cli.py::test_go_not_by_a_person_performs_nothing (exists; unchanged)
 ++- test: tests/test_detect_cli.py::test_go_reads_the_automation_identity_from_the_default_branch (exists; unchanged)
 ++- test: tests/test_owner_rounds.py (exists; the rule itself)
-++- The three targets of `sdlc.yaml` green with their literal output pasted in the build's evidence; the security-baseline check reports nothing on the diff.
+++- The step-1 log with the fixture line alone (every existing test of `tests/test_detect_cli.py` passing before the fix), then the three targets of `sdlc.yaml` green with their literal output pasted in the build's evidence; the security-baseline check reports nothing on the diff.
 ++- Quantifiable target (spec.md Acceptance): a collaborator's `sdlc:go` performs nothing; the owner's runs the runbook once; the full suite green.
 ++
 ++Interrogation (article p.16 step 3), answered and folded in above:
-++1. What could break: the callers of `_human_label_actor` (only `cmd_go`); the Go tests that use `the-owner`; nothing else reads the function. No data shape changes (`status.yaml: runbook_authorized_by` is written as before).
+++1. What could break: the callers of `_human_label_actor` (only `cmd_go`); the Go tests that use `the-owner`; the seven callers of `is_owner_actor` read the same variable but none runs under the changed fixture. No data shape changes (`status.yaml: runbook_authorized_by` is written as before).
 ++2. Riskiest step: step 2's argument choice, covered by the `head` and `main` test cases.
-++3. Options considered: the six above.
-++4. Implementable from the plan alone: yes, the test names, fixture, assertions, import and the one condition are named here; the suggested patch in `evidence/suggested-patch.diff` is the reference for the condition.
+++3. Options considered: the seven above.
+++4. Implementable from the plan alone: yes, the test names, the fixture line, the assertions and their order, the import and the one condition are named here; the suggested patch in `evidence/suggested-patch.diff` is the reference for the condition.
 ++5. Proof items: the two new tests are to be written in step 1; the rest exist.
 +diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md
 +new file mode 100644
-+index 0000000..a42e4c1
++index 0000000..13d6672
 +--- /dev/null
 ++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md
 +@@ -0,0 +1,38 @@
@@ -252,7 +948,7 @@ index 0000000..7c7179e
 ++
 ++## Flagged concerns
 ++- decided (decision 35): risk item 'auth': the change adds the owner check to the runbook Go's authorization, the one gate before a running-system action runs with the runbook secrets; the close-look banner shows it and the owner's merge accepts it (at the deploy gate, the owner's approving review).
-++- The existing Go tests in `tests/test_detect_cli.py` authorize with the actor `the-owner` on the repository `o/r` and no owner named, so with the fix that actor is not the owner and five of them (the runbook runs, the App refusal's re-run, the route that asked for Go, the head-listed automation identity, the malformed head copy) would fail. The reproducing-test commit, before the test-file lock, must also make the fixture's owner explicit (the `rollback_incident` fixture sets `GITHUB_REPOSITORY_OWNER` to `the-owner` through `monkeypatch`, the pattern `tests/conftest.py` prescribes for a runner variable a test needs); the tests' bodies and assertions are untouched and they pass before the fix as they do today. The intent says "no pre-existing test is edited to make the fix pass": the fixture edit changes no test's assertion and weakens nothing (coding-standards rule 4), but it is an edit under `tests/` that the fix needs, so it is declared here rather than made silently.
+++- decided (by panel #1): The one-line `monkeypatch.setenv("GITHUB_REPOSITORY_OWNER", "the-owner")` in the `rollback_incident` fixture goes into the `fix(0006): reproducing test` commit before `lock-tests`, with no test body or assertion changed; the step-1 log must show every existing `rollback_incident` test passing with the fixture line alone, before the fix; plan.md's Risks line must say `owner_login` is the only direct reader and name `is_owner_actor` and its callers (run_phase, merge_step, comment_dispatch, review_request, release/cli, pr/digest, state/unpark) as the indirect ones. — The existing Go tests in `tests/test_detect_cli.py` authorize with the actor `the-owner` on the repository `o/r` and no owner named, so with the fix that actor is not the owner and five of them (the runbook runs, the App refusal's re-run, the route that asked for Go, the head-listed automation identity, the malformed head copy) would fail. The reproducing-test commit, before the test-file lock, must also make the fixture's owner explicit (the `rollback_incident` fixture sets `GITHUB_REPOSITORY_OWNER` to `the-owner` through `monkeypatch`, the pattern `tests/conftest.py` prescribes for a runner variable a test needs); the tests' bodies and assertions are untouched and they pass before the fix as they do today. The intent says "no pre-existing test is edited to make the fix pass": the fixture edit changes no test's assertion and weakens nothing (coding-standards rule 4), but it is an edit under `tests/` that the fix needs, so it is declared here rather than made silently.
 ++- [x] What happens to a label a non-owner applied: decided the label stays on the pull request and the owner applies their own, per coding-standards rule 2 (match the surrounding code: the bot branch of `_human_label_actor` and the un-park labels of `plugin/state/unpark.py` both leave a rejected label where it is).
 ++
 ++## Acceptance
@@ -263,10 +959,10 @@ index 0000000..7c7179e
 ++- The security-baseline check reports nothing on the diff; no credential in the diff.
 ++- Mock: none, screens follow the UX conventions
 +diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml b/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml
-+index fcc8d6b..0cc9ca9 100644
++index fcc8d6b..03c9681 100644
 +--- a/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml
 ++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml
-+@@ -1,13 +1,13 @@
++@@ -1,17 +1,17 @@
 + id: "0006"
 + slug: security-authz-the-runbook-go-cmd-go-via
 + title: "security: authz: The runbook Go (cmd_go via _human_label_actor) accepts the"
@@ -283,19 +979,260 @@ index 0000000..7c7179e
 +   at: "2026-10-26T13:13:57Z"
 + parked_reason: null
 + iterations: 0
++-panel_calls: 0
+++panel_calls: 1
++ external_ref: null
++ risk_accepted: []
++ tests_locked: false
 +@@ -26,5 +26,5 @@ released_at: null
 + released_sha: null
 + released_pr: null
 + created_at: "2026-10-26T13:13:55Z"
 +-updated_at: "2026-10-26T13:13:57Z"
-++updated_at: "2026-10-28T16:40:06Z"
+++updated_at: "2026-10-28T16:45:00Z"
 + schema_version: 1
+diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-requests.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-requests.json
+new file mode 100644
+index 0000000..8000546
+--- /dev/null
++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-requests.json
+@@ -0,0 +1,25 @@
++{
++  "applied_earlier": [],
++  "collected_at": "2026-11-04T14:16:12+00:00",
++  "head": "7d9793a7af116b9a544c6ac9d628a79dc5d3667b",
++  "not_applied": [],
++  "ok": true,
++  "pr_number": 403,
++  "repo": "luissiviero/sdlc-framework",
++  "requests": [
++    {
++      "applied": true,
++      "association": "OWNER",
++      "at": "2026-11-04T14:15:07Z",
++      "author": "luissiviero",
++      "body": "@claude ",
++      "id": 6632926759,
++      "kind": "comment",
++      "url": "https://github.com/luissiviero/sdlc-framework/pull/403#issuecomment-6632926759"
++    }
++  ],
++  "route": "api",
++  "schema_version": 1,
++  "trigger": "https://github.com/luissiviero/sdlc-framework/pull/403#issuecomment-6632926759",
++  "unavailable": null
++}
+diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-response.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-response.md
+new file mode 100644
+index 0000000..dfb15bf
+--- /dev/null
++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-response.md
+@@ -0,0 +1,13 @@
++# Fix round 1 (design), 2026-11-04
++
++Source of the requests: `evidence/fix-requests.json`, collected by the runner at head `7d9793a` (decision 34); no review or comment was read from the pull request by this session.
++
++## Requests
++- luissiviero (OWNER), https://github.com/luissiviero/sdlc-framework/pull/403#issuecomment-6632926759 — applied: the comment is the round's trigger and carries no words after `@claude` (decisions 24 and 28), so the change request of this round is the gate's park below. Nothing in `spec.md` or `plan.md` was asked for and nothing in them changed.
++- The gate's park (`status.yaml: parked_reason`, `evidence/gate-design.json` of 2026-10-28T16:48:12Z): `commands: not green: test (exit 1)`, ten failures in `tests/test_cancelled_park.py` — applied by the merge of `main` into this branch. The cause was not this change's work: the phase workflows export `HEAD_REF`, the suite's autouse fixture did not remove it, and the cancelled-run check compared the fixture's branch with the job's own (the session file `docs/handoffs/sessions/2026-11-03-claude-keen-mendel-3zipla.md`). Pull request #404 (`b118a1b`, merged in `5a4178d`) added `HEAD_REF` to the runner's variables `tests/conftest.py` removes before every test, with no assertion changed. The owner merged `main` into `sdlc/0006/design` in `7d9793a`, so `origin/main` is an ancestor of this round's head and `tests/conftest.py` on this branch carries the fix (checked by `git merge-base --is-ancestor`). This session cannot run the suite (the sandbox denies the fixture's `.env`, as `/sdlc-fix` step 1 says); the runner runs the three targets after this session, in the same workflow environment where they failed.
++
++## Not applied
++none
++
++## What I need from you
++nothing
+diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/gate-design.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/gate-design.json
+new file mode 100644
+index 0000000..be9aaf0
+--- /dev/null
++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/gate-design.json
+@@ -0,0 +1,180 @@
++{
++  "at": "2026-10-28T16:48:12Z",
++  "change_id": "0006",
++  "checks": [
++    {
++      "details": {
++        "cap": 2,
++        "classification": "non-routine",
++        "elapsed_minutes": 12.5,
++        "iterations": 0,
++        "max_budget_usd": null,
++        "panel_calls": 1,
++        "panel_cap": 4,
++        "spend_entries": 0,
++        "spend_usd": null,
++        "spend_usd_total": null
++      },
++      "name": "limits",
++      "need": "",
++      "ok": true,
++      "reason": "within the run limits"
++    },
++    {
++      "details": {},
++      "name": "artifacts",
++      "need": "",
++      "ok": true,
++      "reason": "every required artifact exists and has its template sections"
++    },
++    {
++      "details": {},
++      "name": "evidence_links",
++      "need": "",
++      "ok": true,
++      "reason": "no symbolic link under the change folder"
++    },
++    {
++      "details": {
++        "dirty": [
++          "CLAUDE.local.md",
++          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json",
++          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.model.json",
++          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/diff-design.patch",
++          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/hook-log.jsonl",
++          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-items.json",
++          "changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md",
++          "policies",
++          "tests/fixtures/sample-python-project/.env"
++        ]
++      },
++      "name": "design_scope",
++      "need": "",
++      "ok": true,
++      "reason": "the committed diff stays inside changes/0006-security-authz-the-runbook-go-cmd-go-via/"
++    },
++    {
++      "details": {},
++      "name": "open_concerns",
++      "need": "",
++      "ok": true,
++      "reason": "no open flagged concern"
++    },
++    {
++      "details": {},
++      "name": "proof_items",
++      "need": "",
++      "ok": true,
++      "reason": "the Proof items follow the grammar"
++    },
++    {
++      "details": {
++        "cost_usd": 0.0,
++        "decisions": [
++          {
++            "decision": "The one-line `monkeypatch.setenv(\"GITHUB_REPOSITORY_OWNER\", \"the-owner\")` in the `rollback_incident` fixture goes into the `fix(0006): reproducing test` commit before `lock-tests`, with no test body or assertion changed; the step-1 log must show every existing `rollback_incident` test passing with the fixture line alone, before the fix; plan.md's Risks line must say `owner_login` is the only direct reader and name `is_owner_actor` and its callers (run_phase, merge_step, comment_dispatch, review_request, release/cli, pr/digest, state/unpark) as the indirect ones.",
++            "kind": "concern",
++            "n": 1
++          }
++        ]
++      },
++      "name": "panel",
++      "need": "",
++      "ok": true,
++      "reason": "1 panel decision(s) recorded"
++    },
++    {
++      "details": {
++        "ran_by": "runner",
++        "runs": {
++          "build": {
++            "command": "python -m compileall -q plugin tests tasks.py .github/scripts",
++            "exit_code": 0,
++            "output": ""
++          },
++          "lint": {
++            "command": "python -m ruff check . && python -m ruff format --check .",
++            "exit_code": 0,
++            "output": "All checks passed!\n298 files already formatted\n"
++          },
++          "test": {
++            "command": "python -m pytest",
++            "exit_code": 1,
++            "output": "per', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:49Z', schema_version=1) = <function read_status at 0x7fe0c05f4180>(PosixPath('/tmp/pytest-of-runner/pytest-0/test_a_cancel_by_hand_says_so0/proj/changes/0001-percent-helper'))\n +          where <function read_status at 0x7fe0c05f4180> = status_mod.read_status\nFAILED tests/test_cancelled_park.py::test_a_cancel_the_runner_cannot_place_says_both - AssertionError: assert '(the job was cancelled while the session ran (at its timeout-minutes or by hand: HTTP 403))' in 'commands: not green'\n +  where 'commands: not green' = Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:49Z', schema_version=1).parked_reason\n +    where Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:49Z', schema_version=1) = <function read_status at 0x7fe0c05f4180>(PosixPath('/tmp/pytest-of-runner/pytest-0/test_a_cancel_the_runner_canno0/proj/changes/0001-percent-helper'))\n +      where <function read_status at 0x7fe0c05f4180> = status_mod.read_status\nFAILED tests/test_cancelled_park.py::test_a_cancelled_session_that_wrote_a_runner_file_parks_on_it_and_keeps_no_work - KeyError: 'parked'\nFAILED tests/test_cancelled_park.py::test_a_park_the_run_wrote_before_the_cancel_is_published_again_not_replaced - KeyError: 'republished'\nFAILED tests/test_cancelled_park.py::test_at_session_a_park_the_session_wrote_is_replaced_by_the_cancel_s - AssertionError: assert 'the job was cancelled at its timeout-minutes (260) while the session ran' in 'limits: the session says so'\n +  where 'limits: the session says so' = Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:50Z', schema_version=1).parked_reason\n +    where Status(id='0001', slug='percent-helper', title='Percent helper', phase='build', entry_route='idea', change_type='featu...lane=None, risk_acceptances=[], created_at='2026-10-28T16:48:40Z', updated_at='2026-10-28T16:48:50Z', schema_version=1) = <function read_status at 0x7fe0c05f4180>(PosixPath('/tmp/pytest-of-runner/pytest-0/test_at_session_a_park_the_ses0/proj/changes/0001-percent-helper'))\n +      where <function read_status at 0x7fe0c05f4180> = status_mod.read_status\nFAILED tests/test_cancelled_park.py::test_a_fix_round_cancelled_after_its_checks_keeps_nothing_uncommitted - KeyError: 'parked'\nFAILED tests/test_cancelled_park.py::test_a_run_that_updated_its_pr_parks_nothing - assert \"nothing to p...0006/intent')\" == 'nothing to p...ve been sent)'\n  \n  - nothing to park: the run had updated its pull request before the cancel (its hand-over may not have been sent)\n  + nothing to park: the saved state is not this run's (its fix round's head 'sdlc/0001/build' is not the workflow's 'sdlc/0006/intent')\nFAILED tests/test_cancelled_park.py::test_a_kill_after_the_result_was_stored_does_not_flag_the_runner_s_own_file - AssertionError: commands: not green\nassert False\n +  where False = <built-in method startswith of str object at 0x7fe0bebf3b70>('fix: the round ended before its gate (the job was cancelled at its timeout-minutes (260) while the session ran)')\n +    where <built-in method startswith of str object at 0x7fe0bebf3b70> = 'commands: not green'.startswith\nFAILED tests/test_cancelled_park.py::test_an_automatic_round_cancelled_with_nothing_to_keep_parks_as_decision_29_does - AssertionError: assert 'sdlc:fixing' == 'sdlc:needs-human'\n  \n  - sdlc:needs-human\n  + sdlc:fixing\n10 failed, 2875 passed, 1 skipped in 397.60s (0:06:37)\n"
++          }
++        }
++      },
++      "name": "commands",
++      "need": "Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.",
++      "ok": false,
++      "reason": "not green: test (exit 1)"
++    },
++    {
++      "details": {},
++      "name": "guardrails",
++      "need": "",
++      "ok": true,
++      "reason": "the diff does not touch a guardrail file"
++    },
++    {
++      "details": {
++        "accepted": [],
++        "hits": {
++          "auth": [
++            "spec.md Flagged concerns: text"
++          ]
++        }
++      },
++      "name": "risk_list",
++      "need": "",
++      "ok": true,
++      "reason": "risk-list hit, shown in the close-look banner (decision 35): 'auth' in spec.md Flagged concerns: text"
++    },
++    {
++      "details": {
++        "label_actors": {},
++        "risk_accepted": []
++      },
++      "name": "owner_actions",
++      "need": "",
++      "ok": true,
++      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label"
++    },
++    {
++      "details": {
++        "classification": "non-routine",
++        "reasons": []
++      },
++      "name": "adversarial_review",
++      "need": "",
++      "ok": true,
++      "reason": "adversarial reviewer says continue"
++    },
++    {
++      "details": {
++        "wanted": "claude-opus-5-5"
++      },
++      "name": "reviewer_model",
++      "need": "",
++      "ok": true,
++      "reason": "the adversarial reviewer ran on claude-opus-5-5"
++    }
++  ],
++  "config_note": "",
++  "dry_run": false,
++  "explanation": [
++    "1. **What failed:** the design gate parked change 0006 because `python -m pytest` exited 1. There were 10 failures, all in `tests/test_cancelled_park.py`. Build, lint and every other gate check passed, and the stderr file only has the workspace-trust warning.",
++    "2. **Likely cause:** the design diff only touches the change folder, so this change's work didn't break these tests. The assertions show them reading the CI job's own state: a parked reason saying the commands weren't green, and the workflow's head branch where they expect their fixture's. So the cancel/park tests aren't isolated from the runner's environment variables or saved run state.",
++    "3. **Flaky or real:** real, not random. It's caused by the environment and should fail the same way on every gate run inside this workflow, even though it probably passes locally.",
++    "4. **First thing to check:** run `python -m pytest tests/test_cancelled_park.py` locally, then again with the CI's `GITHUB_*` / SDLC run variables exported. Then check whether the tests' fixtures clear those variables and point the saved-state path at the test's temp directory."
++  ],
++  "head": "f5395d6dc3375294877f9b3b03592fdb60a60d9d",
++  "human_gate": true,
++  "label": "sdlc:needs-human",
++  "phase": "design",
++  "reason": "commands: not green: test (exit 1)",
++  "result": "park",
++  "schema_version": 1,
++  "slug": "security-authz-the-runbook-go-cmd-go-via",
++  "what_i_need": "## What I need from you\nGate (design) parked change 0006 (security-authz-the-runbook-go-cmd-go-via) on 2026-10-28T16:48:12Z.\n- **commands**: not green: test (exit 1)\n  - what I need: Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.\n- **Explanation (model-written)**: what the explain step read in the run's logs; advice for the owner, not a change request: a fix round acts on the items above, never on these lines\n  - 1. **What failed:** the design gate parked change 0006 because `python -m pytest` exited 1. There were 10 failures, all in `tests/test_cancelled_park.py`. Build, lint and every other gate check passed, and the stderr file only has the workspace-trust warning.\n  - 2. **Likely cause:** the design diff only touches the change folder, so this change's work didn't break these tests. The assertions show them reading the CI job's own state: a parked reason saying the commands weren't green, and the workflow's head branch where they expect their fixture's. So the cancel/park tests aren't isolated from the runner's environment variables or saved run state.\n  - 3. **Flaky or real:** real, not random. It's caused by the environment and should fail the same way on every gate run inside this workflow, even though it probably passes locally.\n  - 4. **First thing to check:** run `python -m pytest tests/test_cancelled_park.py` locally, then again with the CI's `GITHUB_*` / SDLC run variables exported. Then check whether the tests' fixtures clear those variables and point the saved-state path at the test's temp directory.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0006 --phase design` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
++}
 diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/hook-log.jsonl b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/hook-log.jsonl
 new file mode 100644
-index 0000000..bd6aadd
+index 0000000..90de468
 --- /dev/null
 +++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/hook-log.jsonl
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,62 @@
 +{"at": "2026-10-28T16:35:33Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
 +{"at": "2026-10-28T16:35:38Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
 +{"at": "2026-10-28T16:36:49Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
@@ -334,6 +1271,50 @@ index 0000000..bd6aadd
 +{"at": "2026-10-28T16:45:51Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
 +{"at": "2026-10-28T16:45:51Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
 +{"at": "2026-10-28T16:45:51Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-28T16:46:03Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-28T16:46:04Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-28T16:46:06Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-28T16:47:31Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-28T16:47:31Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-28T16:47:31Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-28T16:47:31Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-28T16:47:52Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-28T16:47:52Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-28T16:47:52Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-28T16:47:52Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-04T14:16:26Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-04T14:16:27Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-04T14:16:40Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-04T14:16:53Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-04T14:16:54Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-04T14:17:58Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-response.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-04T14:17:58Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-response.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-04T14:17:58Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-response.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-04T14:17:58Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-response.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-04T14:18:00Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-requests.json"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-04T14:18:00Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-requests.json"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-04T14:18:00Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-requests.json"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-04T14:18:00Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/fix-requests.json"], "reason": "", "tool": "Edit", "verdict": "allow"}
+diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel-models-design.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel-models-design.json
+new file mode 100644
+index 0000000..1e17a0d
+--- /dev/null
++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel-models-design.json
+@@ -0,0 +1,14 @@
++{
++  "advocate_model": "claude-opus-5-5",
++  "models": [
++    "claude-fable-5-1",
++    "claude-opus-5-5"
++  ],
++  "new_decisions": 1,
++  "ok": true,
++  "reason": null,
++  "schema_version": 1,
++  "session_model": "claude-fable-5-1",
++  "session_model_source": "the run's --model",
++  "warning": null
++}
 diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-1-advocate.md
 new file mode 100644
 index 0000000..5e5e598
@@ -405,22 +1386,14 @@ index 0000000..4929518
 +- Condition for the build run: the fixture line and the two new tests go in the one `fix(0006): reproducing test` commit, and `lock-tests` runs after it; a fixture edit after the lock would be the Important finding of REVIEW.md line 23 and the gate's `test_lock` failure. The spec's Flagged concerns entry can be ticked `[x]` with this decision.
 diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-items.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-items.json
 new file mode 100644
-index 0000000..2e98493
+index 0000000..fa8dd63
 --- /dev/null
 +++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/panel/design-items.json
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,18 @@
 +{
-+  "decided": 0,
-+  "gate": "park",
-+  "items": [
-+    {
-+      "decided": false,
-+      "item": "The existing Go tests in `tests/test_detect_cli.py` authorize with the actor `the-owner` on the repository `o/r` and no owner named, so with the fix that actor is not the owner and five of them (the runbook runs, the App refusal's re-run, the route that asked for Go, the head-listed automation identity, the malformed head copy) would fail. The reproducing-test commit, before the test-file lock, must also make the fixture's owner explicit (the `rollback_incident` fixture sets `GITHUB_REPOSITORY_OWNER` to `the-owner` through `monkeypatch`, the pattern `tests/conftest.py` prescribes for a runner variable a test needs); the tests' bodies and assertions are untouched and they pass before the fix as they do today. The intent says \"no pre-existing test is edited to make the fix pass\": the fixture edit changes no test's assertion and weakens nothing (coding-standards rule 4), but it is an edit under `tests/` that the fix needs, so it is declared here rather than made silently.",
-+      "key": "concern:e8ff2e4ed004de40",
-+      "kind": "concern",
-+      "n": 1
-+    }
-+  ],
++  "decided": 1,
++  "gate": "wait",
++  "items": [],
 +  "iterations": {
 +    "cap": 2,
 +    "left": 2,
@@ -428,18 +1401,16 @@ index 0000000..2e98493
 +  },
 +  "panel_calls": {
 +    "cap": 4,
-+    "left": 4,
-+    "used": 0
++    "left": 3,
++    "used": 1
 +  },
 +  "parks": [],
-+  "pending": [
-+    1
-+  ],
++  "pending": [],
 +  "phase": "design"
 +}
 diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md
 new file mode 100644
-index 0000000..f388fea
+index 0000000..170cb0b
 --- /dev/null
 +++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/roles/security-policy-design.md
 @@ -0,0 +1,7 @@
@@ -447,21 +1418,45 @@ index 0000000..f388fea
 +
 +## auth
 +- Verdict: continue
-+- What the change does to it: Today any person's `sdlc:go` label authorizes the runbook. The change makes the owner's account the only one that can. `_human_label_actor` in `plugin/detect/cli.py` gains one `is_owner_actor(actor, approved_config, None, repo)` check (decision 34), and `config` is the default branch's `sdlc.yaml`. `tests/test_detect_cli.py` gains two reproducing tests and a fixture line that names the test project's owner (`GITHUB_REPOSITORY_OWNER`).
-+- What could break: A collaborator's Go no longer runs a runbook. The label stays and the owner has to apply it themselves. An organization repository with no `owner:` in the default branch's `sdlc.yaml` resolves the owner to the organization login, which no person's label matches, so the Go is refused (fail closed) until the owner sets that key.
-+- How to undo it: Revert the fix commit on `plugin/detect/cli.py`. That removes the one-line check and the import. The tests' fixture line is harmless and can stay, or be reverted with the test commit.
++- What the change does to it: Today any person's `sdlc:go` label authorizes a runbook that runs with the runbook secrets. After the change only the owner's account can. `_human_label_actor` in `plugin/detect/cli.py` gets one `is_owner_actor(actor, approved, None, repo)` check after the bot and automation branch (decision 34's one rule), and `approved` is the default branch's `sdlc.yaml`, never the PR head's copy. `tests/test_detect_cli.py` gets two reproducing tests. It also gets one fixture line that names the test project's owner (`GITHUB_REPOSITORY_OWNER=the-owner` in `rollback_incident`), committed before the test lock (panel decision 1).
++- What could break: A collaborator's Go no longer runs a runbook. The label stays, and the owner has to apply it again from their own account. On an organization repository whose default-branch `sdlc.yaml` names no `owner:`, the runner's `GITHUB_REPOSITORY_OWNER` is the organization's login, which no person's label matches. Every Go is then refused (fail closed) until the owner sets that key in a reviewed PR.
++- How to undo it: Revert the fix commit on `plugin/detect/cli.py`, which removes the one check and the import. The fixture line and the new tests come out with a revert of the reproducing-test commit; the collaborator test would fail without the fix, so revert both commits together.
 diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/run-design.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/run-design.json
 new file mode 100644
-index 0000000..c8fa309
+index 0000000..0148f20
 --- /dev/null
 +++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/run-design.json
-@@ -0,0 +1,5 @@
+@@ -0,0 +1,6 @@
 +{
 +  "phase": "design",
++  "run": "build",
 +  "spend_usd": null,
-+  "started_at": "2026-10-28T16:35:44Z"
++  "started_at": "2026-11-04T14:16:55Z"
 +}
 \ No newline at end of file
+diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/spend.json b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/spend.json
+new file mode 100644
+index 0000000..8238a6a
+--- /dev/null
++++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/evidence/spend.json
+@@ -0,0 +1,17 @@
++{
++  "entries": [
++    {
++      "at": "2026-10-28T16:48:28Z",
++      "run": "design",
++      "source": "claude-design.json",
++      "usd": 9.177447149999995
++    },
++    {
++      "at": "2026-10-28T16:55:41Z",
++      "run": "explain",
++      "source": "claude-explain.json",
++      "usd": 0.24319460000000004
++    }
++  ],
++  "total_usd": 9.420642
++}
 diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md b/changes/0006-security-authz-the-runbook-go-cmd-go-via/plan.md
 new file mode 100644
 index 0000000..46b015d
@@ -566,7 +1561,7 @@ index 0000000..13d6672
 +- The security-baseline check reports nothing on the diff; no credential in the diff.
 +- Mock: none, screens follow the UX conventions
 diff --git a/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml b/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml
-index fcc8d6b..03c9681 100644
+index fcc8d6b..2a58ceb 100644
 --- a/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml
 +++ b/changes/0006-security-authz-the-runbook-go-cmd-go-via/status.yaml
 @@ -1,17 +1,17 @@
@@ -579,14 +1574,18 @@ index fcc8d6b..03c9681 100644
  change_type: fix
  gate:
 -  phase: maintain
-+  phase: intent
-   result: passed
+-  result: passed
 -  reason: waiting for the owner at gate (maintain)
-+  reason: "merged by the owner: the incident intent PR's merge is gate (intent) (decision 25)"
-   at: "2026-10-26T13:13:57Z"
- parked_reason: null
- iterations: 0
+-  at: "2026-10-26T13:13:57Z"
+-parked_reason: null
+-iterations: 0
 -panel_calls: 0
++  phase: design
++  result: parked
++  reason: "commands: not green: test (exit 1)"
++  at: "2026-10-28T16:55:08Z"
++parked_reason: "commands: not green: test (exit 1)"
++iterations: 1
 +panel_calls: 1
  external_ref: null
  risk_accepted: []
@@ -596,5 +1595,5 @@ index fcc8d6b..03c9681 100644
  released_pr: null
  created_at: "2026-10-26T13:13:55Z"
 -updated_at: "2026-10-26T13:13:57Z"
-+updated_at: "2026-10-28T16:45:00Z"
++updated_at: "2026-11-04T14:17:00Z"
  schema_version: 1
