@@ -5,11 +5,11 @@ phase: build
 entry_route: incident
 change_type: fix
 gate:
-  phase: design
-  result: passed
-  reason: waiting for the owner at gate (design)
-  at: "2026-11-04T14:24:20Z"
-parked_reason: null
+  phase: build
+  result: parked
+  reason: "build: the locked reproducing test is wrong, not the fix. tests/test_detect_cli.py:859 (test_go_by_a_collaborator_performs_nothing) asserts runbook_records(change) == [], copied from plan.md step 1, but the test's own dispatch step writes evidence/runbook-rollback-deploy.json with status go-requested (as test_dispatch_go_route_records_go_requested_and_runs_nothing asserts), so the assertion fails with or without the fix. Fix committed (6a2429f): 121 of 122 tests in test_detect_cli.py and test_owner_rounds.py pass, incl. both cases of test_go_reads_the_owner_from_the_default_branch and every existing Go test. What I need from you: unlock the tests and replace line 859 with a check that the record still says go-requested, e.g. record = json.loads((change / 'evidence' / 'runbook-rollback-deploy.json').read_text('utf-8')); assert record['status'] == 'go-requested'; then re-run /sdlc-build 0006."
+  at: "2026-11-04T15:24:03Z"
+parked_reason: "build: the locked reproducing test is wrong, not the fix. tests/test_detect_cli.py:859 (test_go_by_a_collaborator_performs_nothing) asserts runbook_records(change) == [], copied from plan.md step 1, but the test's own dispatch step writes evidence/runbook-rollback-deploy.json with status go-requested (as test_dispatch_go_route_records_go_requested_and_runs_nothing asserts), so the assertion fails with or without the fix. Fix committed (6a2429f): 121 of 122 tests in test_detect_cli.py and test_owner_rounds.py pass, incl. both cases of test_go_reads_the_owner_from_the_default_branch and every existing Go test. What I need from you: unlock the tests and replace line 859 with a check that the record still says go-requested, e.g. record = json.loads((change / 'evidence' / 'runbook-rollback-deploy.json').read_text('utf-8')); assert record['status'] == 'go-requested'; then re-run /sdlc-build 0006."
 iterations: 1
 panel_calls: 1
 external_ref: null
@@ -38,5 +38,5 @@ risk_acceptances:
         - auth
       banner_shown: true
 created_at: "2026-10-26T13:13:55Z"
-updated_at: "2026-11-04T15:22:50Z"
+updated_at: "2026-11-04T15:24:03Z"
 schema_version: 1
