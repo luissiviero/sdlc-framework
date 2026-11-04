@@ -1,0 +1,23 @@
+# Eval for incident 0006, written by plugin/evals/case.py new (build guide
+# step 36.3; article p.44 step 7). Reproduces the scan's authz finding at
+# plugin/detect/cli.py:1183: before the fix, _human_label_actor accepted the sdlc:go label
+# from any account that was not a bot or the automation identity, so a collaborator could run
+# a runbook the owner never authorized. The fix makes the Go the owner's act only
+# (state.unpark.is_owner_actor, decision 34), with the owner read from the default branch's
+# sdlc.yaml; the two tests below fail without it.
+description: "Incident 0006 stays fixed: the runbook Go runs only on the owner's sdlc:go label"
+checks:
+  - command: "python -m pytest tests/test_detect_cli.py -k \"go_by_a_collaborator_performs_nothing or go_reads_the_owner_from_the_default_branch or go_by_a_person_runs_the_runbook\""
+    exit: 0
+  - command: python -m pytest
+    exit: 0
+  - file: "plugin/detect/cli.py"
+    contains:
+      - "from state.unpark import is_owner_actor"
+      - "if not is_owner_actor(actor, config, None, repo):"
+  - file: "tests/test_detect_cli.py"
+    contains:
+      - "def test_go_by_a_collaborator_performs_nothing"
+      - "def test_go_reads_the_owner_from_the_default_branch"
+  - output:
+      regex: "\\d+ passed"
