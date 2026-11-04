@@ -856,7 +856,8 @@ def test_go_by_a_collaborator_performs_nothing(rollback_incident, gh, spy, capsy
     assert "owner" in out["reason"] and "colleague" in out["reason"]
     assert spy.calls == []
     assert gh.named("set_labels") == []  # the label is left where it is
-    assert runbook_records(change) == []
+    record = json.loads((change / "evidence" / "runbook-rollback-deploy.json").read_text("utf-8"))
+    assert record["status"] == "go-requested"  # the dispatch's record, untouched by the Go
     assert status_mod.read_status(change).runbook_authorized_by is None
 
 

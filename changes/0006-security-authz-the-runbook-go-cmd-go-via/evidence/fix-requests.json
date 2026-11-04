@@ -1,25 +1,19 @@
 {
-  "applied_earlier": [],
-  "collected_at": "2026-11-04T14:16:12+00:00",
-  "head": "7d9793a7af116b9a544c6ac9d628a79dc5d3667b",
-  "not_applied": [],
-  "ok": true,
-  "pr_number": 403,
-  "repo": "luissiviero/sdlc-framework",
-  "requests": [
+  "applied_earlier": [
     {
-      "applied": true,
-      "association": "OWNER",
-      "at": "2026-11-04T14:15:07Z",
-      "author": "luissiviero",
-      "body": "@claude ",
       "id": 6632926759,
-      "kind": "comment",
-      "url": "https://github.com/luissiviero/sdlc-framework/pull/403#issuecomment-6632926759"
+      "kind": "comment"
     }
   ],
+  "collected_at": "2026-11-04T19:24:38+00:00",
+  "head": "30643eba3a8e4ee62cca70396b021634e4eb22e5",
+  "not_applied": [],
+  "ok": true,
+  "pr_number": 405,
+  "repo": "luissiviero/sdlc-framework",
+  "requests": [],
   "route": "api",
   "schema_version": 1,
-  "trigger": "https://github.com/luissiviero/sdlc-framework/pull/403#issuecomment-6632926759",
+  "trigger": null,
   "unavailable": null
 }
