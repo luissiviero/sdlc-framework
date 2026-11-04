@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-04T20:10:00Z",
+  "findings": [
+    {
+      "file": "tests/test_detect_cli.py",
+      "line": 0,
+      "pass": "compliance",
+      "rule": "REVIEW.md: no test edits in a fix task",
+      "severity": "important",
+      "signature": "ac03d472586f4a9b",
+      "source": "framework",
+      "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+    },
+    {
+      "file": "docs/OPERATING_MODEL.md",
+      "line": 98,
+      "pass": "compliance",
+      "rule": "",
+      "severity": "nit",
+      "signature": "c9dd13d18c53e3f1",
+      "summary": "The `sdlc-runbook.yml` row still says the Go step checks only that the label's actor is a person (never the token or a `[bot]`). After this change `detect/cli.py go` also requires the owner's account (`is_owner_actor`, decision 34), so the contract understates the check."
+    },
+    {
+      "file": "tests/test_detect_cli.py",
+      "line": 351,
+      "pass": "compliance",
+      "rule": "REVIEW.md framework rule: in a fix-type change the diff must not modify test files that existed before the fix",
+      "severity": "nit",
+      "signature": "098a2c4b01d7f21c",
+      "summary": "In a fix-type change the diff edits a pre-existing test file: it changes the `rollback_incident` fixture (adds `monkeypatch` and `GITHUB_REPOSITORY_OWNER`) and adds tests to that file. The edit is declared in spec.md (panel decision 1), it sits in the reproducing-test commit before the lock, and it changes no test body or assertion, so this is a nit with a doubt rather than an Important breach. The literal REVIEW.md wording still forbids it, and the owner should confirm the reading."
+    }
+  ],
+  "head": "892a57f8f61d7468199bd99915e0b56171d6f973",
+  "schema_version": 1,
+  "tally": {
+    "important": 1,
+    "nit": 2,
+    "nits_omitted": 0
+  }
+}
