@@ -11,3 +11,18 @@ none
 
 ## What I need from you
 nothing
+
+# Fix round 2 (build), 2026-11-04
+
+Source of the requests: `evidence/fix-requests.json`, collected by the runner at head `30643eb`. It has no review or comment requests and nothing under `not_applied`.
+
+## Requests
+- The gate's park (`status.yaml: parked_reason`, 2026-11-04T15:24:03Z) and the owner's `sdlc:unlock-tests` label (`tests_unlocked_by: luissiviero`): applied in `4904231`. In `tests/test_detect_cli.py`, `test_go_by_a_collaborator_performs_nothing` no longer asserts `runbook_records(change) == []`. It now asserts that the dispatch's `evidence/runbook-rollback-deploy.json` still says `go-requested`, as the park proposed. plan.md step 1 was updated in the same commit.
+- Note: spec.md R1 and Acceptance still say "no runbook record". The dispatch writes that record before the Go, so the test checks that the Go leaves it unchanged. spec.md is not edited at build; the owner may reword it.
+- Targets: this session cannot run them (the sandbox denies the fixture's `.env`). Ruff check and format pass on the edited file. The runner runs the three targets after this round.
+
+## Not applied
+none
+
+## What I need from you
+nothing

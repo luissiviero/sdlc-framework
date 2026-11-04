@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "phase": "build",
+  "head": "490423111acdcb674ec26fe5474cebedb513ea04",
+  "verdict": "continue",
+  "reasons": [],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Spec is tight (R1-R10 measurable, every flagged concern decided), but the change touches the risk-list item 'auth': it narrows who may authorize a running-system action that runs with the runbook secrets.",
+    "Blast radius is small (one condition and one import in plugin/detect/cli.py, two new tests and one fixture line in tests/test_detect_cli.py), no schema or contract change; existing Go tests cover the surrounding cmd_go path.",
+    "A security fix to an authorization gate is not routine regardless of size."
+  ],
+  "attempted": [
+    "Intent: the diff adds exactly the intent's check (is_owner_actor after the bot/automation branch in _human_label_actor) with the default branch's config; a collaborator's sdlc:go now returns (None, reason) and cmd_go emits performed:false, exit 0, without judging, running or touching labels. Solves the stated problem, not a nearby one.",
+    "Spec R2/R3: is_owner_actor(actor, config, None, repo) is decision 34's single rule (plugin/state/unpark.py:101); config is `approved` from _approved_config (cli.py:1218-1222), never the head's copy; env None means os.environ (GITHUB_REPOSITORY_OWNER on the runner); repo is --repo. No second rule written.",
+    "Spec R5/R6: reason names label, actor, 'owner's account', 'left where it is' and decision 34; the earlier refusals keep their texts and order; the owner check precedes _judge.",
+    "Plan order and files: only tests/test_detect_cli.py and plugin/detect/cli.py change in code, as plan.md lists; top-level import beside the other state imports with noqa E402 as step 2 says; plan.md's step-1 bullet updated to match the round-2 assertion.",
+    "Claims against today's code: checked is_owner_actor/owner_login signatures and fail-closed behaviour (unpark.py:78-115), _approved_config (cli.py:993), cmd_go passing `approved` (cli.py:1222), state.unpark's imports (conventions, status, lazy pr.github and gate.policy; nothing from detect, so no cycle), the rollback_incident fixture and that every go test reaching a successful run uses rollback_incident with actor the-owner (lines 790, 1318, 1712, 1914, 2032, 2119), so the fixture's GITHUB_REPOSITORY_OWNER keeps them green; helpers json, git, bare, go and REPO exist in the test module.",
+    "Round-2 test edit: replacing runbook_records(change) == [] with record['status'] == 'go-requested' is correct (dispatch writes that record, as test_dispatch_go_route_records_go_requested_and_runs_nothing asserts) and still meaningful: a Go that ran would flip the record to 'ran' and set runbook_authorized_by, both asserted. Owner unlocked the tests (status.yaml tests_unlocked_by: luissiviero); the edit touches only the new test.",
+    "Tests could pass with the bug present? No: evidence/failing-test.log shows all three new cases failing at `performed is False` before the fix (lines 855, 1776, 1787); that assertion precedes the round-2 line, so reproduction still holds. The main case orders the-owner's refused Go before the colleague's, so the owner check, not 'did not ask for Go', is what is proven. Pre-existing tests: no body or assertion changed; only the declared fixture line (panel decision 1).",
+    "Proof: no test.log/build.log/lint.log/verifier.md committed this round; the delegation says the targets are run by the runner after the session (sandbox denies the nested .env), which is the deferred case, left to the runner. failing-test.log is literal pytest output from a wrapper that skips copying .env*, declared in its header.",
+    "Blast radius: _human_label_actor's only caller is cmd_go; no workflow, guardrail file, schema or data shape in the diff; the fixture env var affects only rollback_incident tests; live behaviour narrows Go to the owner's account, decision 34's intended narrowing, noted in plan.md Risks.",
+    "Policies: security-baseline rule 1 (server-side authorization in the step holding secrets) applied; no credential or new dependency in the diff; ux rule 4 reason wording applied; data-conventions not applicable.",
+    "Skip markers: none added in the diff.",
+    "Drive: sdlc.yaml sets no commands.drive; not applicable.",
+    "Runner records (claude-*.json, run-build.json, spend.json, hook-log.jsonl) not used as evidence for or against."
+  ]
+}
