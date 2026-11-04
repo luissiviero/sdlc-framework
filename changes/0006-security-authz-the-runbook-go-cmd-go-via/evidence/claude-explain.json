@@ -1,0 +1,105 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 10841,
+  "duration_ms": 11005,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 698,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "cacheCreationInputTokens": 27375,
+      "cacheReadInputTokens": 19793,
+      "canonicalModel": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 0.24319460000000004,
+      "inputTokens": 4,
+      "maxOutputTokens": 128000,
+      "outputTokens": 1011,
+      "provider": "firstParty",
+      "thinkingTokens": 349,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 4,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "1. **What failed:** the design gate parked change 0006 because `python -m pytest` exited 1. There were 10 failures, all in `tests/test_cancelled_park.py`. Build, lint and every other gate check passed, and the stderr file only has the workspace-trust warning.\n2. **Likely cause:** the design diff only touches the change folder, so this change's work didn't break these tests. The assertions show them reading the CI job's own state: a parked reason saying the commands weren't green, and the workflow's head branch where they expect their fixture's. So the cancel/park tests aren't isolated from the runner's environment variables or saved run state.\n3. **Flaky or real:** real, not random. It's caused by the environment and should fail the same way on every gate run inside this workflow, even though it probably passes locally.\n4. **First thing to check:** run `python -m pytest tests/test_cancelled_park.py` locally, then again with the CI's `GITHUB_*` / SDLC run variables exported. Then check whether the tests' fixtures clear those variables and point the saved-state path at the test's temp directory.",
+  "result_index": 0,
+  "safety_stops": 0,
+  "sdlc_run": {
+    "at": "2026-10-28T16:55:40Z",
+    "credential": "oauth",
+    "seconds": 12.3,
+    "timed_out": false
+  },
+  "session_id": "cb54b5c3-cee8-4d42-a691-8a073523c968",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {},
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 0,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "spawned": 0,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 85,
+  "total_cost_usd": 0.24319460000000004,
+  "ttft_ms": 1248,
+  "ttft_stream_ms": 698,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27375,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 27375,
+    "cache_read_input_tokens": 19793,
+    "fallback_credit": null,
+    "inference_geo": "global",
+    "input_tokens": 4,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 7582,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 7582,
+        "cache_read_input_tokens": 19793,
+        "input_tokens": 2,
+        "output_tokens": 710,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 1011,
+    "output_tokens_details": {
+      "thinking_tokens": 349
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "0a0273f2-5982-4523-b5b7-2fa4ea243372"
+}

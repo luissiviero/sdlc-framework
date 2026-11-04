@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "phase": "design",
+  "head": "ff4344849a9281eebb06636dae337363d30df63c",
+  "verdict": "continue",
+  "reasons": [],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Blast radius: the change is to the authorization of the runbook Go, the one gate before a running-system action runs with the runbook secrets. It touches the risk-list item 'auth'.",
+    "Spec tightness: tight. Every flagged concern is decided (auth by decision 35, the fixture edit by panel decision 1, the label that stays). The acceptance can be measured: two named tests with stated assertions, eight existing Go tests unchanged in body, and the three targets.",
+    "Test coverage: the Go path is covered, but the fix needs a declared edit to test infrastructure (one GITHUB_REPOSITORY_OWNER line in the rollback_incident fixture) in a fix-type change. The existing tests as they stand do not cover it."
+  ],
+  "attempted": [
+    "Round scope: fix-response.md says this round changed neither spec.md nor plan.md. Its trigger was the owner's bare @claude comment, and the change request was the gate's park 'commands: not green: test (exit 1)': ten failures in tests/test_cancelled_park.py, unrelated to this change. Checked: tests/conftest.py on this head lists HEAD_REF among the runner variables it removes (line 55), so the cause named there is fixed on the branch. The committed diff touches only files inside the change folder. The runner re-runs the targets after this session, so whether the suite is now green is the gate's question, not mine.",
+    "Intent: the intent wants cli.py:1183 to stop accepting any person's sdlc:go, proven by a reproducing test written first. The spec puts is_owner_actor after the bot and automation branch of _human_label_actor, against the approved copy. That is the intent's suggested patch, with a top-level import and a reason text that follows R5. It solves the stated problem.",
+    "Spec and plan: R1 to R10 each map to a plan step or a proof line. Two files are listed, in the order test then fix. All three conditions of panel decision 1 are in plan.md: the fixture line goes in the reproducing-test commit before lock-tests; the step-1 log runs the module with the fixture line alone; the Risks line names owner_login as the only direct reader and lists the seven indirect callers.",
+    "Claim: _human_label_actor(repo, number, label, config) is at cli.py:1179-1188, and its last refusal is the bot/automation branch. Re-checked on this head; true.",
+    "Claim: cmd_go passes `approved` (from _approved_config, fail closed on BandsError) to _human_label_actor before _judge. A (None, why) result emits performed:false and returns EXIT_OK without touching labels, status or the runbook. Re-checked at cli.py:1201-1218; true.",
+    "Claim: is_owner_actor/owner_login read sdlc.yaml:owner, then GITHUB_REPOSITORY_OWNER, then the owner part of GITHUB_REPOSITORY or repo. The comparison ignores case, and an empty actor, a [bot], the automation identity or an unknown owner fails closed. Re-checked at unpark.py:78-115; true. R2 leaves out the GITHUB_REPOSITORY step, which does no harm.",
+    "Claim: there is no import cycle. unpark imports state.conventions and state.status at the top, and gate.policy and pr.github lazily; nothing from detect. detect/cli.py uses the sys.path plus '# noqa: E402' pattern at lines 54-61, which matches the plan's import line.",
+    "Claim: the existing Go tests use actor 'the-owner' with no owner named. Re-checked at test_detect_cli.py lines 794, 851, 1299, 1700, 1849, 1959 and 2051; true. rollback_incident (line 351) does not take monkeypatch today, so the plan's fixture edit adds the parameter. That is the function-scoped instance the tests already share, so no conflict.",
+    "Claim: list_owner_as_automation_on_main exists (line 1660) as the clone-and-commit pattern the new main case copies. True.",
+    "Tests: the new collaborator test and the head case fail on today's code, because the colleague passes the bot check. The main case fails on the-owner's half. Neither can pass with the bug present. The ordering note (the-owner's refused Go comes before the colleague's run) keeps the 'did not ask for Go' refusal from masking the owner check. No pre-existing test body or assertion changes.",
+    "Decisions: 14 (Go is the owner's per-incident act) and 34 point 3 (one function, fail closed, the default branch's owner; a workflow if: is only a coarse check). The design matches both and leaves sdlc-runbook.yml unchanged.",
+    "Proof: at design there is no toolchain log to compare. The plan names the two new tests with their assertions and requires the step-1 log with the fixture line alone.",
+    "Blast radius: one caller (cmd_go). No data shape, schema, migration, workflow or guardrail file changes. The diff stays inside the change folder. The intended narrowing affects collaborators' Go and organization repositories with no owner: key; the brief records both.",
+    "Policies: security-baseline rule 1 (the check runs on the server, in the step that holds the secrets, against the default branch's copy), rule 3 (no credential) and rule 6 (no new dependency); coding-standards rule 4 (test first, nothing weakened); ux-and-brand rule 4 (the reason text). All applied.",
+    "Skip markers: not checked at design (the ratchets check runs at build and test).",
+    "Drive: not applicable at design."
+  ]
+}

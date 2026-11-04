@@ -1,0 +1,131 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 826641,
+  "duration_ms": 780118,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 946,
+  "is_error": false,
+  "modelUsage": {
+    "claude-fable-5-1": {
+      "cacheCreationInputTokens": 243482,
+      "cacheReadInputTokens": 3429691,
+      "canonicalModel": "claude-fable-5-1",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 7.389482749999998,
+      "inputTokens": 1254,
+      "maxOutputTokens": 64000,
+      "outputTokens": 48135,
+      "provider": "firstParty",
+      "thinkingTokens": 13452,
+      "webSearchRequests": 0
+    },
+    "claude-opus-5-5": {
+      "cacheCreationInputTokens": 175637,
+      "cacheReadInputTokens": 1659297,
+      "canonicalModel": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 1.7879643999999997,
+      "inputTokens": 80,
+      "maxOutputTokens": 128000,
+      "outputTokens": 28880,
+      "provider": "firstParty",
+      "thinkingTokens": 10478,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 87,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "command": "python \"/home/runner/work/sdlc-framework/sdlc-framework/framework/plugin/gate/cli.py\" check --root \"/home/runner/work/sdlc-framework/sdlc-framework\" --id 0006 --phase design; echo \"exit=$?\"",
+        "description": "Run the design gate"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_016GAPm2DSACU8djYWNzKQZA"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result": "Design PR https://github.com/luissiviero/sdlc-framework/pull/403 is open with `sdlc:design-ready`; the gate result is `wait` (the owner's merge is the design gate), 0 open concerns (1 closed by panel decision 1, plus the `auth` risk-list declaration in the close-look banner), 1 panel decision; the adversarial reviewer said continue and classed the plan non-routine. Nothing else was started.\n\nOne note: a chained Bash call (the gate command followed by an echo) was denied as a whole by the permission rules, so I re-ran the gate command alone; nothing was lost.",
+  "result_index": 0,
+  "safety_stops": 0,
+  "sdlc_run": {
+    "at": "2026-10-28T16:48:28Z",
+    "credential": "oauth",
+    "seconds": 781.1,
+    "timed_out": false
+  },
+  "session_id": "af7fafc1-4b7d-4bd2-8d67-c7fa106e5300",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "general-purpose": 2,
+      "sdlc:adversarial-reviewer": 3
+    },
+    "completed": 5,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 5
+    },
+    "spawned": 5,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 91,
+  "total_cost_usd": 9.177447149999995,
+  "ttft_ms": 1561,
+  "ttft_stream_ms": 946,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 142566,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 142566,
+    "cache_read_input_tokens": 3088802,
+    "fallback_credit": null,
+    "inference_geo": "global",
+    "input_tokens": 962,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 535,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 535,
+        "cache_read_input_tokens": 142031,
+        "input_tokens": 32,
+        "output_tokens": 206,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 37603,
+    "output_tokens_details": {
+      "thinking_tokens": 10013
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "d28c55d8-128d-450a-af32-fb49b2083182"
+}
