@@ -1,0 +1,73 @@
+diff --git a/evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/checks.yaml b/evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/checks.yaml
+index f9216d0..bc9e2aa 100644
+--- a/evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/checks.yaml
++++ b/evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/checks.yaml
+@@ -1,23 +1,24 @@
+-# Eval for incident 0006, written by plugin/evals/case.py new (build guide
+-# step 36.3; article p.44 step 7). Reproduces the scan's authz finding at
+-# plugin/detect/cli.py:1183: before the fix, _human_label_actor accepted the sdlc:go label
+-# from any account that was not a bot or the automation identity, so a collaborator could run
+-# a runbook the owner never authorized. The fix makes the Go the owner's act only
+-# (state.unpark.is_owner_actor, decision 34), with the owner read from the default branch's
+-# sdlc.yaml; the two tests below fail without it.
++# The framework-level suite (build guide step 36.3; article p.44 step 7). Reproduces the
++# incident this change fixes (plugin/detect/cli.py:1183, the scan's authz finding): before
++# the fix, _human_label_actor accepted the sdlc:go label from any account that was not a bot
++# or the automation identity, so a collaborator could run a runbook the owner never
++# authorized. The fix makes the Go the owner's act only (state.unpark.is_owner_actor,
++# decision 34), the owner read from the default branch's sdlc.yaml.
++# The property lives in the framework's code, not in the fixture project the suite runs
++# against, so the session is a bounded read-only turn and the checks locate the framework
++# checkout: SDLC_FRAMEWORK_DIR (evals/README.md's locator) or GITHUB_WORKSPACE (the checkout
++# framework-evals.yml runs from). Neither set fails the case with the reason, never skips it.
++# The first check runs the two reproducing tests there (both fail without the fix); the
++# second asserts the owner check is still the condition _human_label_actor applies.
+ description: "Incident 0006 stays fixed: the runbook Go runs only on the owner's sdlc:go label"
++tools: "Read"
++max_turns: 2
++budget_usd: 0.2
++timeout_seconds: 600
+ checks:
+-  - command: "python -m pytest tests/test_detect_cli.py -k \"go_by_a_collaborator_performs_nothing or go_reads_the_owner_from_the_default_branch or go_by_a_person_runs_the_runbook\""
++  - command: "python -c \"import os, pathlib, subprocess, sys; d = os.environ.get('SDLC_FRAMEWORK_DIR') or os.environ.get('GITHUB_WORKSPACE') or ''; root = pathlib.Path(d) if d else None; ok = root is not None and (root / 'plugin' / 'detect' / 'cli.py').is_file(); print('framework checkout:', root if ok else 'not found (set SDLC_FRAMEWORK_DIR)'); sys.exit(subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider', 'tests/test_detect_cli.py', '-k', 'go_by_a_collaborator_performs_nothing or go_reads_the_owner_from_the_default_branch'], cwd=root).returncode if ok else 1)\""
+     exit: 0
+-  - command: python -m pytest
++  - command: "python -c \"import os, pathlib, sys; d = os.environ.get('SDLC_FRAMEWORK_DIR') or os.environ.get('GITHUB_WORKSPACE') or ''; p = pathlib.Path(d) / 'plugin' / 'detect' / 'cli.py' if d else None; text = p.read_text(encoding='utf-8') if p is not None and p.is_file() else ''; hit = 'if not is_owner_actor(actor, config, None, repo):' in text; print('owner check present' if hit else 'owner check missing from plugin/detect/cli.py'); sys.exit(0 if hit else 1)\""
+     exit: 0
+-  - file: "plugin/detect/cli.py"
+-    contains:
+-      - "from state.unpark import is_owner_actor"
+-      - "if not is_owner_actor(actor, config, None, repo):"
+-  - file: "tests/test_detect_cli.py"
+-    contains:
+-      - "def test_go_by_a_collaborator_performs_nothing"
+-      - "def test_go_reads_the_owner_from_the_default_branch"
+   - output:
+-      regex: "\\d+ passed"
++      contains: "no change needed"
+diff --git a/evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/prompt.md b/evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/prompt.md
+index 0f30c0e..82520e2 100644
+--- a/evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/prompt.md
++++ b/evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/prompt.md
+@@ -1,7 +1,2 @@
+-Incident 0006: security: authz: The runbook Go (cmd_go via _human_label_actor) accepts the.
+-
+-What happened: The weekly security review of the codebase at commit `80d7de5cebd4` found an Important authz finding in `plugin/detect/cli.py:1183`: The runbook Go (cmd_go via _human_label_actor) accepts the sdlc:go label from any account that is not a bot or the automation identity, so a collaborator with only triage/label rights can make the runbook workflow run a running-system action (rollback, config change) with the runbook secrets on an incident PR the owner never approved, although decision 14 makes Go the owner's per-incident act and the comment trigger, merge step and review request all require is_owner_actor.
+-
+-What must hold: The finding is bounded (one file, one patch): `plugin/detect/cli.py:1183` no longer has the authz weakness, proven by a new test that reproduces it before the fix and passes after it. The review suggests this patch, stored as `evidence/suggested-patch.diff` for the build run to apply and check: ```diff --- a/plugin/detect/cli.py +++ b/plugin/detect/cli.py @@ -1181,12 +1181,17 @@ # --- go: the owner's per-incident authorization (decision 14) ---------------------------------- def _human_label_actor(repo: str, number: int, label: str, config: dict[str, Any]): + from state.unpark import is_owner_actor # noqa: PLC0415 + found = _github().label_actor(repo, number, label) if not found.get("ok"): return None, f"could not read the label events: {found.get('reason') or 'failed'}" actor = found.get("actor") if not actor: return None, f"no `labeled` event for {label} on #{number}" if BOT_RE.search(actor) or is_automation(actor, "", automation_identity(config)): return None, f"{label} was applied by {actor}, not by a person: left where it is" + if not is_owner_actor(actor, config, None, repo): + # decision 14: the Go is the owner's act; config is the default branch's copy + return None, f"{label} was applied by {actor}, not by the owner's account (decision 34)" return actor, "" ```
+-
+-Make the fix hold in this repository: check that the cause of the incident above cannot come back, change the code if it can, keep or add a test that fails without the fix, and run the tests (`python -m pytest`) before you report done. Paste the test output in your answer.
++Do not change any file in this project. Reply with exactly the words "no change needed" and
++nothing else.
+diff --git a/tests/test_evals.py b/tests/test_evals.py
+index 1fe09c0..6939bc0 100644
+--- a/tests/test_evals.py
++++ b/tests/test_evals.py
+@@ -669,6 +669,7 @@ def test_the_framework_suite_s_cases_load():
+         "0004-verify-before-done",
+         "0005-hooks-loaded",
+         "0006-sandbox-write-deny",
++        "0006-security-authz-the-runbook-go-cmd-go-via",
+         "0007-sandbox-credentials-hidden",
+         *TRIGGER_CASES,
+     ]

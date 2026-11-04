@@ -1,6 +1,25 @@
 {
-  "at": "2026-11-04T20:10:00Z",
+  "at": "2026-11-04T19:49:55Z",
   "findings": [
+    {
+      "file": "evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/checks.yaml",
+      "line": 10,
+      "pass": "bugs",
+      "rule": "spec.md R10 (targets stay green); plan.md Files that change (the eval case must prove the incident stays fixed)",
+      "severity": "important",
+      "signature": "f7738a33f4716b03",
+      "summary": "evals/cases/ is the framework-level suite. framework-evals.yml runs it with `plugin/evals/run.py --fixture` against tests/fixtures/sample-python-project, which has no plugin/detect/cli.py and no tests/test_detect_cli.py. Every check in this case (the targeted pytest command, the two `file` checks, and the `\\d+ passed` output on a suite that does not hold these tests) therefore fails on every run, and the suite drops below its default min-pass-rate of 1.0. The Framework evals job then goes red nightly and on every PR that touches plugin/ or evals/. The earlier incident case 0002-security-authz-the-guardrail-self-protec was written against the fixture for this reason."
+    },
+    {
+      "file": "tests/fixtures/sample-python-project/.env",
+      "line": 0,
+      "pass": "compliance",
+      "rule": "REVIEW.md: no test edits in a fix task",
+      "severity": "important",
+      "signature": "66a15d5701658e4c",
+      "source": "framework",
+      "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+    },
     {
       "file": "tests/test_detect_cli.py",
       "line": 0,
@@ -12,13 +31,22 @@
       "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
     },
     {
+      "file": "tests/test_evals.py",
+      "line": 664,
+      "pass": "bugs",
+      "rule": "spec.md R10 / Acceptance: python -m pytest all green; definition-of-done (build)",
+      "severity": "important",
+      "signature": "d6f28f9fa7b23d48",
+      "summary": "The new case folder evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/ breaks test_the_framework_suite_s_cases_load, which asserts the exact list of framework cases. The diff does not add the case to that list, so `python -m pytest` is red at this head (reproduced: 'At index 7 diff: 0006-security-authz-the-runbook-go-cmd-go-via != 0007-sandbox-credentials-hidden'). The committed test.log (19:44:55Z) predates the release commit (19:48) and does not cover it."
+    },
+    {
       "file": "docs/OPERATING_MODEL.md",
       "line": 98,
       "pass": "compliance",
       "rule": "",
       "severity": "nit",
       "signature": "c9dd13d18c53e3f1",
-      "summary": "The `sdlc-runbook.yml` row still says the Go step checks only that the label's actor is a person (never the token or a `[bot]`). After this change `detect/cli.py go` also requires the owner's account (`is_owner_actor`, decision 34), so the contract understates the check."
+      "summary": "The `sdlc-runbook.yml` row still says the Go step checks only that the label's actor is a person (never the token or a `[bot]`). After this change `detect/cli.py go` also requires the owner's account (`is_owner_actor`, decision 34), so the contract now understates the check."
     },
     {
       "file": "tests/test_detect_cli.py",
@@ -26,14 +54,14 @@
       "pass": "compliance",
       "rule": "REVIEW.md framework rule: in a fix-type change the diff must not modify test files that existed before the fix",
       "severity": "nit",
-      "signature": "098a2c4b01d7f21c",
-      "summary": "In a fix-type change the diff edits a pre-existing test file: it changes the `rollback_incident` fixture (adds `monkeypatch` and `GITHUB_REPOSITORY_OWNER`) and adds tests to that file. The edit is declared in spec.md (panel decision 1), it sits in the reproducing-test commit before the lock, and it changes no test body or assertion, so this is a nit with a doubt rather than an Important breach. The literal REVIEW.md wording still forbids it, and the owner should confirm the reading."
+      "signature": "50be272b2f0fa961",
+      "summary": "This is a fix-type change, and the diff edits a test file that existed before it: the `rollback_incident` fixture gains `monkeypatch` and `GITHUB_REPOSITORY_OWNER`, and the collaborator test was amended after the lock in round 2. Both edits are declared (spec.md panel decision 1; plan.md was updated in commit 4904231 with the test edit; the owner applied sdlc:unlock-tests), and no pre-existing test body or assertion changes, so this is a nit with a doubt. The literal REVIEW.md wording forbids modifying such files, and the owner should confirm the reading."
     }
   ],
-  "head": "892a57f8f61d7468199bd99915e0b56171d6f973",
+  "head": "e9d99ece85c1441ee741734945c0175018694cc7",
   "schema_version": 1,
   "tally": {
-    "important": 1,
+    "important": 4,
     "nit": 2,
     "nits_omitted": 0
   }

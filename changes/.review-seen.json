@@ -130,6 +130,17 @@
     "last_seen": "2026-10-03T21:52:04Z",
     "summary": "Unchanged from the previous two rounds: the current top-level record's summary still says the split covered \"docs/NOTES.md (30 sections)\"; docs/notes/ holds 32 section files and docs/notes/index.md lists 32, so the prose still undercounts by two."
   },
+  "50be272b2f0fa961": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "tests/test_detect_cli.py",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-04T19:50:25Z",
+    "summary": "This is a fix-type change, and the diff edits a test file that existed before it: the `rollback_incident` fixture gains `monkeypatch` and `GITHUB_REPOSITORY_OWNER`, and the collaborator test was amended after the lock in round 2. Both edits are declared (spec.md panel decision 1; plan.md was updated in commit 4904231 with the test edit; the owner applied sdlc:unlock-tests), and no pre-existing test body or assertion changes, so this is a nit with a doubt. The literal REVIEW.md wording forbids modifying such files, and the owner should confirm the reading."
+  },
   "514b1334dbca839f": {
     "count": 1,
     "file": "plugin/gate/checks.py",
@@ -201,6 +212,17 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T22:45:42Z",
     "summary": "docs/PROGRESS.md still carries four top-level records (the new Change 0001 entry plus the session-18 'third sitting', 'second sitting' and plain 'session 18' records) instead of only the current one, unmet against spec.md's own Acceptance text."
+  },
+  "66a15d5701658e4c": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "tests/fixtures/sample-python-project/.env",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-04T19:50:25Z",
+    "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
   },
   "66a196a2d645cd7e": {
     "count": 1,
@@ -318,11 +340,11 @@
     "changes": [
       "0006"
     ],
-    "count": 1,
+    "count": 2,
     "file": "tests/test_detect_cli.py",
     "first_change": "0006",
     "last_change": "0006",
-    "last_seen": "2026-11-04T19:46:45Z",
+    "last_seen": "2026-11-04T19:50:25Z",
     "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
   },
   "adcf7a1b9e91cd94": {
@@ -401,12 +423,12 @@
     "changes": [
       "0006"
     ],
-    "count": 1,
+    "count": 2,
     "file": "docs/OPERATING_MODEL.md",
     "first_change": "0006",
     "last_change": "0006",
-    "last_seen": "2026-11-04T19:46:45Z",
-    "summary": "The `sdlc-runbook.yml` row still says the Go step checks only that the label's actor is a person (never the token or a `[bot]`). After this change `detect/cli.py go` also requires the owner's account (`is_owner_actor`, decision 34), so the contract understates the check."
+    "last_seen": "2026-11-04T19:50:25Z",
+    "summary": "The `sdlc-runbook.yml` row still says the Go step checks only that the label's actor is a person (never the token or a `[bot]`). After this change `detect/cli.py go` also requires the owner's account (`is_owner_actor`, decision 34), so the contract now understates the check."
   },
   "cc6e0ddbee425cfd": {
     "count": 1,
@@ -447,6 +469,17 @@
     "last_change": "0003",
     "last_seen": "2026-10-08T06:48:59Z",
     "summary": "`_render_line`/`_render_unsorted_line` (lines 231-242) still interpolate `title`/`description`/the first heading into a markdown link with no escaping of `]`/`(`, so such a value would still break the generated link; `changes/.review-seen.json` records this exact finding at count 2 already, so this is the third occurrence with no `CLAUDE.md` line proposed."
+  },
+  "d6f28f9fa7b23d48": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "tests/test_evals.py",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-04T19:50:25Z",
+    "summary": "The new case folder evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/ breaks test_the_framework_suite_s_cases_load, which asserts the exact list of framework cases. The diff does not add the case to that list, so `python -m pytest` is red at this head (reproduced: 'At index 7 diff: 0006-security-authz-the-runbook-go-cmd-go-via != 0007-sandbox-credentials-hidden'). The committed test.log (19:44:55Z) predates the release commit (19:48) and does not cover it."
   },
   "d740fb94f64dfc94": {
     "count": 1,
@@ -495,6 +528,17 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:32:24Z",
     "summary": "verified_with in the docs/notes/<N>.md frontmatter carries only the Claude Code version in 30 of 32 files (and never a runner value in any of the 32), not the three-part \"Claude Code version, plugin version, runner\" the spec requires."
+  },
+  "f7738a33f4716b03": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/checks.yaml",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-04T19:50:25Z",
+    "summary": "evals/cases/ is the framework-level suite. framework-evals.yml runs it with `plugin/evals/run.py --fixture` against tests/fixtures/sample-python-project, which has no plugin/detect/cli.py and no tests/test_detect_cli.py. Every check in this case (the targeted pytest command, the two `file` checks, and the `\\d+ passed` output on a suite that does not hold these tests) therefore fails on every run, and the suite drops below its default min-pass-rate of 1.0. The Framework evals job then goes red nightly and on every PR that touches plugin/ or evals/. The earlier incident case 0002-security-authz-the-guardrail-self-protec was written against the fixture for this reason."
   },
   "fae254b0a97e5724": {
     "count": 2,
