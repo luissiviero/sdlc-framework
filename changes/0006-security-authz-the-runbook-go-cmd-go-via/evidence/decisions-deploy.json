@@ -43,6 +43,28 @@
         "A later non-fix change may rename the five Go tests so their names say 'the repository owner'; that is outside this item."
       ],
       "reviewer": "Dismiss the finding as satisfied in substance (no pre-existing test was weakened), keeping it named in the PR summary for the owner."
+    },
+    {
+      "advocate": "Do not dismiss the finding as a false positive: keep it Important in the owner's close-look list, and treat the edit as unproven until a toolchain log on HEAD names `test_framework_root_runs_setup_and_commands_in_the_framework_only_in_its_suite`.",
+      "at": "2026-11-05T01:10:05Z",
+      "cost_usd": null,
+      "decision": "settled: the owner unlocked the tests and requested both additive hunks in reviews 5778108589 and 5778239621; the finding stays recorded at Important for the owner's approving review at the deploy gate, and the gate's commands check on HEAD must show the new test green",
+      "head": "748d2fbc1bd5496c2aa01fa35f146f7159e69094",
+      "item": "Important finding at tests/test_evals.py: pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25) [REVIEW.md: no test edits in a fix task]",
+      "item_n": 3,
+      "key": "finding:84fc5fc9026b3948",
+      "kind": "finding",
+      "n": 3,
+      "overturned": null,
+      "phase": "deploy",
+      "rationale": [
+        "Both verdicts agree on the facts: the edit breaks REVIEW.md's no-test-edits rule as written, both hunks only add (one list name, one new test), and the authz reproducing tests are elsewhere.",
+        "They also agree that the owner asked for both hunks, so reverting them inside this change would undo an owner fix request; no fix inside the change is possible.",
+        "Where they disagree (dismiss vs keep visible), the safer reading is the advocate's: whether a fix-task test unlock may cover new coverage is the owner's call (OPERATING_MODEL section 5), not the panel's.",
+        "So the finding does not block deploy, but it is not dismissed: it stays in the deploy PR banner, and the owner's approving review (decision 36) is the acceptance.",
+        "The test logs predate fix rounds 3 and 4, so the gate's commands check on HEAD, not this panel, has to prove the new test passes."
+      ],
+      "reviewer": "Dismiss as owner-authorised: the edit to tests/test_evals.py does break REVIEW.md's fix-task rule as written, but the owner unlocked the tests and asked for this exact edit, so it should not block deploy."
     }
   ],
   "phase": "deploy",
