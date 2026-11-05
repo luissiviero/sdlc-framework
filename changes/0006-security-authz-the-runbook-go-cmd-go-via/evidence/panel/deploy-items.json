@@ -5,17 +5,25 @@
   "iterations": {
     "cap": 2,
     "left": 0,
-    "used": 3
+    "used": 2
   },
   "panel_calls": {
     "cap": 4,
-    "left": 3,
-    "used": 1
+    "left": 4,
+    "used": 0
   },
   "parks": [
     {
-      "check": "limits",
-      "reason": "iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
+      "check": "findings",
+      "reason": "findings are for commit e9d99ece85, HEAD is a2ad922928"
+    },
+    {
+      "check": "plan_sync",
+      "reason": "1 changed file(s) not listed in plan.md"
+    },
+    {
+      "check": "adversarial_review",
+      "reason": "verdict is for commit 4958e800a2, HEAD is a2ad922928"
     }
   ],
   "pending": [],
