@@ -59,7 +59,11 @@ and ``--cases`` defaults to this repository's ``evals/cases``.
 
 Commands in ``setup`` and in ``command`` checks run without a shell (``release/cli.py``
 ``command_chain``: one command, or steps joined by ``&&``); ``python`` falls back to the
-interpreter running the suite when it is not on PATH.
+interpreter running the suite when it is not on PATH. They run in the workspace, except in a
+case with ``framework_root: true``: there they run in the framework root (``--plugin-dir``),
+for an incident of the framework's own code that no session in the fixture reaches (case
+0006, the runbook Go). Only the framework suite (``--fixture``) runs such a case; a project's
+suite fails it with the reason.
 
 Exit codes: 0 the pass rate reaches ``--min-pass-rate`` (an empty suite passes, with the note
 "no cases") · 1 below it · 2 usage (no root, no cases folder, a bad option).
@@ -119,7 +123,7 @@ DEFAULTS: dict[str, Any] = {
     "timeout_seconds": 600,
 }
 FORBIDDEN_MODES = ("bypassPermissions",)  # CLAUDE.md: never use bypass-permissions mode
-CASE_KEYS = frozenset({"description", "setup", "checks", *DEFAULTS})
+CASE_KEYS = frozenset({"description", "setup", "checks", "framework_root", *DEFAULTS})
 # ``skill`` (R27): the run loaded the named skill, read from its tool calls (article p.22
 # step 4: "test that the skill triggers")
 CHECK_KINDS = ("command", "file", "output", "denied", "skill")
@@ -238,6 +242,8 @@ def validate_config(data: Any) -> tuple[dict[str, Any], list[str]]:
     setup = config.get("setup")
     if setup is not None and not _is_text_list(setup):
         problems.append("setup must be a command or a list of commands")
+    if not isinstance(config.get("framework_root", False), bool):
+        problems.append("framework_root must be true or false")
     if not isinstance(config["tools"], str) or not config["tools"].strip():
         problems.append("tools must be a comma-separated list of tool rules")
     mode = config["permission_mode"]
@@ -688,11 +694,14 @@ def evaluate(
     expected: Mapping[str, bytes | None],
     timeout: float,
     loaded: list[str] | None = None,
+    command_dir: Path | None = None,
 ) -> dict[str, Any]:
+    """``command_dir``: where a ``command`` check runs (the framework root of a
+    ``framework_root`` case); the workspace when None."""
     kind = check_kind(check)
     if kind == "command":
         want = check.get("exit", 0)
-        code, detail = run_commands(check["command"], workspace, timeout)
+        code, detail = run_commands(check["command"], command_dir or workspace, timeout)
         text = f"{check['command']!r} exited {code}"
         if code != want:
             return _outcome("command", False, f"{text}, expected {want}: {detail}")
@@ -731,7 +740,10 @@ def run_case(
     claude: str,
     env: Mapping[str, str],
     keep: bool = False,
+    framework_suite: bool = False,
 ) -> dict[str, Any]:
+    """``framework_suite``: the run is the framework's own suite (``--fixture``), the only one
+    whose cases may run their commands in the framework root (``framework_root``)."""
     started = time.monotonic()
     res: dict[str, Any] = {
         "name": case.name,
@@ -747,13 +759,19 @@ def run_case(
         res["reason"] = case.error
         return res
     config = case.config
+    command_dir = None
+    if config.get("framework_root"):
+        if not framework_suite:
+            res["reason"] = "framework_root is for the framework suite (--fixture) only"
+            return res
+        command_dir = plugin_dir
     timeout = float(config["timeout_seconds"])
     tmp = Path(tempfile.mkdtemp(prefix="sdlc-eval-"))
     workspace = tmp / "project"
     try:
         shutil.copytree(root, workspace, ignore=shutil.ignore_patterns(*WORKSPACE_IGNORE))
         for command in _texts(config.get("setup")):
-            code, detail = run_commands(command, workspace, timeout)
+            code, detail = run_commands(command, command_dir or workspace, timeout)
             if code != 0:
                 res["reason"] = f"setup failed: {detail}"
                 return res
@@ -790,6 +808,7 @@ def run_case(
                 expected=expected,
                 timeout=timeout,
                 loaded=loaded,
+                command_dir=command_dir,
             )
             for check in config["checks"]
         ]
@@ -974,7 +993,13 @@ def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None) ->
     try:
         results = [
             run_case(
-                case, root=root, plugin_dir=plugin_dir, claude=args.claude, env=env, keep=args.keep
+                case,
+                root=root,
+                plugin_dir=plugin_dir,
+                claude=args.claude,
+                env=env,
+                keep=args.keep,
+                framework_suite=args.fixture,
             )
             for case in cases
         ]

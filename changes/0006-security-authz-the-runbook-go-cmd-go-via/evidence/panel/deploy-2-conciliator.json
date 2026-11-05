@@ -1,0 +1,12 @@
+{
+  "reviewer": "dismiss as satisfied in substance: the diff to tests/test_detect_cli.py weakens no pre-existing test, and reverting would remove the fix's required proof",
+  "advocate": "nothing is weakened and it is not a park, but the finding stays Important and open for the owner's approving review at the deploy gate, not closed by the panel",
+  "decision": "settled: the fixture's owner line and the added tests weaken no pre-existing test and are the fix's required proof; no in-change fix exists, so the PR body names this finding for the owner to accept or overturn at the deploy gate",
+  "rationale": [
+    "Both verdicts agree on the facts: no existing test body or assertion changes; the diff is a monkeypatch parameter, one setenv line, new tests and a helper.",
+    "Reverting the fixture line breaks five Go tests (fail closed under R2), and dropping the new tests removes the proof REVIEW.md requires, so no fix inside this change exists.",
+    "They disagree only on who closes it; the safer reading is the advocate's: the REVIEW.md rule is the owner's guardrail and neither the unlock label nor design panel 1 waived it for the fixture edit.",
+    "So the finding does not block the run, but it stays named in the PR body for the owner's approving review, not closed silently by the panel.",
+    "A later non-fix change may rename the five Go tests so their names say 'the repository owner'; that is outside this item."
+  ]
+}

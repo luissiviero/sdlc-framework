@@ -1,0 +1,107 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 325784,
+  "duration_ms": 355778,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 758,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "cacheCreationInputTokens": 172894,
+      "cacheReadInputTokens": 4842988,
+      "canonicalModel": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 2.8297296,
+      "inputTokens": 144,
+      "maxOutputTokens": 128000,
+      "outputTokens": 35011,
+      "provider": "firstParty",
+      "thinkingTokens": 10539,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 74,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "Change 0006 is **parked** at the deploy gate on the fix-iteration cap: this would have been round 3, and the cap for a non-routine change is 2. It is not ready to approve yet. PR #405 now carries `sdlc:needs-human` and the \"What I need from you\" note: https://github.com/luissiviero/sdlc-framework/pull/405\n\n**What this run did**\n- **Release artifact:** skipped, because `deploy.action` is `none`.\n- **Lesson and eval (this change came from an incident):** I added `lessons/2026-11-security-authz-the-runbook-go-cmd-go-via.md`, the eval case `evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/`, and the rebuilt `lessons/index.md`, listed them in `plan.md`, and pushed them in commit `e9d99ec`. I did not have the new lesson replace the October authz lesson, because that one is about a different gap.\n- **Review:** a fresh-context reviewer found 4 Important problems and 2 nits at `e9d99ec`. Two of the Important ones are real defects that my lesson-and-eval commit introduced:\n  1. **`pytest` is red.** `tests/test_evals.py:664` checks the exact list of eval cases, and the new case folder isn't in it.\n  2. **The eval case can never pass where it runs.** The framework eval suite runs every case against the sample project in `tests/fixtures`, which has neither `plugin/detect/cli.py` nor its tests. As written, it would fail the Framework evals job every night.\n- **Not committed:** I wrote fixes for both, but bumping the iteration count hit the cap, which means stop. The fix is saved, unapplied, in `evidence/deploy-proposed-fix.diff`. It adds the case to the list in the test, and rewrites the case as a cheap read-only session whose checks find the framework through `SDLC_FRAMEWORK_DIR` or `GITHUB_WORKSPACE` and run the two reproducing tests there.\n- **Gate:** parked. Release notes, including the plain-words paragraph, are in the evidence commit `4256880`. The `sdlc/review` check run reports failure, 4 Important.\n\n**What I need from you**\n- Reset the counter with `cli.py set-iterations --root . --id 0006 --count 0`, then re-run `/sdlc-deploy 0006`. The next run should apply the saved diff, which the reviewer has not seen yet, and review it.\n- The other two Important findings were added by the framework's automatic checks, and you need to look at them:\n  - **`tests/test_detect_cli.py` edited in a fix-type change.** This edit was declared in the spec (panel decision 1), and you applied `sdlc:unlock-tests` for it. You decide whether that's acceptable.\n  - **`tests/fixtures/sample-python-project/.env` flagged as modified.** I believe this comes from the sandbox masking the file: git can't even read it, and nothing about it is committed. It should be gone in a run outside the sandbox.\n- Nit worth fixing: `docs/OPERATING_MODEL.md:98` still says the runbook Go only checks that a person applied the label; it now requires your account.\n\n**Checks:** I didn't run the full build, test and lint targets, because this run committed only markdown and YAML, no code. In this sandbox, any test that copies the fixture project errors on a \"Permission denied\" reading its `.env` file. With the proposed fix applied, the case-list test passed, the eval's owner-check command passed, and its pytest command found the framework but failed only on that `.env` error. Nothing was merged or deployed.",
+  "result_index": 0,
+  "safety_stops": 0,
+  "sdlc_run": {
+    "at": "2026-11-04T19:53:04Z",
+    "credential": "oauth",
+    "seconds": 356.6,
+    "timed_out": false
+  },
+  "session_id": "a893e309-9b05-4743-a55c-0abb9afd8ad9",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "general-purpose": 1
+    },
+    "completed": 1,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 1
+    },
+    "spawned": 1,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 92,
+  "total_cost_usd": 2.8297296,
+  "ttft_ms": 1778,
+  "ttft_stream_ms": 758,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 98622,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 98622,
+    "cache_read_input_tokens": 3503120,
+    "fallback_credit": null,
+    "inference_geo": "global",
+    "input_tokens": 92,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 185,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 185,
+        "cache_read_input_tokens": 112281,
+        "input_tokens": 2,
+        "output_tokens": 1306,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 25148,
+    "output_tokens_details": {
+      "thinking_tokens": 7885
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "cb535243-08f3-4e8d-8491-c8448ec4d5f0"
+}

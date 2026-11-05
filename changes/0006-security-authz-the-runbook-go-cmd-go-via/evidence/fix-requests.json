@@ -1,25 +1,42 @@
 {
-  "applied_earlier": [],
-  "collected_at": "2026-11-04T14:16:12+00:00",
-  "head": "7d9793a7af116b9a544c6ac9d628a79dc5d3667b",
+  "applied_earlier": [
+    {
+      "id": 6632926759,
+      "kind": "comment"
+    }
+  ],
+  "collected_at": "2026-11-05T00:58:52+00:00",
+  "head": "ac187a00cb7d133e5205b595a46419e1a22de09a",
   "not_applied": [],
   "ok": true,
-  "pr_number": 403,
+  "pr_number": 405,
   "repo": "luissiviero/sdlc-framework",
   "requests": [
     {
-      "applied": true,
       "association": "OWNER",
-      "at": "2026-11-04T14:15:07Z",
+      "at": "2026-11-05T00:41:42Z",
       "author": "luissiviero",
-      "body": "@claude ",
-      "id": 6632926759,
-      "kind": "comment",
-      "url": "https://github.com/luissiviero/sdlc-framework/pull/403#issuecomment-6632926759"
+      "body": "Fix these in the next round: 1) bump plugin.json and the marketplace entry above 1.0.50, as version-check requires. 2) Add the new case to the list in tests/test_evals.py, test_the_framework_suite_s_cases_load. 3) Rewrite evals/cases/0006-security-authz-the-runbook-go-cmd-go-via so it passes against tests/fixtures/sample-python-project, as case 0002 does. 4) Restore tests/fixtures/sample-python-project/.env to the copy on main if it differs.",
+      "applied": true,
+      "id": 5778108589,
+      "kind": "review",
+      "state": "COMMENTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/405#pullrequestreview-5778108589"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-11-05T00:57:39Z",
+      "author": "luissiviero",
+      "body": "Item 3: option 1. Keep case 0006 as a framework-repository case, and give the eval runner the smallest way to run its setup and command checks from the framework root, only in the framework suite, with a test of that mechanism. In checks.yaml, drop the whole-suite python -m pytest check and keep the targeted tests. Do not change the lesson_and_eval gate check. Also update the sdlc-runbook.yml row at docs/OPERATING_MODEL.md:98 to say the Go requires the owner's account.",
+      "applied": true,
+      "id": 5778239621,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/405#pullrequestreview-5778239621"
     }
   ],
   "route": "api",
   "schema_version": 1,
-  "trigger": "https://github.com/luissiviero/sdlc-framework/pull/403#issuecomment-6632926759",
+  "trigger": null,
   "unavailable": null
 }

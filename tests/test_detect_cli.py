@@ -348,8 +348,9 @@ def incident(tmp_path, src, gh, capsys) -> tuple[Path, Path]:
 
 
 @pytest.fixture
-def rollback_incident(tmp_path, src, gh, capsys) -> tuple[Path, Path]:
+def rollback_incident(tmp_path, src, gh, capsys, monkeypatch) -> tuple[Path, Path]:
     """As ``incident``, with sdlc.yaml giving the rollback-deploy route a command."""
+    monkeypatch.setenv("GITHUB_REPOSITORY_OWNER", "the-owner")
     root = project(tmp_path)
     add_rollback_runbook(root)
     file_incident(root, src, capsys)
@@ -836,6 +837,27 @@ def test_go_not_by_a_person_performs_nothing(rollback_incident, gh, spy, capsys,
     assert spy.calls == []
     assert gh.named("set_labels") == []  # the label is left where it is
     assert runbook_records(change) == []
+    assert status_mod.read_status(change).runbook_authorized_by is None
+
+
+def test_go_by_a_collaborator_performs_nothing(rollback_incident, gh, spy, capsys):
+    """Decision 14: the Go is the owner's per-incident act. A person who can label the PR but
+    is not the owner's account (decision 34) runs nothing, and the label stays."""
+    root, change = rollback_incident
+    write_proposal(change, "runbook:rollback-deploy")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["outcome"]["status"] == "go-requested", out
+    gh.actor = {"ok": True, "actor": "colleague", "reason": ""}
+    code, out = cli(
+        capsys, "go", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12"
+    )
+    assert code == 0, out
+    assert out["performed"] is False
+    assert "owner" in out["reason"] and "colleague" in out["reason"]
+    assert spy.calls == []
+    assert gh.named("set_labels") == []  # the label is left where it is
+    record = json.loads((change / "evidence" / "runbook-rollback-deploy.json").read_text("utf-8"))
+    assert record["status"] == "go-requested"  # the dispatch's record, untouched by the Go
     assert status_mod.read_status(change).runbook_authorized_by is None
 
 
@@ -1716,6 +1738,63 @@ def test_go_reads_the_automation_identity_from_the_default_branch(
         assert spy.calls == []
         assert gh.named("set_labels") == []  # the label is left where it is
         assert status_mod.read_status(change).runbook_authorized_by is None
+
+
+COLLEAGUE_AS_OWNER = "\nowner: colleague\n"
+
+
+def name_colleague_as_owner_on_main(root: Path) -> None:
+    """Commit ``owner: colleague`` on the bare remote's main from a temporary clone, then
+    fetch, so ``origin/main`` carries it and the checkout does not."""
+    clone = root.parent / "main-clone"
+    git(root.parent, "clone", "-q", "-b", "main", str(bare(root)), str(clone))
+    git(clone, "config", "user.email", "owner@example.com")
+    git(clone, "config", "user.name", "Owner")
+    path = clone / "sdlc.yaml"
+    path.write_text(path.read_text(encoding="utf-8") + COLLEAGUE_AS_OWNER, encoding="utf-8")
+    git(clone, "commit", "-q", "-am", "the owner is an organization account")
+    git(clone, "push", "-q", "origin", "main")
+    git(root, "fetch", "-q", "origin")
+    assert "owner: colleague" in git(root, "show", "origin/main:sdlc.yaml")
+    assert "owner: colleague" not in (root / "sdlc.yaml").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("named_on", ["head", "main"])
+def test_go_reads_the_owner_from_the_default_branch(rollback_incident, gh, spy, capsys, named_on):
+    """The PR head's sdlc.yaml cannot name its own owner: named in the head's copy only, the
+    colleague's label is still refused; named on origin/main, the repository owner's label is
+    refused and the named owner's label runs the runbook."""
+    root, change = rollback_incident
+    write_proposal(change, "runbook:rollback-deploy")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["outcome"]["status"] == "go-requested", out
+    if named_on == "head":
+        path = root / "sdlc.yaml"
+        path.write_text(path.read_text(encoding="utf-8") + COLLEAGUE_AS_OWNER, encoding="utf-8")
+        gh.actor = {"ok": True, "actor": "colleague", "reason": ""}
+        code, out = go(capsys, root)
+        assert code == 0, out
+        assert out["performed"] is False
+        assert "owner" in out["reason"] and "colleague" in out["reason"]
+        assert spy.calls == []
+        assert gh.named("set_labels") == []
+        assert status_mod.read_status(change).runbook_authorized_by is None
+    else:
+        name_colleague_as_owner_on_main(root)
+        # first the repository owner's label: refused, so a later Go still asks for one
+        gh.actor = {"ok": True, "actor": "the-owner", "reason": ""}
+        code, out = go(capsys, root)
+        assert code == 0, out
+        assert out["performed"] is False
+        assert "owner" in out["reason"] and "the-owner" in out["reason"]
+        assert spy.calls == []
+        assert gh.named("set_labels") == []
+        gh.actor = {"ok": True, "actor": "colleague", "reason": ""}
+        code, out = go(capsys, root)
+        assert code == 0, out
+        assert (out["performed"], out["actor"]) == (True, "colleague"), out
+        assert len(spy.calls) == 1
+        assert status_mod.read_status(change).runbook_authorized_by == "colleague"
 
 
 @pytest.mark.parametrize("listed_on", ["head", "main"])

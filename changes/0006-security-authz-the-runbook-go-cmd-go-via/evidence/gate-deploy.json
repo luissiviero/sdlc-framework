@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "change_id": "0006",
+  "slug": "security-authz-the-runbook-go-cmd-go-via",
+  "phase": "deploy",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:deploy-ready",
+  "head": "807860fa1d60c7d8e82022cf67036cdc484a71da",
+  "at": "2026-11-05T01:12:49Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 2,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 3,
+        "panel_cap": 4,
+        "elapsed_minutes": 13.7,
+        "spend_usd": null,
+        "spend_usd_total": 23.196485,
+        "spend_entries": 11,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "clean_tree",
+      "ok": true,
+      "reason": "no uncommitted change outside the change folder",
+      "need": "",
+      "details": {
+        "ignored": [
+          "CLAUDE.local.md",
+          "changes/.review-seen.json",
+          "policies",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "3 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "finding",
+            "decision": "settled: the change's committed diff does not modify tests/fixtures/sample-python-project/.env (no diff --git header for it in any evidence patch); the hit comes from the sandbox denying reads of **/.env*, so the working-tree list shows it as modified; making _framework judge the fix-type rule on committed_files is a separate change"
+          },
+          {
+            "n": 2,
+            "kind": "finding",
+            "decision": "settled: the fixture's owner line and the added tests weaken no pre-existing test and are the fix's required proof; no in-change fix exists, so the PR body names this finding for the owner to accept or overturn at the deploy gate"
+          },
+          {
+            "n": 3,
+            "kind": "finding",
+            "decision": "settled: the owner unlocked the tests and requested both additive hunks in reviews 5778108589 and 5778239621; the finding stays recorded at Important for the owner's approving review at the deploy gate, and the gate's commands check on HEAD must show the new test green"
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "build, test and lint exit 0",
+      "need": "",
+      "details": {
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q plugin tests tasks.py .github/scripts",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  7%]\n........................................................................ [  9%]\n........................................................................ [ 12%]\n........................................................................ [ 14%]\n........................................................................ [ 17%]\n........................................................................ [ 19%]\n........................................................................ [ 22%]\n........................................................................ [ 24%]\n........................................................................ [ 27%]\n........................................................................ [ 29%]\n........................................................................ [ 32%]\n........................................................................ [ 34%]\n........................................................................ [ 37%]\n........................................................................ [ 39%]\n........................................................................ [ 42%]\n........................................................................ [ 44%]\n........................................................................ [ 47%]\n........................................................................ [ 49%]\n........................................................................ [ 52%]\n........................................................................ [ 54%]\n........................................................................ [ 57%]\n........................................................................ [ 59%]\n........................................................................ [ 62%]\n........................................................................ [ 64%]\n........................................................................ [ 67%]\n........................................................................ [ 69%]\n........................................................................ [ 72%]\n........................................................................ [ 74%]\n........................................................................ [ 77%]\n........................................................................ [ 79%]\n........................................................................ [ 82%]\n........................................................................ [ 84%]\n........................................................................ [ 87%]\n........................................................................ [ 89%]\n........................................................................ [ 92%]\n........................................................................ [ 94%]\n........................................................................ [ 97%]\n...s.................................................................... [ 99%]\n..........                                                               [100%]\n2889 passed, 1 skipped in 263.14s (0:04:23)\n"
+          },
+          "lint": {
+            "command": "python -m ruff check . && python -m ruff format --check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n313 files already formatted\n"
+          }
+        },
+        "ran_by": "runner"
+      }
+    },
+    {
+      "name": "evidence",
+      "ok": true,
+      "reason": "evidence present: test.log, build.log, lint.log, verifier.md",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "proof",
+      "ok": true,
+      "reason": "no drive target: nothing to compare",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "findings",
+      "ok": true,
+      "reason": "3 Important finding(s) settled by the review panel, none open",
+      "need": "",
+      "details": {
+        "tally": {
+          "important": 3,
+          "nit": 5,
+          "nits_omitted": 0
+        },
+        "settled_by_panel": [
+          "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)",
+          "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)",
+          "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+        ]
+      }
+    },
+    {
+      "name": "plan_sync",
+      "ok": true,
+      "reason": "every committed source file is in plan.md",
+      "need": "",
+      "details": {
+        "planned_but_unchanged": [],
+        "plan_growth": {
+          "added": [
+            "lessons/2026-11-security-authz-the-runbook-go-cmd-go-via.md",
+            "evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/",
+            "plugin/evals/run.py",
+            "tests/test_evals.py",
+            "docs/OPERATING_MODEL.md",
+            "lessons/index.md",
+            ".claude-plugin/plugin.json",
+            ".claude-plugin/marketplace.json"
+          ],
+          "removed": []
+        }
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "risk-list hit, shown in the close-look banner (decision 35): 'auth' in spec.md Flagged concerns: text",
+      "need": "",
+      "details": {
+        "hits": {
+          "auth": [
+            "spec.md Flagged concerns: text"
+          ]
+        },
+        "accepted": [
+          "auth"
+        ]
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {
+          "iterations_reset": "luissiviero",
+          "panel_calls_reset": "luissiviero",
+          "tests_unlocked": "luissiviero"
+        }
+      }
+    },
+    {
+      "name": "test_lock",
+      "ok": true,
+      "reason": "the lock is not set at HEAD (owner_actions judges a lift)",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "ratchets",
+      "ok": true,
+      "reason": "no undeclared test file or eval case drop",
+      "need": "",
+      "details": {
+        "hits": {},
+        "declared": [],
+        "skip_markers": [],
+        "accepted": []
+      }
+    },
+    {
+      "name": "lesson_and_eval",
+      "ok": true,
+      "reason": "the lesson, its frontmatter and the eval case are all present",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": ""
+}

@@ -1,0 +1,12 @@
+{
+  "reviewer": "dismiss as owner-authorised: the edit breaks REVIEW.md's fix-task rule as written, but the owner unlocked the tests (tests_unlocked_by: luissiviero) and requested both hunks in reviews 5778108589 and 5778239621",
+  "advocate": "do not dismiss: keep it Important for the owner's approving review at the deploy gate, and let the gate's commands check on HEAD prove the new test passes",
+  "decision": "settled: the owner unlocked the tests and requested both additive hunks in reviews 5778108589 and 5778239621; the finding stays recorded at Important for the owner's approving review at the deploy gate, and the gate's commands check on HEAD must show the new test green",
+  "rationale": [
+    "Both verdicts agree on the facts: the edit breaks REVIEW.md's no-test-edits rule as written, both hunks only add (one list name, one new test), and the authz reproducing tests are elsewhere.",
+    "They also agree that the owner asked for both hunks, so reverting them inside this change would undo an owner fix request; no fix inside the change is possible.",
+    "Where they disagree (dismiss vs keep visible), the safer reading is the advocate's: whether a fix-task test unlock may cover new coverage is the owner's call (OPERATING_MODEL section 5), not the panel's.",
+    "So the finding does not block deploy, but it is not dismissed: it stays in the deploy PR banner, and the owner's approving review (decision 36) is the acceptance.",
+    "The test logs predate fix rounds 3 and 4, so the gate's commands check on HEAD, not this panel, has to prove the new test passes."
+  ]
+}

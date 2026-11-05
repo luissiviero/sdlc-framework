@@ -1,0 +1,105 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 9367,
+  "duration_ms": 9544,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 2484,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "cacheCreationInputTokens": 23445,
+      "cacheReadInputTokens": 19794,
+      "canonicalModel": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 0.2050748,
+      "inputTokens": 4,
+      "maxOutputTokens": 128000,
+      "outputTokens": 677,
+      "provider": "firstParty",
+      "thinkingTokens": 0,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 4,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "**What failed:** The build run for change 0006 parked before its gate, so it never wrote the gate record, and the runner marked the run red (exit 1).\n**Likely cause:** The fix is committed, but the locked reproducing test `test_go_by_a_collaborator_performs_nothing` (`tests/test_detect_cli.py:859`) asserts that no runbook record exists. That can't pass, because the test's own dispatch step writes a `go-requested` record, the same file the existing dispatch test expects.\n**Flaky or real:** Real and deterministic. The test is wrong, not the code. Two side issues: the park label probably wasn't applied to PR #405, and the stderr line about untrusted-workspace allow entries didn't stop the run.\n**First thing to check:** Confirm that line 859 contradicts the dispatch behaviour (compare it with `test_dispatch_go_route_records_go_requested_and_runs_nothing`). If it does, unlock the tests, change the assertion to check the `go-requested` status, re-run `/sdlc-build 0006`, and make sure `sdlc:needs-human` is on PR #405.",
+  "result_index": 0,
+  "safety_stops": 0,
+  "sdlc_run": {
+    "at": "2026-11-04T15:24:55Z",
+    "credential": "oauth",
+    "seconds": 10.6,
+    "timed_out": false
+  },
+  "session_id": "f2e1320c-a22f-420b-9b36-a71417727f36",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {},
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 0,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "spawned": 0,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 108,
+  "total_cost_usd": 0.2050748,
+  "ttft_ms": 3032,
+  "ttft_stream_ms": 2484,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23445,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 23445,
+    "cache_read_input_tokens": 19794,
+    "fallback_credit": null,
+    "inference_geo": "global",
+    "input_tokens": 4,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 3651,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 3651,
+        "cache_read_input_tokens": 19794,
+        "input_tokens": 2,
+        "output_tokens": 376,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 677,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "ba4196a3-1bdd-4763-80a6-a8c65ab09262"
+}

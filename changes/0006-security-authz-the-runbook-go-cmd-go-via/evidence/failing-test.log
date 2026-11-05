@@ -1,0 +1,63 @@
+# Change 0006, build step 1: the reproducing tests, before the fix
+# Run inside the CI session's sandbox, which denies reading a nested .env* (issue #91): the
+# fixture project's tests/fixtures/sample-python-project/.env cannot be copied there, so pytest
+# ran through a wrapper outside the repository that makes shutil.copytree skip .env* entries
+# (nothing else changed; no test in tests/test_detect_cli.py reads that file). The runner runs
+# the full suite again outside the sandbox after this session.
+
+## 1a. The fixture line alone (panel decision 1), before any other edit
+$ python run_pytest.py tests/test_detect_cli.py -p no:cacheprovider -o console_output_style=classic -rA
+(every test of the module PASSED, the rollback_incident ones included:)
+PASSED tests/test_detect_cli.py::test_go_by_a_person_runs_the_runbook_and_reruns_the_gate
+PASSED tests/test_detect_cli.py::test_go_not_by_a_person_performs_nothing[github-actions[bot]-not by a person]
+PASSED tests/test_detect_cli.py::test_go_not_by_a_person_performs_nothing[None-no `labeled` event]
+PASSED tests/test_detect_cli.py::test_go_and_park_refuse_without_the_app[go]
+PASSED tests/test_detect_cli.py::test_go_and_park_refuse_without_the_app[park]
+PASSED tests/test_detect_cli.py::test_go_runs_only_a_route_that_asked_for_it
+PASSED tests/test_detect_cli.py::test_go_reads_the_automation_identity_from_the_default_branch[head]
+PASSED tests/test_detect_cli.py::test_go_reads_the_automation_identity_from_the_default_branch[main]
+PASSED tests/test_detect_cli.py::test_go_fails_closed_when_the_default_branch_copy_is_unreadable
+PASSED tests/test_detect_cli.py::test_go_refuses_a_rewritten_origin_and_leaves_the_label
+PASSED tests/test_detect_cli.py::test_a_malformed_head_sdlc_yaml_does_not_stop_go_or_dismiss[go]
+PASSED tests/test_detect_cli.py::test_a_malformed_head_sdlc_yaml_does_not_stop_go_or_dismiss[dismiss]
+96 passed in 30.91s
+
+## 1b. With the two new tests, before the fix
+$ python run_pytest.py tests/test_detect_cli.py -p no:cacheprovider -o console_output_style=classic -k go -rfE --tb=line
+....F........FF....
+=================================== FAILURES ===================================
+E   assert True is False
+tests/test_detect_cli.py:855: assert True is False
+E   assert True is False
+tests/test_detect_cli.py:1776: assert True is False
+E   assert True is False
+tests/test_detect_cli.py:1787: assert True is False
+=========================== short test summary info ============================
+FAILED tests/test_detect_cli.py::test_go_by_a_collaborator_performs_nothing - assert True is False
+FAILED tests/test_detect_cli.py::test_go_reads_the_owner_from_the_default_branch[head] - assert True is False
+FAILED tests/test_detect_cli.py::test_go_reads_the_owner_from_the_default_branch[main] - assert True is False
+3 failed, 16 passed, 80 deselected in 14.23s
+
+$ python run_pytest.py tests/test_detect_cli.py -p no:cacheprovider -o console_output_style=classic -k "collaborator or reads_the_owner" --tb=short
+FFF
+=================================== FAILURES ===================================
+__________________ test_go_by_a_collaborator_performs_nothing __________________
+tests/test_detect_cli.py:855: in test_go_by_a_collaborator_performs_nothing
+    assert out["performed"] is False
+E   assert True is False
+____________ test_go_reads_the_owner_from_the_default_branch[head] _____________
+tests/test_detect_cli.py:1776: in test_go_reads_the_owner_from_the_default_branch
+    assert out["performed"] is False
+E   assert True is False
+____________ test_go_reads_the_owner_from_the_default_branch[main] _____________
+tests/test_detect_cli.py:1787: in test_go_reads_the_owner_from_the_default_branch
+    assert out["performed"] is False
+E   assert True is False
+=========================== short test summary info ============================
+FAILED tests/test_detect_cli.py::test_go_by_a_collaborator_performs_nothing - assert True is False
+FAILED tests/test_detect_cli.py::test_go_reads_the_owner_from_the_default_branch[head] - assert True is False
+FAILED tests/test_detect_cli.py::test_go_reads_the_owner_from_the_default_branch[main] - assert True is False
+3 failed, 96 deselected in 4.01s
+
+The failures are the intent's weakness: a collaborator's sdlc:go (and, in the main case, the
+repository owner's label when sdlc.yaml names another owner) makes the runbook run.

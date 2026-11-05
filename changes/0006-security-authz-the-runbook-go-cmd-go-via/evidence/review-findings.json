@@ -1,0 +1,87 @@
+{
+  "at": "2026-11-05T01:12:31Z",
+  "findings": [
+    {
+      "file": "tests/fixtures/sample-python-project/.env",
+      "line": 0,
+      "pass": "compliance",
+      "rule": "REVIEW.md: no test edits in a fix task",
+      "severity": "important",
+      "signature": "66a15d5701658e4c",
+      "source": "framework",
+      "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+    },
+    {
+      "file": "tests/test_detect_cli.py",
+      "line": 0,
+      "pass": "compliance",
+      "rule": "REVIEW.md: no test edits in a fix task",
+      "severity": "important",
+      "signature": "ac03d472586f4a9b",
+      "source": "framework",
+      "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+    },
+    {
+      "file": "tests/test_evals.py",
+      "line": 0,
+      "pass": "compliance",
+      "rule": "REVIEW.md: no test edits in a fix task",
+      "severity": "important",
+      "signature": "84fc5fc9026b3948",
+      "source": "framework",
+      "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+    },
+    {
+      "file": "changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md",
+      "line": 18,
+      "pass": "compliance",
+      "rule": "spec.md requirement R1; Acceptance",
+      "severity": "nit",
+      "signature": "f023a864b26e960c",
+      "summary": "spec.md was not brought in line with the later rounds: Design still says one plugin file changes (the diff also changes plugin/evals/run.py), and R1 / Acceptance still say 'no runbook record is written' while the test (and plan.md, fix round 2) assert the dispatch's go-requested record stays; plan.md records both departures, the spec does not."
+    },
+    {
+      "file": "evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/checks.yaml",
+      "line": 9,
+      "pass": "bugs",
+      "rule": "",
+      "severity": "nit",
+      "signature": "aca56fe3b824b374",
+      "summary": "The comment claims that 'a test removed or renamed fails the case too', but pytest exits 5 only when -k selects nothing: removing or renaming one or two of the three named tests still leaves the case green (the lesson's wording, 'when none of them is found', is the accurate one)."
+    },
+    {
+      "file": "plugin/detect/cli.py",
+      "line": 28,
+      "pass": "compliance",
+      "rule": "",
+      "severity": "nit",
+      "signature": "b55a47123950da7b",
+      "summary": "The module docstring still says `go` performs the sdlc:go label when 'a person must have applied it', while the change makes it the owner's account only (is_owner_actor); the code's own summary now understates the rule it enforces."
+    },
+    {
+      "file": "plugin/evals/run.py",
+      "line": 774,
+      "pass": "security",
+      "rule": "",
+      "severity": "nit",
+      "signature": "eb765810723efe41",
+      "summary": "A framework_root case's setup and command checks run in the live framework checkout (--plugin-dir), which later cases load as their plugin, so a case could alter the framework under test for the cases after it; the workspace isolation the other cases get does not apply (doubt: only owner-reviewed cases in the framework's evals/cases reach it, and case 0006 has no setup)."
+    },
+    {
+      "file": "template/.github/workflows/sdlc-runbook.yml",
+      "line": 12,
+      "pass": "compliance",
+      "rule": "",
+      "severity": "nit",
+      "signature": "a19662dca60f1549",
+      "summary": "The workflow header a project receives from /sdlc-init still says the job 'checks that a person applied it'; after this change the Go step refuses any account but the owner's, so a project reading its own workflow gets the old rule (the spec kept the file unchanged, and only OPERATING_MODEL.md was updated)."
+    }
+  ],
+  "head": "807860fa1d60c7d8e82022cf67036cdc484a71da",
+  "schema_version": 1,
+  "tally": {
+    "important": 3,
+    "nit": 5,
+    "nits_omitted": 0
+  }
+}

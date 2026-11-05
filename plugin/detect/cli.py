@@ -59,6 +59,7 @@ from hooks._common import SDLC_FILE, ConfigError, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops  # noqa: E402
 from state import status as status_mod  # noqa: E402
+from state.unpark import is_owner_actor  # noqa: E402
 
 EXIT_OK, EXIT_FAILED, EXIT_USAGE = 0, 1, 2
 STATE_CLI = PLUGIN_DIR / "state" / "cli.py"
@@ -1185,6 +1186,12 @@ def _human_label_actor(repo: str, number: int, label: str, config: dict[str, Any
         return None, f"no `labeled` event for {label} on #{number}"
     if BOT_RE.search(actor) or is_automation(actor, "", automation_identity(config)):
         return None, f"{label} was applied by {actor}, not by a person: left where it is"
+    # decision 34: the owner's account only; config is the default branch's copy (cmd_go)
+    if not is_owner_actor(actor, config, None, repo):
+        return None, (
+            f"{label} was applied by {actor}, not by the owner's account: left where it is "
+            "(decision 34)"
+        )
     return actor, ""
 
 

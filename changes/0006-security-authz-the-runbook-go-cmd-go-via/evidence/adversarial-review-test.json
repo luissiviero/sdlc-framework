@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "phase": "test",
+  "head": "44689aa6f30d978c70cfef12beb220829d1fa91b",
+  "verdict": "continue",
+  "reasons": [],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Spec is tight (R1-R10 measurable, every flagged concern decided), but the change touches the risk-list item 'auth': it narrows who may authorize a running-system action that runs with the runbook secrets.",
+    "Blast radius is small (one import and one condition in plugin/detect/cli.py; two new tests and one declared fixture line in tests/test_detect_cli.py); no schema, workflow or contract change.",
+    "A security fix to an authorization gate is not routine regardless of size."
+  ],
+  "attempted": [
+    "Intent: the diff's only product change is is_owner_actor(actor, config, None, repo) after the bot/automation branch of _human_label_actor (plugin/detect/cli.py:1189-1194); a non-owner's sdlc:go returns (None, reason) and cmd_go (cli.py:1222-1225) emits performed:false, exit 0, before judging or running anything. This is the intent's fix, not a nearby one.",
+    "Spec R2/R3: checked today's is_owner_actor/owner_login (plugin/state/unpark.py:78-115): sdlc.yaml owner, then GITHUB_REPOSITORY_OWNER, then GITHUB_REPOSITORY, then --repo; case-insensitive; empty actor, automation and unknown owner fail closed. cmd_go passes `approved` from _approved_config (cli.py:1218), the default branch's copy, never the head's. No second owner rule was written.",
+    "Spec R5/R6: the reason names the label and actor, says 'not by the owner's account: left where it is (decision 34)'; the earlier refusals (unreadable events, no labeled event, bot/automation, unreadable default-branch copy) keep their text and order; the owner check precedes the route judgement.",
+    "Plan files and order: only tests/test_detect_cli.py and plugin/detect/cli.py change in code, as plan.md lists; failing-test.log shows step 1a (fixture line alone, 96 passed) before step 1b (3 new cases failing at `performed is False`), then the fix. The plan.md edit only aligns step 1 with the round-2 assertion.",
+    "Proof: gate-build.json records the runner's build/test/lint exit 0 (2888 passed, 1 skipped; ruff clean) on 4904231; the diff from 4904231 to HEAD touches only the change folder (diff stat: the only code files are plugin/detect/cli.py and tests/test_detect_cli.py, both from the build commits). test.log/build.log/lint.log carry the deferred mark and the verifier's 'read, not run' is the same case; left to the runner. verifier.md exercises _human_label_actor directly across collaborator, owner, case, head/main owner, bot and fail-closed rows.",
+    "Tests could pass with the bug present? No: failing-test.log shows all three new cases failing on `performed is False` before the fix. The collaborator test also pins spy.calls == [], no set_labels, dispatch record still go-requested, runbook_authorized_by None. Minor weakness noted, not a reason: in the main case `'owner' in out['reason']` is satisfied by the actor name 'the-owner' itself, but performed False with a go-requested route and spy.calls == [] still leaves the owner check as the only refusal that can apply.",
+    "Pre-existing tests: no body or assertion changed; the only edit is the fixture line declared in spec.md Flagged concerns (panel decision 1). The round-2 edit touched only the new test, after the owner's unlock (tests_unlocked_by: luissiviero).",
+    "Blast radius: _human_label_actor's only caller is cmd_go; the runbook workflow is unchanged; no guardrail file, schema or data shape in the diff. Live behaviour narrows Go to the owner's account, decision 34's intended narrowing, stated in plan.md Risks. The monkeypatched GITHUB_REPOSITORY_OWNER is scoped to rollback_incident tests.",
+    "Policies: security-baseline rule 1 (authorization checked in the step that holds the secrets) applied; no credential or new dependency in the diff (fixture email owner@example.com only); ux rule 4 wording applied; data-conventions not applicable.",
+    "Spec wording: R1/Acceptance say 'no runbook record'; the test asserts the dispatch's record is untouched (go-requested), which is what R1 means behaviourally; the build round flagged the wording to the owner in fix-response.md. Not a reason.",
+    "Skip markers: none added (gate-build ratchets: skip_markers []).",
+    "Claims against today's code: not applicable at test (design/build angle), but re-checked _approved_config and is_owner_actor signatures as above; both match the spec's claims.",
+    "Drive: no commands.drive (gate-build proof: no drive target); not applicable.",
+    "Runner records (claude-*.json, run-*.json, spend.json, hook-log.jsonl) not used as evidence for or against."
+  ]
+}

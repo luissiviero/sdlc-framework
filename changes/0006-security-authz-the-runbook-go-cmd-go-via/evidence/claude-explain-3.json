@@ -1,0 +1,105 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 9772,
+  "duration_ms": 9940,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 1520,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "cacheCreationInputTokens": 26481,
+      "cacheReadInputTokens": 19863,
+      "canonicalModel": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 0.23401659999999996,
+      "inputTokens": 4,
+      "maxOutputTokens": 128000,
+      "outputTokens": 909,
+      "provider": "firstParty",
+      "thinkingTokens": 9,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 5,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "1. **What failed:** The fix round (iteration 1 of 2 after the iteration reset) on change 0006 ended normally with exit 0, but it never ran the deploy gate. The runner therefore parked the PR with \"the session ended without reaching its gate\".\n2. **Likely cause:** The session parked on purpose. It applied the version bump and the case-list update, found nothing to restore for the `.env` item, and stopped on item 3, the eval case rewrite. That item can't be done as written: a framework eval case runs in a copy of the fixture project, which has no `plugin/` code, so it can't reach `detect/cli.py go`.\n3. **Flaky or real:** Real, and not flaky. It's a design question waiting for the owner's answer, not an infrastructure error. The one stderr line, a warning that the workspace isn't trusted so the `permissions.allow` entries were ignored, is a side issue. It may explain why the sandbox blocked the fixture `.env` and stopped the full pytest run inside the session.\n4. **First thing to check:** Read the three options in the gate record's \"What I need from you\", also in `evidence/fix-response.md`: give the eval runner a way to reach the framework, turn it into a session case with new hook code, or drop the case and waive `lesson_and_eval`.\n5. **Then:** Answer on PR #405 and start the next round (a review, an @claude comment or `sdlc:reset-iterations`). That round's gate judges the whole branch.",
+  "result_index": 0,
+  "safety_stops": 0,
+  "sdlc_run": {
+    "at": "2026-11-05T00:47:53Z",
+    "credential": "oauth",
+    "seconds": 10.9,
+    "timed_out": false
+  },
+  "session_id": "558c69dc-ee56-40fe-a2dc-e1cece49771d",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {},
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 0,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "spawned": 0,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 79,
+  "total_cost_usd": 0.23401659999999996,
+  "ttft_ms": 2065,
+  "ttft_stream_ms": 1520,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26481,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 26481,
+    "cache_read_input_tokens": 19863,
+    "fallback_credit": null,
+    "inference_geo": "global",
+    "input_tokens": 4,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 6618,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 6618,
+        "cache_read_input_tokens": 19863,
+        "input_tokens": 2,
+        "output_tokens": 495,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 909,
+    "output_tokens_details": {
+      "thinking_tokens": 9
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "ef2ac79e-4de8-4ed6-84f6-008cb0fefe11"
+}
