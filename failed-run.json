@@ -1,0 +1,26 @@
+{
+  "at": "2026-11-05T00:47:57Z",
+  "change_id": "0006",
+  "cost_usd": 0.23401659999999996,
+  "exit_code": 1,
+  "explanation": [
+    "1. **What failed:** The fix round (iteration 1 of 2 after the iteration reset) on change 0006 ended normally with exit 0, but it never ran the deploy gate. The runner therefore parked the PR with \"the session ended without reaching its gate\".",
+    "2. **Likely cause:** The session parked on purpose. It applied the version bump and the case-list update, found nothing to restore for the `.env` item, and stopped on item 3, the eval case rewrite. That item can't be done as written: a framework eval case runs in a copy of the fixture project, which has no `plugin/` code, so it can't reach `detect/cli.py go`.",
+    "3. **Flaky or real:** Real, and not flaky. It's a design question waiting for the owner's answer, not an infrastructure error. The one stderr line, a warning that the workspace isn't trusted so the `permissions.allow` entries were ignored, is a side issue. It may explain why the sandbox blocked the fixture `.env` and stopped the full pytest run inside the session.",
+    "4. **First thing to check:** Read the three options in the gate record's \"What I need from you\", also in `evidence/fix-response.md`: give the eval runner a way to reach the framework, turn it into a session case with new hook code, or drop the case and waive `lesson_and_eval`.",
+    "5. **Then:** Answer on PR #405 and start the next round (a review, an @claude comment or `sdlc:reset-iterations`). That round's gate judges the whole branch."
+  ],
+  "parked": true,
+  "phase": "fix",
+  "reason": "fix: the session ended without reaching its gate",
+  "run": {
+    "actor": "luissiviero",
+    "attempt": "1",
+    "event": "pull_request",
+    "id": "41943266266",
+    "url": "https://github.com/luissiviero/sdlc-framework/actions/runs/41943266266/attempts/1",
+    "workflow": "SDLC fix (review comments)"
+  },
+  "schema_version": 1,
+  "step": "runner"
+}
