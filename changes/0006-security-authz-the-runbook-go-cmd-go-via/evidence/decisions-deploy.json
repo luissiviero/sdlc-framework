@@ -1,0 +1,28 @@
+{
+  "decisions": [
+    {
+      "advocate": "No objection to closing the item as \"not a modification of the PR's diff\", provided it is closed on the committed tree diff and the check's defect is named, not waved through as a sandbox quirk.",
+      "at": "2026-11-05T01:10:03Z",
+      "cost_usd": null,
+      "decision": "settled: the change's committed diff does not modify tests/fixtures/sample-python-project/.env (no diff --git header for it in any evidence patch); the hit comes from the sandbox denying reads of **/.env*, so the working-tree list shows it as modified; making _framework judge the fix-type rule on committed_files is a separate change",
+      "head": "8cd193f99e65500ec6522c5023eca71e8e8b2800",
+      "item": "Important finding at tests/fixtures/sample-python-project/.env: pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25) [REVIEW.md: no test edits in a fix task]",
+      "item_n": 1,
+      "key": "finding:66a15d5701658e4c",
+      "kind": "finding",
+      "n": 1,
+      "overturned": null,
+      "phase": "deploy",
+      "rationale": [
+        "The two verdicts agree: the REVIEW.md fix-type rule is about the change's diff, and that diff leaves the pre-existing fixture alone.",
+        "Checked: no evidence patch (design/build/test/deploy) has a 'diff --git a/tests/fixtures' header; the path appears only as text inside JSON and comments.",
+        "The sandbox denies reads of **/.env*, so git cannot stat the file and the working-tree file list that review/cli.py _framework uses reports it as modified.",
+        "Following the advocate's safer reading, the closing names the defect instead of calling it a quirk: the check should use committed_files or skip paths it cannot stat. That is a follow-up change, not a fix here.",
+        "The owner can confirm outside the sandbox with 'git diff --stat origin/main...HEAD -- tests/fixtures/sample-python-project/.env' (should print nothing)."
+      ],
+      "reviewer": "Dismiss: false positive. The change does not modify the pre-existing fixture `.env`, so the framework rule is not breached."
+    }
+  ],
+  "phase": "deploy",
+  "schema_version": 1
+}

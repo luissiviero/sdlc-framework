@@ -1,0 +1,12 @@
+{
+  "reviewer": "dismiss as a false positive: the committed diff does not touch the fixture .env; the sandbox's read-deny makes git list it as modified in the working tree",
+  "advocate": "no objection to closing it as not a modification, provided the closing rests on the committed tree diff and names the check's defect (_framework judges the working tree, not committed_files)",
+  "decision": "settled: the change's committed diff does not modify tests/fixtures/sample-python-project/.env (no diff --git header for it in any evidence patch); the hit comes from the sandbox denying reads of **/.env*, so the working-tree list shows it as modified; making _framework judge the fix-type rule on committed_files is a separate change",
+  "rationale": [
+    "The two verdicts agree: the REVIEW.md fix-type rule is about the change's diff, and that diff leaves the pre-existing fixture alone.",
+    "Checked: no evidence patch (design/build/test/deploy) has a 'diff --git a/tests/fixtures' header; the path appears only as text inside JSON and comments.",
+    "The sandbox denies reads of **/.env*, so git cannot stat the file and the working-tree file list that review/cli.py _framework uses reports it as modified.",
+    "Following the advocate's safer reading, the closing names the defect instead of calling it a quirk: the check should use committed_files or skip paths it cannot stat. That is a follow-up change, not a fix here.",
+    "The owner can confirm outside the sandbox with 'git diff --stat origin/main...HEAD -- tests/fixtures/sample-python-project/.env' (should print nothing)."
+  ]
+}
