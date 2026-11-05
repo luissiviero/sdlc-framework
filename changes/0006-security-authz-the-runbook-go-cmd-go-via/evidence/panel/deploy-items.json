@@ -1,29 +1,7 @@
 {
-  "decided": 0,
+  "decided": 3,
   "gate": "park",
-  "items": [
-    {
-      "decided": false,
-      "item": "Important finding at tests/fixtures/sample-python-project/.env: pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25) [REVIEW.md: no test edits in a fix task]",
-      "key": "finding:66a15d5701658e4c",
-      "kind": "finding",
-      "n": 1
-    },
-    {
-      "decided": false,
-      "item": "Important finding at tests/test_detect_cli.py: pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25) [REVIEW.md: no test edits in a fix task]",
-      "key": "finding:ac03d472586f4a9b",
-      "kind": "finding",
-      "n": 2
-    },
-    {
-      "decided": false,
-      "item": "Important finding at tests/test_evals.py: pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25) [REVIEW.md: no test edits in a fix task]",
-      "key": "finding:84fc5fc9026b3948",
-      "kind": "finding",
-      "n": 3
-    }
-  ],
+  "items": [],
   "iterations": {
     "cap": 2,
     "left": 0,
@@ -31,19 +9,19 @@
   },
   "panel_calls": {
     "cap": 4,
-    "left": 4,
-    "used": 0
+    "left": 1,
+    "used": 3
   },
   "parks": [
     {
+      "check": "findings",
+      "reason": "findings are for commit 8cd193f99e, HEAD is 807860fa1d"
+    },
+    {
       "check": "adversarial_review",
-      "reason": "verdict is for commit 4958e800a2, HEAD is 8cd193f99e"
+      "reason": "verdict is for commit 4958e800a2, HEAD is 807860fa1d"
     }
   ],
-  "pending": [
-    1,
-    2,
-    3
-  ],
+  "pending": [],
   "phase": "deploy"
 }

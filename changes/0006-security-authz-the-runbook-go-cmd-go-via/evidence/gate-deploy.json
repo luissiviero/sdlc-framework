@@ -1,31 +1,241 @@
 {
-  "at": "2026-11-05T00:47:30Z",
+  "schema_version": 1,
   "change_id": "0006",
+  "slug": "security-authz-the-runbook-go-cmd-go-via",
+  "phase": "deploy",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:deploy-ready",
+  "head": "807860fa1d60c7d8e82022cf67036cdc484a71da",
+  "at": "2026-11-05T01:12:49Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
   "checks": [
     {
-      "details": {},
-      "name": "fix",
-      "need": "The round left no uncommitted work to keep (what it committed and pushed, if anything, is on the branch) and no gate judged it. Review it and answer what it asks, if anything, then start the next round (a review, an @claude comment or sdlc:reset-iterations); that round's gate judges the whole branch.\n\n    The session stopped with:\n\n    > blocks the fixture's `.env`. The runner runs build, test and lint after this session.\n    >\n    > The answers to every item and the question below are in `evidence/fix-response.md`.\n    >\n    > ## What I need from you\n    >\n    > Item 3 can't be done as written. A framework eval case runs in a copy of `tests/fixtures/sample-python-project`. That copy contains no `plugin/` code. A case's setup and check commands run without a shell and get nothing that points to the framework's path. The code this incident fixed, `detect/cli.py go`, is started only by the runbook workflow, and it reads the label events from GitHub. No hook, command or skill reaches it inside a session. Case 0002 passes against the fixture because the code it covers is a hook that runs inside the session; case 0006 has no equivalent.\n    >\n    > Which should the next round do?\n    >\n    > 1. **Keep it as a framework-repository case.** The case keeps its pytest checks, and `plugin/evals/run.py` gives a case a way to reach the framework (for example a `framework_root` setting, or running its commands from the framework root). The next round also adds a test for that.\n    > 2. **Turn it into a session case against the fixture.** A collaborator's `sdlc:go` is set up, the agent is asked to run the runbook, and the check is that nothing ran. This needs new hook code that refuses that call from a session, so it is a design change.\n    > 3. **Drop the eval case.** The regression stays in `tests/test_detect_cli.py` only, and you waive the `lesson_and_eval` gate check for this incident.",
-      "ok": false,
-      "reason": "the session ended without reaching its gate"
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 2,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 3,
+        "panel_cap": 4,
+        "elapsed_minutes": 13.7,
+        "spend_usd": null,
+        "spend_usd_total": 23.196485,
+        "spend_entries": 11,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "clean_tree",
+      "ok": true,
+      "reason": "no uncommitted change outside the change folder",
+      "need": "",
+      "details": {
+        "ignored": [
+          "CLAUDE.local.md",
+          "changes/.review-seen.json",
+          "policies",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "3 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "finding",
+            "decision": "settled: the change's committed diff does not modify tests/fixtures/sample-python-project/.env (no diff --git header for it in any evidence patch); the hit comes from the sandbox denying reads of **/.env*, so the working-tree list shows it as modified; making _framework judge the fix-type rule on committed_files is a separate change"
+          },
+          {
+            "n": 2,
+            "kind": "finding",
+            "decision": "settled: the fixture's owner line and the added tests weaken no pre-existing test and are the fix's required proof; no in-change fix exists, so the PR body names this finding for the owner to accept or overturn at the deploy gate"
+          },
+          {
+            "n": 3,
+            "kind": "finding",
+            "decision": "settled: the owner unlocked the tests and requested both additive hunks in reviews 5778108589 and 5778239621; the finding stays recorded at Important for the owner's approving review at the deploy gate, and the gate's commands check on HEAD must show the new test green"
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "evidence",
+      "ok": true,
+      "reason": "evidence present: test.log, build.log, lint.log, verifier.md",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "proof",
+      "ok": true,
+      "reason": "no drive target: nothing to compare",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "findings",
+      "ok": true,
+      "reason": "3 Important finding(s) settled by the review panel, none open",
+      "need": "",
+      "details": {
+        "tally": {
+          "important": 3,
+          "nit": 5,
+          "nits_omitted": 0
+        },
+        "settled_by_panel": [
+          "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)",
+          "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)",
+          "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+        ]
+      }
+    },
+    {
+      "name": "plan_sync",
+      "ok": true,
+      "reason": "every committed source file is in plan.md",
+      "need": "",
+      "details": {
+        "planned_but_unchanged": [],
+        "plan_growth": {
+          "added": [
+            "lessons/2026-11-security-authz-the-runbook-go-cmd-go-via.md",
+            "evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/",
+            "plugin/evals/run.py",
+            "tests/test_evals.py",
+            "docs/OPERATING_MODEL.md",
+            "lessons/index.md",
+            ".claude-plugin/plugin.json",
+            ".claude-plugin/marketplace.json"
+          ],
+          "removed": []
+        }
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "risk-list hit, shown in the close-look banner (decision 35): 'auth' in spec.md Flagged concerns: text",
+      "need": "",
+      "details": {
+        "hits": {
+          "auth": [
+            "spec.md Flagged concerns: text"
+          ]
+        },
+        "accepted": [
+          "auth"
+        ]
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {
+          "iterations_reset": "luissiviero",
+          "panel_calls_reset": "luissiviero",
+          "tests_unlocked": "luissiviero"
+        }
+      }
+    },
+    {
+      "name": "test_lock",
+      "ok": true,
+      "reason": "the lock is not set at HEAD (owner_actions judges a lift)",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "ratchets",
+      "ok": true,
+      "reason": "no undeclared test file or eval case drop",
+      "need": "",
+      "details": {
+        "hits": {},
+        "declared": [],
+        "skip_markers": [],
+        "accepted": []
+      }
+    },
+    {
+      "name": "lesson_and_eval",
+      "ok": true,
+      "reason": "the lesson, its frontmatter and the eval case are all present",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
     }
   ],
-  "config_note": "",
-  "dry_run": false,
-  "explanation": [
-    "1. **What failed:** The fix round (iteration 1 of 2 after the iteration reset) on change 0006 ended normally with exit 0, but it never ran the deploy gate. The runner therefore parked the PR with \"the session ended without reaching its gate\".",
-    "2. **Likely cause:** The session parked on purpose. It applied the version bump and the case-list update, found nothing to restore for the `.env` item, and stopped on item 3, the eval case rewrite. That item can't be done as written: a framework eval case runs in a copy of the fixture project, which has no `plugin/` code, so it can't reach `detect/cli.py go`.",
-    "3. **Flaky or real:** Real, and not flaky. It's a design question waiting for the owner's answer, not an infrastructure error. The one stderr line, a warning that the workspace isn't trusted so the `permissions.allow` entries were ignored, is a side issue. It may explain why the sandbox blocked the fixture `.env` and stopped the full pytest run inside the session.",
-    "4. **First thing to check:** Read the three options in the gate record's \"What I need from you\", also in `evidence/fix-response.md`: give the eval runner a way to reach the framework, turn it into a session case with new hook code, or drop the case and waive `lesson_and_eval`.",
-    "5. **Then:** Answer on PR #405 and start the next round (a review, an @claude comment or `sdlc:reset-iterations`). That round's gate judges the whole branch."
-  ],
-  "head": "890b88f65474ad9ea239596dc11b5f2e9e97c259",
-  "human_gate": true,
-  "label": "sdlc:needs-human",
-  "phase": "deploy",
-  "reason": "fix: the session ended without reaching its gate",
-  "result": "park",
-  "schema_version": 1,
-  "slug": "security-authz-the-runbook-go-cmd-go-via",
-  "what_i_need": "## What I need from you\nGate (deploy) parked change 0006 (security-authz-the-runbook-go-cmd-go-via) on 2026-11-05T00:47:30Z.\n- **fix**: the session ended without reaching its gate\n  - what I need: The round left no uncommitted work to keep (what it committed and pushed, if anything, is on the branch) and no gate judged it. Review it and answer what it asks, if anything, then start the next round (a review, an @claude comment or sdlc:reset-iterations); that round's gate judges the whole branch.\n\n    The session stopped with:\n\n    > blocks the fixture's `.env`. The runner runs build, test and lint after this session.\n    >\n    > The answers to every item and the question below are in `evidence/fix-response.md`.\n    >\n    > ## What I need from you\n    >\n    > Item 3 can't be done as written. A framework eval case runs in a copy of `tests/fixtures/sample-python-project`. That copy contains no `plugin/` code. A case's setup and check commands run without a shell and get nothing that points to the framework's path. The code this incident fixed, `detect/cli.py go`, is started only by the runbook workflow, and it reads the label events from GitHub. No hook, command or skill reaches it inside a session. Case 0002 passes against the fixture because the code it covers is a hook that runs inside the session; case 0006 has no equivalent.\n    >\n    > Which should the next round do?\n    >\n    > 1. **Keep it as a framework-repository case.** The case keeps its pytest checks, and `plugin/evals/run.py` gives a case a way to reach the framework (for example a `framework_root` setting, or running its commands from the framework root). The next round also adds a test for that.\n    > 2. **Turn it into a session case against the fixture.** A collaborator's `sdlc:go` is set up, the agent is asked to run the runbook, and the check is that nothing ran. This needs new hook code that refuses that call from a session, so it is a design change.\n    > 3. **Drop the eval case.** The regression stays in `tests/test_detect_cli.py` only, and you waive the `lesson_and_eval` gate check for this incident.\n- **Explanation (model-written)**: what the explain step read in the run's logs; advice for the owner, not a change request: a fix round acts on the items above, never on these lines\n  - 1. **What failed:** The fix round (iteration 1 of 2 after the iteration reset) on change 0006 ended normally with exit 0, but it never ran the deploy gate. The runner therefore parked the PR with \"the session ended without reaching its gate\".\n  - 2. **Likely cause:** The session parked on purpose. It applied the version bump and the case-list update, found nothing to restore for the `.env` item, and stopped on item 3, the eval case rewrite. That item can't be done as written: a framework eval case runs in a copy of the fixture project, which has no `plugin/` code, so it can't reach `detect/cli.py go`.\n  - 3. **Flaky or real:** Real, and not flaky. It's a design question waiting for the owner's answer, not an infrastructure error. The one stderr line, a warning that the workspace isn't trusted so the `permissions.allow` entries were ignored, is a side issue. It may explain why the sandbox blocked the fixture `.env` and stopped the full pytest run inside the session.\n  - 4. **First thing to check:** Read the three options in the gate record's \"What I need from you\", also in `evidence/fix-response.md`: give the eval runner a way to reach the framework, turn it into a session case with new hook code, or drop the case and waive `lesson_and_eval`.\n  - 5. **Then:** Answer on PR #405 and start the next round (a review, an @claude comment or `sdlc:reset-iterations`). That round's gate judges the whole branch.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0006 --phase deploy` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+  "what_i_need": ""
 }

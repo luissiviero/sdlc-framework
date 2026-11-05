@@ -50,6 +50,17 @@
     "last_seen": "2026-10-09T11:15:39Z",
     "summary": "The diff imports `shell_guard` at module scope in tests/test_hooks.py, but plan.md's Order of work step 1 and Files-that-change section require it 'imported inside the test functions, never at module top-level, so a failure in the new tests cannot abort collection of the rest of the file', and plan.md was never updated in any commit on this branch to reflect the departure."
   },
+  "2497f9c32476330c": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-05T01:06:24Z",
+    "summary": "spec.md's Design still says one file of the plugin changes (plugin/detect/cli.py), while the diff also changes plugin/evals/run.py (the framework_root key, fix round 4); plan.md was updated, spec.md was not, so the design record understates the change."
+  },
   "260725ad8b09d157": {
     "count": 1,
     "file": "changes/0002-security-authz-the-guardrail-self-protec/evidence/test.log",
@@ -113,6 +124,28 @@
     "last_change": "0003",
     "last_seen": "2026-10-08T12:06:32Z",
     "summary": "The example frontmatter's `sources` list shows only `detection`, `eval` and `fix-pr`, with no sample `run-<n>` entry, even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"."
+  },
+  "3ac19785640df87f": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "tests/test_evals.py",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-05T01:06:24Z",
+    "summary": "In a fix-type change the diff edits a pre-existing test's expected list (test_the_framework_suite_s_cases_load) and adds a test to a pre-existing test file; the owner asked for both on PR #405 (fix rounds 3 and 4) and plan.md declares them, so this is a nit with a doubt: the literal REVIEW.md wording forbids modifying such files and the owner should confirm the reading."
+  },
+  "3b9d0de2224f8292": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "plugin/evals/run.py",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-05T01:06:24Z",
+    "summary": "A framework_root case's setup now runs in the live framework checkout (--plugin-dir), the same tree later cases' sessions load as their plugin, so a case's setup can change the framework under test for every case after it; the workspace isolation the other cases get does not apply (doubt: only owner-reviewed cases under evals/cases reach it, and case 0006 has no setup)."
   },
   "3c3a060b8e0bdeec": {
     "count": 1,
@@ -217,11 +250,11 @@
     "changes": [
       "0006"
     ],
-    "count": 1,
+    "count": 3,
     "file": "tests/fixtures/sample-python-project/.env",
     "first_change": "0006",
     "last_change": "0006",
-    "last_seen": "2026-11-04T19:50:25Z",
+    "last_seen": "2026-11-05T01:12:47Z",
     "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
   },
   "66a196a2d645cd7e": {
@@ -272,6 +305,17 @@
     "last_seen": "2026-10-03T22:00:14Z",
     "summary": "verified_with still does not carry all three parts spec.md Requirements asks for (Claude Code version, plugin version, runner) for any of the 32 docs/notes/<N>.md files: this fix round added a plugin version to notes/27.md-32.md (sessions 15-18), but no file -- including those six -- carries a runner value, so the field a later session reads to judge staleness (spec.md Requirements, choice 93) is still incomplete across the whole corpus, now a third occurrence of the same open gap."
   },
+  "84fc5fc9026b3948": {
+    "changes": [
+      "0006"
+    ],
+    "count": 2,
+    "file": "tests/test_evals.py",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-05T01:12:47Z",
+    "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+  },
   "8904b4484e9ea0a6": {
     "count": 1,
     "file": "plugin/lessons/index.py",
@@ -296,6 +340,17 @@
     "last_seen": "2026-10-08T04:53:25Z",
     "summary": "`build()` (called by `check()`) always runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `index.py check` (and `lesson_and_eval`'s call to it) creates `lessons/` as a side effect even when it only reports drift or failure."
   },
+  "97d9a2f703bd815a": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "tests/test_detect_cli.py",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-05T01:06:24Z",
+    "summary": "The rollback_incident fixture of a pre-existing test file gains monkeypatch and GITHUB_REPOSITORY_OWNER in a fix-type change; it is declared (spec.md panel decision 1, plan.md Risks) and no existing test body or assertion changes, so this is a nit with a doubt about the literal reading of the rule."
+  },
   "9f7af49dece452de": {
     "count": 1,
     "file": "plugin/hooks/shell_guard.py",
@@ -303,6 +358,17 @@
     "last_change": "0002",
     "last_seen": "2026-10-09T11:22:33Z",
     "summary": "The new hook script is 985 lines, nearly double the coding-standards advisory limit of 500 lines for a single source file, with no split proposed in plan.md."
+  },
+  "a19662dca60f1549": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "template/.github/workflows/sdlc-runbook.yml",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-05T01:12:47Z",
+    "summary": "The workflow header a project receives from /sdlc-init still says the job 'checks that a person applied it'; after this change the Go step refuses any account but the owner's, so a project reading its own workflow gets the old rule (the spec kept the file unchanged, and only OPERATING_MODEL.md was updated)."
   },
   "a2537610258e383b": {
     "count": 1,
@@ -340,12 +406,23 @@
     "changes": [
       "0006"
     ],
-    "count": 2,
+    "count": 4,
     "file": "tests/test_detect_cli.py",
     "first_change": "0006",
     "last_change": "0006",
-    "last_seen": "2026-11-04T19:50:25Z",
+    "last_seen": "2026-11-05T01:12:47Z",
     "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+  },
+  "aca56fe3b824b374": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/checks.yaml",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-05T01:12:47Z",
+    "summary": "The comment claims that 'a test removed or renamed fails the case too', but pytest exits 5 only when -k selects nothing: removing or renaming one or two of the three named tests still leaves the case green (the lesson's wording, 'when none of them is found', is the accurate one)."
   },
   "adcf7a1b9e91cd94": {
     "count": 1,
@@ -386,6 +463,17 @@
     "last_change": "0004",
     "last_seen": "2026-10-24T16:25:41Z",
     "summary": "The `seen` value of a `differs` on a dotted path is stored whole, with no length cap: up to the 1 MiB file cap, and for a `line` item a single long first line. It goes into the gate record's `proof` entry, `auto-round.json` and the fix round's request. Command output, by contrast, is tailed to OUTPUT_TAIL."
+  },
+  "b55a47123950da7b": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "plugin/detect/cli.py",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-05T01:12:47Z",
+    "summary": "The module docstring still says `go` performs the sdlc:go label when 'a person must have applied it', while the change makes it the owner's account only (is_owner_actor); the code's own summary now understates the rule it enforces."
   },
   "b5a283b4ec19a447": {
     "count": 1,
@@ -437,6 +525,17 @@
     "last_change": "0004",
     "last_seen": "2026-10-24T16:25:41Z",
     "summary": "`commands_timeout_seconds` adds the drive's timeout at gate (b) too, because `run_gate_commands` passes phase 'b' and `drive_timeout_seconds` returns the capped value for any non-(e) phase. The design job's commands step therefore waits 5 to 10 minutes longer for a drive that never runs at (b)."
+  },
+  "ce09ce96346ae7af": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/checks.yaml",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-05T01:06:24Z",
+    "summary": "The case's output check still depends on the session in the sample fixture printing a pytest summary, while its prompt asks it to make a fix hold in plugin/detect/cli.py, a file the fixture does not have; a session that answers 'that file does not exist here' without running pytest fails the case for a reason unrelated to the fix (doubt: other incident cases use the same output check and the prompt does ask for the test output)."
   },
   "ce45a2c4192ba2cc": {
     "count": 1,
@@ -505,6 +604,17 @@
     "last_seen": "2026-10-16T19:21:04Z",
     "summary": "This diff's edit drops the trailing newline that .claude-plugin/marketplace.json, .claude-plugin/plugin.json and docs/PROGRESS.md had before (git diff shows \"\\ No newline at end of file\" only on the new side), a minor hygiene regression on three touched files."
   },
+  "eb765810723efe41": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "plugin/evals/run.py",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-05T01:12:47Z",
+    "summary": "A framework_root case's setup and command checks run in the live framework checkout (--plugin-dir), which later cases load as their plugin, so a case could alter the framework under test for the cases after it; the workspace isolation the other cases get does not apply (doubt: only owner-reviewed cases in the framework's evals/cases reach it, and case 0006 has no setup)."
+  },
   "eb785655ad27959d": {
     "count": 2,
     "file": "plugin/hooks/shell_guard.py",
@@ -520,6 +630,17 @@
     "last_change": "0004",
     "last_seen": "2026-10-24T16:31:45Z",
     "summary": "At gate (b), commands_timeout_seconds still adds the (capped) drive timeout to the step's subprocess timeout, although the drive never runs at (b). This only loosens the bound, but it departs from R4's rule that the drive counts only at the gates where it runs."
+  },
+  "f023a864b26e960c": {
+    "changes": [
+      "0006"
+    ],
+    "count": 1,
+    "file": "changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-05T01:12:47Z",
+    "summary": "spec.md was not brought in line with the later rounds: Design still says one plugin file changes (the diff also changes plugin/evals/run.py), and R1 / Acceptance still say 'no runbook record is written' while the test (and plan.md, fix round 2) assert the dispatch's go-requested record stays; plan.md records both departures, the spec does not."
   },
   "f3566379af405bb6": {
     "count": 1,

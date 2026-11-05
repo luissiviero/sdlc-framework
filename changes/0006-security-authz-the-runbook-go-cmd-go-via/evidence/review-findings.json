@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-05T01:05:53Z",
+  "at": "2026-11-05T01:12:31Z",
   "findings": [
     {
       "file": "tests/fixtures/sample-python-project/.env",
@@ -35,49 +35,49 @@
       "file": "changes/0006-security-authz-the-runbook-go-cmd-go-via/spec.md",
       "line": 18,
       "pass": "compliance",
-      "rule": "",
+      "rule": "spec.md requirement R1; Acceptance",
       "severity": "nit",
-      "signature": "2497f9c32476330c",
-      "summary": "spec.md's Design still says one file of the plugin changes (plugin/detect/cli.py), while the diff also changes plugin/evals/run.py (the framework_root key, fix round 4); plan.md was updated, spec.md was not, so the design record understates the change."
+      "signature": "f023a864b26e960c",
+      "summary": "spec.md was not brought in line with the later rounds: Design still says one plugin file changes (the diff also changes plugin/evals/run.py), and R1 / Acceptance still say 'no runbook record is written' while the test (and plan.md, fix round 2) assert the dispatch's go-requested record stays; plan.md records both departures, the spec does not."
     },
     {
       "file": "evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/checks.yaml",
-      "line": 16,
+      "line": 9,
       "pass": "bugs",
       "rule": "",
       "severity": "nit",
-      "signature": "ce09ce96346ae7af",
-      "summary": "The case's output check still depends on the session in the sample fixture printing a pytest summary, while its prompt asks it to make a fix hold in plugin/detect/cli.py, a file the fixture does not have; a session that answers 'that file does not exist here' without running pytest fails the case for a reason unrelated to the fix (doubt: other incident cases use the same output check and the prompt does ask for the test output)."
+      "signature": "aca56fe3b824b374",
+      "summary": "The comment claims that 'a test removed or renamed fails the case too', but pytest exits 5 only when -k selects nothing: removing or renaming one or two of the three named tests still leaves the case green (the lesson's wording, 'when none of them is found', is the accurate one)."
+    },
+    {
+      "file": "plugin/detect/cli.py",
+      "line": 28,
+      "pass": "compliance",
+      "rule": "",
+      "severity": "nit",
+      "signature": "b55a47123950da7b",
+      "summary": "The module docstring still says `go` performs the sdlc:go label when 'a person must have applied it', while the change makes it the owner's account only (is_owner_actor); the code's own summary now understates the rule it enforces."
     },
     {
       "file": "plugin/evals/run.py",
       "line": 774,
       "pass": "security",
-      "rule": "security-baseline: least privilege for commands run on untrusted or test input",
+      "rule": "",
       "severity": "nit",
-      "signature": "3b9d0de2224f8292",
-      "summary": "A framework_root case's setup now runs in the live framework checkout (--plugin-dir), the same tree later cases' sessions load as their plugin, so a case's setup can change the framework under test for every case after it; the workspace isolation the other cases get does not apply (doubt: only owner-reviewed cases under evals/cases reach it, and case 0006 has no setup)."
+      "signature": "eb765810723efe41",
+      "summary": "A framework_root case's setup and command checks run in the live framework checkout (--plugin-dir), which later cases load as their plugin, so a case could alter the framework under test for the cases after it; the workspace isolation the other cases get does not apply (doubt: only owner-reviewed cases in the framework's evals/cases reach it, and case 0006 has no setup)."
     },
     {
-      "file": "tests/test_detect_cli.py",
-      "line": 332,
+      "file": "template/.github/workflows/sdlc-runbook.yml",
+      "line": 12,
       "pass": "compliance",
-      "rule": "REVIEW.md framework rule: in a fix-type change the diff must not modify test files that existed before the fix",
+      "rule": "",
       "severity": "nit",
-      "signature": "97d9a2f703bd815a",
-      "summary": "The rollback_incident fixture of a pre-existing test file gains monkeypatch and GITHUB_REPOSITORY_OWNER in a fix-type change; it is declared (spec.md panel decision 1, plan.md Risks) and no existing test body or assertion changes, so this is a nit with a doubt about the literal reading of the rule."
-    },
-    {
-      "file": "tests/test_evals.py",
-      "line": 672,
-      "pass": "compliance",
-      "rule": "REVIEW.md framework rule: in a fix-type change the diff must not modify test files that existed before the fix",
-      "severity": "nit",
-      "signature": "3ac19785640df87f",
-      "summary": "In a fix-type change the diff edits a pre-existing test's expected list (test_the_framework_suite_s_cases_load) and adds a test to a pre-existing test file; the owner asked for both on PR #405 (fix rounds 3 and 4) and plan.md declares them, so this is a nit with a doubt: the literal REVIEW.md wording forbids modifying such files and the owner should confirm the reading."
+      "signature": "a19662dca60f1549",
+      "summary": "The workflow header a project receives from /sdlc-init still says the job 'checks that a person applied it'; after this change the Go step refuses any account but the owner's, so a project reading its own workflow gets the old rule (the spec kept the file unchanged, and only OPERATING_MODEL.md was updated)."
     }
   ],
-  "head": "8cd193f99e65500ec6522c5023eca71e8e8b2800",
+  "head": "807860fa1d60c7d8e82022cf67036cdc484a71da",
   "schema_version": 1,
   "tally": {
     "important": 3,
