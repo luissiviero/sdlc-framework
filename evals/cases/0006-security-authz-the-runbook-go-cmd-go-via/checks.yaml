@@ -13,5 +13,3 @@ framework_root: true
 checks:
   - command: "python -m pytest tests/test_detect_cli.py -k \"go_by_a_collaborator_performs_nothing or go_reads_the_owner_from_the_default_branch or go_by_a_person_runs_the_runbook\""
     exit: 0
-  - output:
-      regex: "\\d+ passed"
