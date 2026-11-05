@@ -1,10 +1,6 @@
 {
-  "github_run": {
-    "attempt": "1",
-    "id": "41899939369",
-    "url": "https://github.com/luissiviero/sdlc-framework/actions/runs/41899939369"
-  },
   "phase": "deploy",
-  "spend_usd": 2.8297296,
-  "started_at": "2026-11-04T19:47:15Z"
+  "run": "build",
+  "spend_usd": null,
+  "started_at": "2026-11-05T00:43:10Z"
 }

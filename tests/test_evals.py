@@ -669,6 +669,7 @@ def test_the_framework_suite_s_cases_load():
         "0004-verify-before-done",
         "0005-hooks-loaded",
         "0006-sandbox-write-deny",
+        "0006-security-authz-the-runbook-go-cmd-go-via",
         "0007-sandbox-credentials-hidden",
         *TRIGGER_CASES,
     ]

@@ -5,13 +5,24 @@
       "kind": "comment"
     }
   ],
-  "collected_at": "2026-11-04T19:24:38+00:00",
-  "head": "30643eba3a8e4ee62cca70396b021634e4eb22e5",
+  "collected_at": "2026-11-05T00:42:54+00:00",
+  "head": "05dad305e74fb16395d245ddad2e123aebf70dab",
   "not_applied": [],
   "ok": true,
   "pr_number": 405,
   "repo": "luissiviero/sdlc-framework",
-  "requests": [],
+  "requests": [
+    {
+      "association": "OWNER",
+      "at": "2026-11-05T00:41:42Z",
+      "author": "luissiviero",
+      "body": "Fix these in the next round: 1) bump plugin.json and the marketplace entry above 1.0.50, as version-check requires. 2) Add the new case to the list in tests/test_evals.py, test_the_framework_suite_s_cases_load. 3) Rewrite evals/cases/0006-security-authz-the-runbook-go-cmd-go-via so it passes against tests/fixtures/sample-python-project, as case 0002 does. 4) Restore tests/fixtures/sample-python-project/.env to the copy on main if it differs.",
+      "id": 5778108589,
+      "kind": "review",
+      "state": "COMMENTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/405#pullrequestreview-5778108589"
+    }
+  ],
   "route": "api",
   "schema_version": 1,
   "trigger": null,
