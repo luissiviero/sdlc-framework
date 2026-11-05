@@ -53,7 +53,7 @@ the build PR[^fix-pr].
 
 ## Prevention
 `evals/cases/0006-security-authz-the-runbook-go-cmd-go-via/`[^eval] runs the reproducing
-tests and asserts that the owner check stays in `plugin/detect/cli.py`.
+tests in the framework root (`framework_root`), and fails when one fails or when none of them is found.
 `tests/test_detect_cli.py` adds `test_go_by_a_collaborator_performs_nothing` and
 `test_go_reads_the_owner_from_the_default_branch` (one case where the head names the owner,
 one where the default branch does). The next owner-only act should call `is_owner_actor`

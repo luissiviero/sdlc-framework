@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "phase": "deploy",
+  "head": "4958e800a2dc8901db570d915fac6462c69ad1ae",
+  "verdict": "continue",
+  "reasons": [],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Blast radius: the change touches the risk-list item 'auth' (the runbook Go's authorization, the step that holds the runbook secrets), and this round adds a new case key to the shared eval runner plugin/evals/run.py.",
+    "The spec is tight (R1-R10 are measurable) and the owner closed its flagged concerns. The round-4 mechanism comes from the owner's review on PR #405, not from the spec.",
+    "Coverage: tests/test_detect_cli.py reproduces the weakness (failing-test.log, before the fix), and tests/test_evals.py adds a test of framework_root. Both test files existed before this fix-type change; the owner asked for the edits in reviews 5778108589 and 5778239621."
+  ],
+  "attempted": [
+    "Intent: the fix checks is_owner_actor(actor, approved, None, repo) after the bot/automation branch in _human_label_actor. That closes the finding at detect/cli.py:1183, and cmd_go (line 1222) passes the default branch's copy. Nothing nearby was solved instead.",
+    "Owner's request 5778239621, checked item by item. (a) framework_root runs setup and command checks in plugin_dir only when framework_suite (args.fixture) is set, and the docstring and validate_config cover it. (b) The test of the mechanism is added. (c) The whole-suite pytest check is dropped and the targeted -k command is kept. (d) The lesson_and_eval gate check is not in the diff. (e) The OPERATING_MODEL sdlc-runbook.yml row says the Go requires the owner's account. All five are applied.",
+    "Spec and plan: plan.md 'Files that change' lists run.py, test_evals.py, checks.yaml and OPERATING_MODEL.md for round 4. 'Order of work' still describes only the original fix steps. Nit: fix-response.md has no 'Fix round 4' section answering request 5778239621. It ends at round 3, which asked the owner the very question this round applies.",
+    "Proof: test.log (2888 passed, 2026-11-04T19:44:55Z) and verifier.md predate commit 4958e80. They prove the detect/cli.py fix, not the run.py key. The session reports test_evals.py at 79 passed against a copy of the fixture, and the runner re-runs the three targets on HEAD after the session. Per the agent brief I leave those logs to the runner rather than citing them for or against this round.",
+    "The tests: test_framework_root_runs_setup_and_commands_in_the_framework_only_in_its_suite would fail if setup stayed in the workspace (framework/made.txt absent) or if the command check stayed there (marker.txt is only in the framework root). It also asserts that the session ran in 'project', that the file checks read the workspace (made.txt absent there), that a project suite refuses the case with no session logged, and that a non-bool value is rejected. It cannot pass with the mechanism broken.",
+    "Weakened guard: the two dropped file checks read the fixture workspace, which holds no plugin/ code, so they could never pass. Dropping them loses no real coverage. The -k command exits 5 if none of the three names matches. Nit: if only the two collaborator/default-branch tests were removed or renamed, test_go_by_a_person_runs_the_runbook would still match and the case would stay green. Deleting those tests would be its own visible breach.",
+    "Blast radius of framework_root: run_commands uses check_env, which strips credentials and tokens, and runs no shell. The framework-evals workflow has contents: read. Case 0006 has no setup, and its pytest only writes caches and tmp_path. evals/check.py in a project passes --root, which excludes --fixture, so project suites are unaffected. A project case with framework_root fails closed. The evaluate() and run_case() parameters are keyword arguments with defaults, so existing callers are unchanged.",
+    "Feasibility of the command in CI: framework-evals.yml installs pytest. tests/test_detect_cli.py needs no pyyaml (no yaml import in it, conftest.py or fixture_repos.py). pyproject sets pythonpath plugin and '.' with testpaths tests. command_chain's shlex keeps the quoted -k expression as one argument.",
+    "Weak output check: the case's output regex '\\d+ passed' reads the agent's answer in the fixture, so the fixture's own pytest run satisfies it whatever the framework does. It adds nothing but breaks nothing; the command check is the real guard.",
+    "Stale wording: the lesson's Prevention says the eval 'asserts that the owner check stays in plugin/detect/cli.py'. That was the dropped file check; the case now proves it behaviorally through the targeted tests. Nit, outside the REVIEW.md Important classes.",
+    "Claims against the code: is_owner_actor(actor, config, env, repo) in plugin/state/unpark.py matches the call. owner_login gives sdlc.yaml: owner, else GITHUB_REPOSITORY_OWNER, else GITHUB_REPOSITORY, else the owner part of --repo, else None (fail closed). The OPERATING_MODEL row's claims (is_owner_actor, the default branch copy, 1.0.51 matching plugin.json and marketplace.json) match the diff. No decision is misstated.",
+    "Policies: no credential in the added lines and no new dependency. Guardrail files (.claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml) are not in the diff. The REVIEW.md fix-type rule on pre-existing test files: test_detect_cli.py's fixture line is declared (panel decision 1), and the test_evals.py additions are the owner's explicit requests. Nothing is weakened, and no assertion of an existing test changed.",
+    "Skip markers: none added in the diff. test.log's one 's' is pre-existing.",
+    "Drive: commands.drive does not apply. The framework has no product drive, and no evidence/proof/ exists."
+  ]
+}
