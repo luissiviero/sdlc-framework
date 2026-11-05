@@ -21,6 +21,28 @@
         "The owner can confirm outside the sandbox with 'git diff --stat origin/main...HEAD -- tests/fixtures/sample-python-project/.env' (should print nothing)."
       ],
       "reviewer": "Dismiss: false positive. The change does not modify the pre-existing fixture `.env`, so the framework rule is not breached."
+    },
+    {
+      "advocate": "Keep the finding Important and open for the owner's approving review; do not let the panel downgrade or close it as \"declared\", and do not park on it.",
+      "at": "2026-11-05T01:10:04Z",
+      "cost_usd": null,
+      "decision": "settled: the fixture's owner line and the added tests weaken no pre-existing test and are the fix's required proof; no in-change fix exists, so the PR body names this finding for the owner to accept or overturn at the deploy gate",
+      "head": "bd2b3be10c73a20bb17d13e65510e3d0e10c32c9",
+      "item": "Important finding at tests/test_detect_cli.py: pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25) [REVIEW.md: no test edits in a fix task]",
+      "item_n": 2,
+      "key": "finding:ac03d472586f4a9b",
+      "kind": "finding",
+      "n": 2,
+      "overturned": null,
+      "phase": "deploy",
+      "rationale": [
+        "Both verdicts agree on the facts: no existing test body or assertion changes; the diff is a monkeypatch parameter, one setenv line, new tests and a helper.",
+        "Reverting the fixture line breaks five Go tests (fail closed under R2), and dropping the new tests removes the proof REVIEW.md requires, so no fix inside this change exists.",
+        "They disagree only on who closes it; the safer reading is the advocate's: the REVIEW.md rule is the owner's guardrail and neither the unlock label nor design panel 1 waived it for the fixture edit.",
+        "So the finding does not block the run, but it stays named in the PR body for the owner's approving review, not closed silently by the panel.",
+        "A later non-fix change may rename the five Go tests so their names say 'the repository owner'; that is outside this item."
+      ],
+      "reviewer": "Dismiss the finding as satisfied in substance (no pre-existing test was weakened), keeping it named in the PR summary for the owner."
     }
   ],
   "phase": "deploy",
