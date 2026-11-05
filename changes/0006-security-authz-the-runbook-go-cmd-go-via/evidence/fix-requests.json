@@ -5,8 +5,8 @@
       "kind": "comment"
     }
   ],
-  "collected_at": "2026-11-05T00:42:54+00:00",
-  "head": "05dad305e74fb16395d245ddad2e123aebf70dab",
+  "collected_at": "2026-11-05T00:58:52+00:00",
+  "head": "ac187a00cb7d133e5205b595a46419e1a22de09a",
   "not_applied": [],
   "ok": true,
   "pr_number": 405,
@@ -21,6 +21,16 @@
       "kind": "review",
       "state": "COMMENTED",
       "url": "https://github.com/luissiviero/sdlc-framework/pull/405#pullrequestreview-5778108589"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-11-05T00:57:39Z",
+      "author": "luissiviero",
+      "body": "Item 3: option 1. Keep case 0006 as a framework-repository case, and give the eval runner the smallest way to run its setup and command checks from the framework root, only in the framework suite, with a test of that mechanism. In checks.yaml, drop the whole-suite python -m pytest check and keep the targeted tests. Do not change the lesson_and_eval gate check. Also update the sdlc-runbook.yml row at docs/OPERATING_MODEL.md:98 to say the Go requires the owner's account.",
+      "id": 5778239621,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/405#pullrequestreview-5778239621"
     }
   ],
   "route": "api",

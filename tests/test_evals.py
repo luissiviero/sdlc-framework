@@ -1004,6 +1004,45 @@ def test_fixture_runs_a_case_against_the_initialised_project(tmp_path, cases, fa
     assert data["passed"] == 1 and not Path(data["root"]).exists()  # the fixture is removed
 
 
+def test_framework_root_runs_setup_and_commands_in_the_framework_only_in_its_suite(
+    tmp_path, project, cases, fake
+):
+    """Case 0006 (the owner's option 1 on PR #405): the runbook Go is reached by no session
+    in the fixture, so its case runs its setup and command checks in the framework root
+    (``--plugin-dir``); the session and the file checks stay in the workspace, and a
+    project's suite fails such a case without a run."""
+    framework = tmp_path / "framework"
+    write(framework / "marker.txt", "the framework\n")
+    make_case(
+        cases,
+        "0001-framework",
+        "WRITE note.txt from the fake\n",
+        (
+            "framework_root: true\n"
+            "setup: \"python -c \\\"open('made.txt', 'w').write('x')\\\"\"\n"
+            "checks:\n"
+            "  - command: \"python -c \\\"import pathlib; assert pathlib.Path('marker.txt')"
+            ".is_file() and pathlib.Path('made.txt').is_file()\\\"\"\n"
+            "  - file: note.txt\n"
+            "  - file: made.txt\n"
+            "    exists: false\n"
+        ),
+    )
+    report = tmp_path / "report.json"
+    argv = ["--fixture", "--cases", str(cases), "--claude", str(fake), "--report", str(report)]
+    argv += ["--plugin-dir", str(framework)]
+    assert run.main(argv, env=clean_env(tmp_path)) == 0
+    assert only_case(json.loads(report.read_text(encoding="utf-8")))["passed"]
+    assert (framework / "made.txt").is_file()  # the setup ran in the framework root
+    assert Path(logged(tmp_path)[0]["cwd"]).name == "project"  # the session in the workspace
+    (tmp_path / "argv.log").unlink()
+    code, data = run_suite(tmp_path, project, cases, fake, "--plugin-dir", str(framework))
+    assert code == 1 and logged(tmp_path) == []
+    assert only_case(data)["reason"] == "framework_root is for the framework suite (--fixture) only"
+    _, problems = run.validate_config({"framework_root": "yes", "checks": [{"denied": "Edit"}]})
+    assert problems == ["framework_root must be true or false"]
+
+
 # --- case.py new --------------------------------------------------------------------------------
 INTENT = """# Intent: Division by zero crashes the report
 Author: detector (automation). Status: draft. Change id: 0007. Entry route: incident ci-7.
