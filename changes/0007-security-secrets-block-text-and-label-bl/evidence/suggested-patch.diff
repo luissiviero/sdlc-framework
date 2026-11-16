@@ -1,0 +1,14 @@
+--- a/plugin/hooks/production_gate.py
++++ b/plugin/hooks/production_gate.py
+@@ -350,4 +350,4 @@
+ def block_text(command: str, action: str, detail: str, pr_number: int | None) -> str:
+-    shown = " ".join(command.split())
++    shown = " ".join(redact(command).split())  # the reason is committed in the hook log
+     if len(shown) > COMMAND_SHOWN:
+         shown = shown[:COMMAND_SHOWN] + "..."
+@@ -365,4 +365,4 @@
+ def label_block_text(command: str) -> str:
+-    shown = " ".join(command.split())
++    shown = " ".join(redact(command).split())  # the reason is committed in the hook log
+     if len(shown) > COMMAND_SHOWN:
+         shown = shown[:COMMAND_SHOWN] + "..."

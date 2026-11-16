@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-16T16:01:04Z",
+  "bounded": true,
+  "class": "secrets",
+  "file": "plugin/hooks/production_gate.py",
+  "head": "4f7f59718e29240225ab65a3f6d3ab6915e97057",
+  "kind": "scan",
+  "line": 351,
+  "schema_version": 1,
+  "severity": "important",
+  "signature": "d8d2c7a79b3a16d8",
+  "summary": "block_text and label_block_text quote the raw command (up to 100 characters) in the block reason, and log_decision redacts only the command field, not the reason, so a credential typed inline in a blocked production command (an environment assignment of a token before a deploy command) is written verbatim to the committed evidence/hook-log.jsonl."
+}

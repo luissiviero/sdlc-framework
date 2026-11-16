@@ -1,0 +1,30 @@
+id: "0007"
+slug: security-secrets-block-text-and-label-bl
+title: "security: secrets: block_text and label_block_text quote the raw command (up to"
+phase: maintain
+entry_route: incident
+change_type: fix
+gate:
+  phase: maintain
+  result: passed
+  reason: waiting for the owner at gate (maintain)
+  at: "2026-11-16T16:01:06Z"
+parked_reason: null
+iterations: 0
+panel_calls: 0
+external_ref: null
+risk_accepted: []
+tests_locked: false
+risk_accepted_by: []
+iterations_reset_by: null
+iterations_reset_at: null
+tests_unlocked_by: null
+runbook_authorized_by: null
+abandoned_reason: null
+build_pr: null
+released_at: null
+released_sha: null
+released_pr: null
+created_at: "2026-11-16T16:01:04Z"
+updated_at: "2026-11-16T16:01:06Z"
+schema_version: 1
