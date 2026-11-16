@@ -1,0 +1,17 @@
+--- a/plugin/release/approval.py
++++ b/plugin/release/approval.py
+@@ -293,4 +293,14 @@
+             f"{actor}, which never passes a human gate",
+             pr_number,
+         )
++    from state.unpark import is_owner_actor  # noqa: PLC0415
++
++    if not is_owner_actor(str(actor), dict(config), None, repo):
++        return Approval(
++            False,
++            "none",
++            f"label {RELEASE_LABEL} on #{pr_number} was applied by {actor}, not by the "
++            "owner's account (decision 34)",
++            pr_number,
++        )
+     return Approval(True, "label", f"label applied by {actor}", pr_number)

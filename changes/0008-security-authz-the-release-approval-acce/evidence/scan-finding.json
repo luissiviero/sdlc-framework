@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-16T16:01:14Z",
+  "bounded": true,
+  "class": "authz",
+  "file": "plugin/release/approval.py",
+  "head": "4f7f59718e29240225ab65a3f6d3ab6915e97057",
+  "kind": "scan",
+  "line": 296,
+  "schema_version": 1,
+  "severity": "important",
+  "signature": "00956e0af2c72b91",
+  "summary": "The release approval accepts the sdlc:release-approved label from any non-bot account (label_approval checks only is_automation_actor, never is_owner_actor), so a collaborator with only Triage access can label a merged build PR and make sdlc-release.yml run deploy.command to production, or make the production-gate hook allow a guarded command, without the owner's act that decision 34 and OPERATING_MODEL section 1 (one person holds the release manager role) require."
+}
