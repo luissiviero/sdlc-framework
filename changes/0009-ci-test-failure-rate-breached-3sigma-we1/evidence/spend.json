@@ -1,0 +1,11 @@
+{
+  "entries": [
+    {
+      "at": "2026-11-20T14:23:36Z",
+      "run": "maintain",
+      "source": "claude-maintain.json",
+      "usd": 0.7856074
+    }
+  ],
+  "total_usd": 0.785607
+}

@@ -1,0 +1,128 @@
+{
+  "action": "propose",
+  "at": "2026-11-20T14:21:42Z",
+  "breach_start": "2026-11-19",
+  "commits": [],
+  "direction": "above",
+  "failed_run_urls": [
+    "https://github.com/luissiviero/sdlc-framework/actions/runs/44521976196"
+  ],
+  "forced": false,
+  "kind": "detect",
+  "latest": {
+    "at": "2026-11-19",
+    "meta": {
+      "failed": 1,
+      "failed_run_ids": [
+        44521976196
+      ],
+      "failed_run_urls": [
+        "https://github.com/luissiviero/sdlc-framework/actions/runs/44521976196"
+      ],
+      "runs": 1
+    },
+    "value": 1.0
+  },
+  "mean": 0.017818509825638172,
+  "metric": "ci_test_failure_rate",
+  "n_baseline": 23,
+  "n_tail": 8,
+  "observations": [
+    {
+      "at": "2026-11-12",
+      "meta": {
+        "failed": 0,
+        "failed_run_ids": [],
+        "failed_run_urls": [],
+        "runs": 1
+      },
+      "value": 0.0
+    },
+    {
+      "at": "2026-11-13",
+      "meta": {
+        "failed": 0,
+        "failed_run_ids": [],
+        "failed_run_urls": [],
+        "runs": 1
+      },
+      "value": 0.0
+    },
+    {
+      "at": "2026-11-14",
+      "meta": {
+        "failed": 0,
+        "failed_run_ids": [],
+        "failed_run_urls": [],
+        "runs": 1
+      },
+      "value": 0.0
+    },
+    {
+      "at": "2026-11-15",
+      "meta": {
+        "failed": 0,
+        "failed_run_ids": [],
+        "failed_run_urls": [],
+        "runs": 1
+      },
+      "value": 0.0
+    },
+    {
+      "at": "2026-11-16",
+      "meta": {
+        "failed": 0,
+        "failed_run_ids": [],
+        "failed_run_urls": [],
+        "runs": 1
+      },
+      "value": 0.0
+    },
+    {
+      "at": "2026-11-17",
+      "meta": {
+        "failed": 0,
+        "failed_run_ids": [],
+        "failed_run_urls": [],
+        "runs": 1
+      },
+      "value": 0.0
+    },
+    {
+      "at": "2026-11-18",
+      "meta": {
+        "failed": 0,
+        "failed_run_ids": [],
+        "failed_run_urls": [],
+        "runs": 1
+      },
+      "value": 0.0
+    },
+    {
+      "at": "2026-11-19",
+      "meta": {
+        "failed": 1,
+        "failed_run_ids": [
+          44521976196
+        ],
+        "failed_run_urls": [
+          "https://github.com/luissiviero/sdlc-framework/actions/runs/44521976196"
+        ],
+        "runs": 1
+      },
+      "value": 1.0
+    }
+  ],
+  "reason": "tier 3 by we1 (rules hit: we1): latest value 1 is 24.04 sigma from the mean 0.01782 (sigma 0.04085, 23 baseline point(s) over 30d, above); breach since 2026-11-19",
+  "rule": "we1",
+  "rules_hit": [
+    "we1"
+  ],
+  "schema_version": 1,
+  "sigma": 0.04085216361642362,
+  "sigmas": 24.042337130450044,
+  "signature": "68b6897ece2328d6",
+  "source": "github-actions",
+  "tier": 3,
+  "window_days": 30
+}

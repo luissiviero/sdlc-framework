@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "tier": 3,
+  "route": "pull_request",
+  "args": {},
+  "rationale": "The single failed run (44521976196) was an infrastructure failure. apt could not fetch socat from security.ubuntu.com, so Claude Code's sandbox (failIfUnavailable: true) could not start, and all 24 eval cases exited 1 before their first turn. runner_setup.py exits 0 even when the tools are still missing. No runbook fits. revert-pr is ruled out because the breach window has no commits and the same commit 4f7f597 passed on 2026-11-18 and 2026-11-20. quarantine-flaky-test is ruled out because no single test failed intermittently: every case failed the same way, for the same environmental reason, and deselecting a test would hide nothing real. The fix (fail the setup step loudly with a retry, keep the start of the claude error, and settle whether runner-setup failures count toward the metric) is a change of its own that starts with this intent PR."
+}

@@ -1,0 +1,105 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 72552,
+  "duration_ms": 81675,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 479,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "cacheCreationInputTokens": 62251,
+      "cacheReadInputTokens": 636057,
+      "canonicalModel": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 0.7856074,
+      "inputTokens": 32,
+      "maxOutputTokens": 128000,
+      "outputTokens": 8013,
+      "provider": "firstParty",
+      "thinkingTokens": 972,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 27,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "The diagnosis for change 0009 is committed (`3d22136`) and pushed to `sdlc/0009/intent`. This run was diagnosis-only, so I stopped there. The workflow's `detect/cli.py finish` step dispatches the route, runs the triage gate and opens the PR.\n\n**What happened:** this was a mirror outage, not a code regression. In the \"Framework evals\" run of 2026-11-19 (run 44521976196), `apt-get install socat` failed with `Connection failed [IP: 91.189.91.83 80]`. Claude Code's sandbox needs `socat`, and the evals are set to fail when the sandbox is unavailable. So all 24 cases exited 1 before their first turn: 0 turns, $0, pass rate 0/24.\n\n**What I ruled out:**\n- **A code change:** no commits fell in the breach window, and the same commit (4f7f597) passed on 11-18 and 11-20.\n- **A flaky test:** all 24 cases failed the same way, so no single test is intermittent.\n- **Authentication:** cost and turns were zero, and the next day's run passed with the same secret.\n- **The Claude Code version:** it is pinned at 2.1.278 in all three runs.\n\nNo lesson covered this metric or rule.\n\n**The fix the intent proposes:** `plugin/ci/runner_setup.py` always exits 0, even when `socat` is still missing. That is why one mirror error showed up as 24 eval failures. The intent asks for:\n- the install to be retried once;\n- the setup step to stop the job and name the missing package if the retry also fails;\n- the eval report to keep the start of `claude`'s error message, not only its tail.\n\nThe sandbox stays mandatory.\n\n**Proposed route:** `pull_request`, meaning the intent PR is the whole output. Neither runbook fits: `revert-pr` has no commit to revert, and `quarantine-flaky-test` has no single flaky test.\n\n**Open questions:**\n- Should a run that fails during runner setup count toward the CI test failure rate? Changing that may need a bands change, which would be your PR.\n- The error message was cut to its tail, which mentions `hasTrustDialogAccepted`. One case's full error output needs checking to confirm it is the sandbox error and not a separate trust problem.\n\nGate (maintain): merge = fix now (the design run starts); label `sdlc:schedule` = later; close with a comment = dismiss (the comment is the reason, recorded by the abandon workflow in a dismissal PR).",
+  "result_index": 0,
+  "safety_stops": 0,
+  "sdlc_run": {
+    "at": "2026-11-20T14:23:36Z",
+    "credential": "oauth",
+    "seconds": 82.9,
+    "timed_out": false
+  },
+  "session_id": "a5ad8ab8-93ad-48a1-bc8d-d6195e2893be",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {},
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 0,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "spawned": 0,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 87,
+  "total_cost_usd": 0.7856074,
+  "ttft_ms": 905,
+  "ttft_stream_ms": 479,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 62251,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 62251,
+    "cache_read_input_tokens": 636057,
+    "fallback_credit": null,
+    "inference_geo": "global",
+    "input_tokens": 32,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 343,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 343,
+        "cache_read_input_tokens": 61908,
+        "input_tokens": 2,
+        "output_tokens": 851,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 8013,
+    "output_tokens_details": {
+      "thinking_tokens": 972
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "82c8b738-693f-431a-935d-95a0b11a3bbb"
+}
