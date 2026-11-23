@@ -1,0 +1,17 @@
+--- a/plugin/ci/run_phase.py
++++ b/plugin/ci/run_phase.py
+@@ -2478,8 +2478,13 @@ def commands_env() -> dict[str, str]:
+     hidden = {
+         *auth_mod.CREDENTIAL_VARS,
+         *SESSION_HIDDEN_VARS,
+         "GITHUB_TOKEN",
+         "GH_TOKEN",
+         app_token.WORKFLOW_TOKEN_ENV,
++        # the runner's command files: a target that appends to them steers the job's later
++        # steps, which hold the App token (a PYTHONPATH or PATH entry into the checkout)
++        "GITHUB_ENV",
++        "GITHUB_PATH",
++        "GITHUB_OUTPUT",
+     }
+     return app_token.strip_git_auth({k: v for k, v in os.environ.items() if k not in hidden})
+ 
