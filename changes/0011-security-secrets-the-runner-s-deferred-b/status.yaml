@@ -5,10 +5,10 @@ phase: maintain
 entry_route: incident
 change_type: feature
 gate:
-  phase: null
-  result: null
-  reason: null
-  at: null
+  phase: maintain
+  result: passed
+  reason: waiting for the owner at gate (maintain)
+  at: "2026-11-23T18:26:41Z"
 parked_reason: null
 iterations: 0
 panel_calls: 0
@@ -26,5 +26,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-11-23T18:26:40Z"
-updated_at: "2026-11-23T18:26:40Z"
+updated_at: "2026-11-23T18:26:41Z"
 schema_version: 1
