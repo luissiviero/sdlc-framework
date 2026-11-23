@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-23T18:26:40Z",
+  "bounded": false,
+  "class": "secrets",
+  "file": "plugin/ci/run_phase.py",
+  "head": "4f7f59718e29240225ab65a3f6d3ab6915e97057",
+  "kind": "scan",
+  "line": 2470,
+  "schema_version": 1,
+  "severity": "important",
+  "signature": "533685077d1fa81c",
+  "summary": "The runner's deferred build/test/lint targets run code the session just wrote outside the sandbox, with no network allow-list, as the same user as the parent run_phase.py process whose own environment holds the App token (as GITHUB_TOKEN), the workflow token and the model credential; commands_env strips them only from the child's environment, so a session-written test can read them from /proc/<ancestor pid>/environ and exfiltrate them or push with the App identity."
+}
