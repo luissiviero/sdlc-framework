@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-23T18:26:29Z",
+  "bounded": true,
+  "class": "injection",
+  "file": "plugin/ci/run_phase.py",
+  "head": "4f7f59718e29240225ab65a3f6d3ab6915e97057",
+  "kind": "scan",
+  "line": 2485,
+  "schema_version": 1,
+  "severity": "important",
+  "signature": "9d29c682b6efa91c",
+  "summary": "commands_env passes GITHUB_ENV, GITHUB_PATH and GITHUB_OUTPUT through to the unsandboxed targets, so a session-written test can append PYTHONPATH or a PATH entry pointing into the checkout and get its own code run by the job's later steps (Verify the project checkout, Park, Publish the explanation), which hold the App token."
+}
